@@ -182,6 +182,10 @@ body.light .theme-toggle .icon-moon { display: none; }
   flex: 1;
   min-width: 0;           /* let the flex item shrink below its content's intrinsic width */
   overflow: auto;
+  /* Reserve scrollbar space so its appearance/disappearance can't change clientWidth.
+     Without this, applyZoom can fall into a ResizeObserver feedback loop where the
+     SVG height crosses the scrollbar threshold each frame and the page visibly shakes. */
+  scrollbar-gutter: stable;
   padding: 32px 28px 80px;
   cursor: grab;
   transition: margin-right 280ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -277,8 +281,6 @@ body.light .theme-toggle .icon-moon { display: none; }
 .kicker {
   font-family: var(--font-mono);
   font-size: calc(10.5px * var(--fs-scale));
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
   color: var(--text-3);
 }
 
@@ -306,8 +308,6 @@ body.light .theme-toggle .icon-moon { display: none; }
   font-family: var(--font-mono);
   font-size: calc(10.5px * var(--fs-scale));
   color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   max-width: 100%;
   word-break: break-all;
 }
@@ -319,8 +319,6 @@ body.light .theme-toggle .icon-moon { display: none; }
 .tag-chip {
   font-family: var(--font-mono);
   font-size: calc(10px * var(--fs-scale));
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   padding: 2px 7px;
   border-radius: 3px;
   background: var(--accent-dim);
@@ -355,8 +353,7 @@ body.light .theme-toggle .icon-moon { display: none; }
   border: 0; border-left: 1px solid var(--line);
   background: transparent; color: var(--text-2);
   padding: 0 12px; cursor: pointer; font-family: var(--font-mono); font-size: calc(11px * var(--fs-scale));
-  letter-spacing: 0.06em; text-transform: uppercase;
-  min-width: 72px;            /* sized for the longest label ("COPIED"/"FAILED") so the row doesn't reflow */
+  min-width: 72px;            /* sized for the longest label ("copied"/"failed") so the row doesn't reflow */
   text-align: center;
   transition: color 0.15s, background 0.15s;
 }
@@ -387,7 +384,7 @@ body.light .theme-toggle .icon-moon { display: none; }
 }
 .meta-grid .cell .label {
   font-family: var(--font-mono); font-size: calc(10px * var(--fs-scale));
-  text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-3);
+  color: var(--text-3);
 }
 .meta-grid .cell .value {
   font-family: var(--font-mono); font-size: calc(15px * var(--fs-scale)); color: var(--text-0);
@@ -396,7 +393,7 @@ body.light .theme-toggle .icon-moon { display: none; }
 
 .section-h {
   font-family: var(--font-mono); font-size: calc(10.5px * var(--fs-scale));
-  text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-3);
+  color: var(--text-3);
   margin: 4px 0 0;
   padding-bottom: 8px; border-bottom: 1px solid var(--line);
 }
@@ -427,7 +424,6 @@ body.light .theme-toggle .icon-moon { display: none; }
 .edge-row .kind {
   flex: 0 0 auto;
   font-size: calc(9.5px * var(--fs-scale)); color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.08em;
 }
 .edge-row .edge-pkg {
   margin-top: 2px;
@@ -457,8 +453,6 @@ body.light .theme-toggle .icon-moon { display: none; }
   font-family: var(--font-mono);
   font-size: calc(10.5px * var(--fs-scale));
   fill: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
 }
 .layer-band .count {
   font-family: var(--font-mono);
@@ -1268,7 +1262,7 @@ function renderDetail(c) {
   const tags = Array.isArray(c.tags) ? c.tags : [];
   els.detailBody.innerHTML = `
     <div>
-      <div class="kicker">${escapeHtml((layer?.name || "").toUpperCase())} <span style="opacity:0.5">·</span> ${escapeHtml(c.kind || "class").toUpperCase()}${c.language ? ` <span style="opacity:0.5">·</span> <span class="lang-tag">${escapeHtml(c.language)}</span>` : ""}</div>
+      <div class="kicker">${escapeHtml(layer?.name || "")} <span style="opacity:0.5">·</span> ${escapeHtml(c.kind || "class")}${c.language ? ` <span style="opacity:0.5">·</span> <span class="lang-tag">${escapeHtml(c.language)}</span>` : ""}</div>
       <h2 class="class-title">${escapeHtml(c.name)}</h2>
       <span class="class-kind">${escapeHtml(c.package || t("no_package"))}</span>
       ${tags.length ? `<div class="tag-row">${tags.map(tag => {
@@ -1400,6 +1394,14 @@ function applyZoom() {
   const containerW = Math.max(1, els.canvasWrap.clientWidth - 2 * CANVAS_PAD_L);
   const w = containerW * state.zoom;
   const h = w * (state.baseHeight / state.baseWidth);
+  // Skip sub-pixel writes — they don't change anything visible but can re-trigger
+  // ResizeObserver and keep the page oscillating after a panel transition settles.
+  const prevW = parseFloat(els.svg.style.width)  || 0;
+  const prevH = parseFloat(els.svg.style.height) || 0;
+  if (Math.abs(w - prevW) < 0.5 && Math.abs(h - prevH) < 0.5) {
+    updateZoomLabel();
+    return;
+  }
   els.svg.style.width  = w + "px";
   els.svg.style.height = h + "px";
   updateZoomLabel();
