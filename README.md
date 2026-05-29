@@ -84,86 +84,23 @@ Within a template, layers are assigned by **path segments** + **name suffixes**.
 
 ## Install
 
-This installs code-map into your local Claude Code as a user-scoped plugin. The repo doubles as its own [Claude Code marketplace](https://docs.claude.com/en/docs/claude-code/plugins) (see `.claude-plugin/marketplace.json`), so no GitHub publish is required.
+**Prerequisites:** Claude Code ≥ 2.x and Python 3.10+. The first `/code-map:build` lazily installs the tree-sitter grammars it needs into `${CLAUDE_PLUGIN_DATA}/wheels` — no manual `pip install`.
 
-### Prerequisites
-
-- **Claude Code** ≥ 2.x (plugin system + `/plugin` slash commands)
-- **Python** 3.10+ (Phase 1 extractor)
-- **git** (to clone and pull updates)
-
-The first `/code-map:build` run lazily installs the tree-sitter grammars it needs into `${CLAUDE_PLUGIN_DATA}/wheels` — no manual `pip install` step.
-
-### One-shot install (recommended)
-
-```bash
-# 1. Clone anywhere you like — the directory becomes your plugin's source of truth
-git clone https://github.com/Skykai521/code-map.git ~/code/code-map
-cd ~/code/code-map
-
-# 2. Run the helper — validates prereqs and prints the slash commands to paste into Claude Code
-./install.sh
-```
-
-`install.sh` checks `python3`/`git`/`pip`, then prints (and copies to your clipboard, on macOS/Linux with `pbcopy`/`wl-copy`/`xclip`) two commands. Open Claude Code and paste them in order:
+Paste these two slash commands into Claude Code:
 
 ```text
-/plugin marketplace add /absolute/path/to/code-map
+/plugin marketplace add MollyAI/code-map
 /plugin install code-map@code-map
 ```
 
-That's it. From any project directory, run `/code-map:build`, then `/code-map:run` to open the visualization.
+That's it — `/plugin list` should show `code-map@code-map` enabled. From any project directory, run `/code-map:build`, then `/code-map:run` to open the visualization.
 
-### Manual install (no script)
-
-Same flow, done by hand:
-
-```bash
-git clone https://github.com/Skykai521/code-map.git ~/code/code-map
-```
-
-Then in Claude Code:
-
-```text
-/plugin marketplace add ~/code/code-map
-/plugin install code-map@code-map
-```
-
-Verify with `/plugin list` — you should see `code-map@code-map` enabled.
-
-### Updating
-
-The local marketplace points at your clone, so updates are just:
-
-```bash
-cd ~/code/code-map && git pull
-```
-
-Restart Claude Code (or `/plugin marketplace update code-map`) to pick up new commands.
-
-### Uninstall
-
-```text
-/plugin uninstall code-map@code-map
-/plugin marketplace remove code-map
-```
-
-Then delete the cloned directory.
-
-### Troubleshooting
-
-| Symptom | Fix |
-| --- | --- |
-| `/plugin marketplace add` says "invalid path" | Use an **absolute** path — `~` is fine in shells but Claude Code may not expand it. `install.sh` always prints the absolute form. |
-| `/code-map:build` not found after install | Run `/plugin list` to confirm it's enabled; `/plugin enable code-map@code-map` if disabled. |
-| First run hangs on "installing grammars" | That's `pip install` fetching tree-sitter wheels into `${CLAUDE_PLUGIN_DATA}/wheels`. Should finish in <30s on a fast network; check your proxy if it stalls. |
-| Updates not visible after `git pull` | `/plugin marketplace update code-map` re-reads the manifest. |
+To update, run `/plugin marketplace update code-map`. To remove, run `/plugin uninstall code-map@code-map` followed by `/plugin marketplace remove code-map`.
 
 ## File layout
 
 ```
 code-map/
-├── install.sh                          # local Claude Code install helper
 ├── .claude-plugin/
 │   ├── plugin.json                     # plugin manifest
 │   └── marketplace.json                # turns this repo into a single-plugin marketplace

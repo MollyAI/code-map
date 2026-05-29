@@ -82,94 +82,25 @@ tree-sitter 给的是一棵带错误恢复的真正 CST。v0.1 的 `parser.py` �
 
 模板内部，layer 通过**路径段**+**名字后缀**分配。路径匹配从右往左，使较深的包名权重高于前缀（`app/domain/order/data/...` 落在 `data`，而非 `domain`）。名字后缀是兜底；仍匹配不上则进 `uncategorized`。
 
-## 安装到本地 Claude Code
+## 安装
 
-本仓库自身就是一份 [Claude Code marketplace](https://docs.claude.com/en/docs/claude-code/plugins)（见 `.claude-plugin/marketplace.json`），所以**不用发布到 GitHub marketplace 也能装**。整个流程是把这个 repo 当作本地 marketplace 注册给 Claude Code，再从中安装 `code-map` 这个插件。
+**前置条件：** Claude Code ≥ 2.x、Python 3.10+。首次执行 `/code-map:build` 时会按需把 tree-sitter 语法包惰性安装到 `${CLAUDE_PLUGIN_DATA}/wheels`，**无需手动 `pip install`**。
 
-### 前置条件
-
-- **Claude Code** ≥ 2.x（带 `/plugin` slash command 的版本）
-- **Python** 3.10+（用于 Phase 1 抽取）
-- **git**（克隆 + 后续更新）
-
-首次执行 `/code-map:build` 时，会按需把 tree-sitter 语法包惰性安装到 `${CLAUDE_PLUGIN_DATA}/wheels`，**无需手动 `pip install`**。
-
-### 一键脚本安装（推荐）
-
-```bash
-# 1. 克隆到任意目录 —— 这里就是插件的真实源
-git clone https://github.com/Skykai521/code-map.git ~/code/code-map
-cd ~/code/code-map
-
-# 2. 运行脚本 —— 它会校验环境并打印你要粘进 Claude Code 的两条命令
-./install.sh
-```
-
-脚本会：
-
-1. 检查仓库完整性（`plugin.json` / `marketplace.json` / `bootstrap.py` 等）。
-2. 验证 `python3` ≥ 3.10、`git`、`pip` 可用。
-3. 打印两条 slash command，并在 macOS / Linux 上**自动复制到剪贴板**（依赖 `pbcopy` / `wl-copy` / `xclip`）。
-
-打开 Claude Code，按顺序粘贴：
+打开 Claude Code，按顺序粘贴这两条 slash command：
 
 ```text
-/plugin marketplace add /absolute/path/to/code-map
+/plugin marketplace add MollyAI/code-map
 /plugin install code-map@code-map
 ```
 
-完成后，在任意项目目录运行 `/code-map:build` 生成地图，再运行 `/code-map:run` 打开浏览器。
+就这样 —— `/plugin list` 中应能看到 `code-map@code-map` 处于启用状态。然后在任意项目目录运行 `/code-map:build` 生成地图，再运行 `/code-map:run` 打开浏览器。
 
-### 手动安装（不用脚本）
-
-只是把上面两步拆开做：
-
-```bash
-git clone https://github.com/Skykai521/code-map.git ~/code/code-map
-```
-
-然后在 Claude Code 中：
-
-```text
-/plugin marketplace add ~/code/code-map
-/plugin install code-map@code-map
-```
-
-用 `/plugin list` 验证 —— 应该能看到 `code-map@code-map` 处于启用状态。
-
-### 升级
-
-由于本地 marketplace 指向你的 clone，更新只需要：
-
-```bash
-cd ~/code/code-map && git pull
-```
-
-然后重启 Claude Code（或运行 `/plugin marketplace update code-map`）让新内容生效。
-
-### 卸载
-
-```text
-/plugin uninstall code-map@code-map
-/plugin marketplace remove code-map
-```
-
-再删除 clone 出来的目录即可。
-
-### 常见问题
-
-| 现象 | 处理办法 |
-| --- | --- |
-| `/plugin marketplace add` 报 "invalid path" | 必须用**绝对路径**。`~` 在 shell 中能展开，但 Claude Code 内部不一定。`install.sh` 总是打印绝对路径形式。 |
-| 安装完找不到 `/code-map:build` | `/plugin list` 看是否启用；如果是 disabled，用 `/plugin enable code-map@code-map`。 |
-| 首次运行卡在 "installing grammars" | 这是 `pip install` 在拉取 tree-sitter wheel 到 `${CLAUDE_PLUGIN_DATA}/wheels`。网络正常 30 秒内能完成；卡住请检查代理。 |
-| `git pull` 后改动看不到 | 用 `/plugin marketplace update code-map` 让 Claude Code 重新读取 manifest。 |
+升级用 `/plugin marketplace update code-map`；卸载用 `/plugin uninstall code-map@code-map`，再 `/plugin marketplace remove code-map`。
 
 ## 文件结构
 
 ```
 code-map/
-├── install.sh                          # 本地 Claude Code 安装脚本
 ├── .claude-plugin/
 │   ├── plugin.json                     # 插件 manifest
 │   └── marketplace.json                # 让本仓库自身成为单插件 marketplace
