@@ -1,0 +1,24 @@
+{
+  "name": "code-map",
+  "displayName": "Code Map",
+  "version": "0.2.0",
+  "description": "Generate an interactive architectural map of any codebase — multi-language (Kotlin, Java, Python, Go, Rust, TypeScript), tree-sitter powered, served on localhost.",
+  "author": {
+    "name": "SkyKai"
+  },
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "code-map",
+    "visualization",
+    "multi-language",
+    "tree-sitter",
+    "static-analysis",
+    "kotlin",
+    "java",
+    "python",
+    "go",
+    "rust",
+    "typescript"
+  ]
+}

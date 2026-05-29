@@ -1,0 +1,135 @@
+# code-map — user override example.
+#
+# Copy this to `<project>/.code-map/layers.yml` to fully override
+# template detection. When this file is present, code-map skips
+# the detector and uses these layers verbatim.
+#
+# This is the same shape as the bundled templates in `templates/`,
+# minus the `signals` block (which only the detector consumes). You
+# can omit `id`, `name`, `description`, and the top-level metadata —
+# only the `layers` list is required.
+#
+# Right-to-left matching: path segments are checked from the rightmost
+# segment inward, so deeper packages outweigh the prefix
+# (e.g. `app/domain/order/data/...` lands in `data`, not `domain`).
+# After path matching fails, name-suffix matching runs as a fallback.
+# Anything still unmatched lands in the `uncategorized` layer
+# (auto-appended if you omit it).
+#
+# Example below is the bundled Clean Architecture template. To see the
+# other shipped shapes, browse the plugin's `templates/` directory.
+
+layers:
+  - id: presentation
+    name: Presentation
+    order: 0
+    summary: "UI, navigation, view models, controllers"
+    path_segments:
+      - presentation
+      - ui
+      - view
+      - screen
+      - compose
+      - components
+      - pages
+      - handlers
+      - controllers
+      - routes
+      - endpoints
+    name_suffixes:
+      - Activity
+      - Fragment
+      - ViewModel
+      - Screen
+      - Controller
+      - View
+      - Page
+      - Handler
+      - Route
+
+  - id: domain
+    name: Domain
+    order: 1
+    summary: "Business rules, use cases, entities"
+    path_segments:
+      - domain
+      - usecase
+      - use_case
+      - model
+      - entity
+      - service
+      - logic
+      - core
+    name_suffixes:
+      - UseCase
+      - Service
+      - Model
+      - Entity
+      - Aggregate
+      - DomainEvent
+      - Policy
+
+  - id: data
+    name: Data
+    order: 2
+    summary: "Repositories, data sources, persistence, APIs"
+    path_segments:
+      - data
+      - repository
+      - repo
+      - dao
+      - datasource
+      - db
+      - store
+      - persistence
+      - api
+      - client
+      - gateway
+      - remote
+      - local
+    name_suffixes:
+      - Repository
+      - Dao
+      - DataSource
+      - Store
+      - Client
+      - Gateway
+      - Api
+
+  - id: infrastructure
+    name: Infrastructure
+    order: 3
+    summary: "DI, network, utilities, build/runtime plumbing"
+    path_segments:
+      - di
+      - ioc
+      - inject
+      - network
+      - net
+      - util
+      - utils
+      - common
+      - shared
+      - internal
+      - pkg
+      - cmd
+      - lib
+      - bin
+      - config
+      - infra
+    name_suffixes:
+      - Factory
+      - Module
+      - Provider
+      - Container
+      - Helper
+      - Util
+      - Config
+      - Bootstrap
+
+  - id: uncategorized
+    name: Uncategorized
+    order: 99
+    summary: "Could not be auto-assigned — review and override here"
+    path_segments: []
+    name_suffixes: []

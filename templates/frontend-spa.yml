@@ -1,0 +1,61 @@
+# Frontend SPA — page-routed apps in React/Vue/Svelte/Next/etc.
+id: frontend-spa
+name: "Frontend SPA"
+description: "Page-routed single-page app; components, state, and API calls."
+
+layers:
+  - id: pages
+    name: Pages
+    order: 0
+    summary: "Top-level route components"
+    path_segments: [pages, routes, views, app]
+    name_suffixes: [Page, Route, Screen]
+  - id: components
+    name: Components
+    order: 1
+    summary: "Reusable UI building blocks"
+    path_segments: [components, ui, widgets]
+    name_suffixes: [Component, Card, Button, Modal, Dialog, List, Item]
+  - id: state
+    name: Hooks & State
+    order: 2
+    summary: "Custom hooks, stores, contexts, state management"
+    path_segments: [hooks, stores, store, state, context, contexts, atoms, slices]
+    name_suffixes: [Store, Provider, Context, Atom, Slice, Reducer]
+  - id: api
+    name: API & Services
+    order: 3
+    summary: "Network calls, API clients, data services"
+    path_segments: [api, services, queries, fetchers, lib]
+    name_suffixes: [Client, Service, Api, Query, Fetcher]
+  - id: utils
+    name: Utils
+    order: 4
+    summary: "Helpers, formatters, types"
+    path_segments: [utils, util, helpers, types, constants]
+    name_suffixes: [Helper, Util, Formatter]
+
+signals:
+  files:
+    - {match: "package.json",          weight: 2}
+    - {match: "next.config.*",         weight: 5}
+    - {match: "vite.config.*",         weight: 4}
+    - {match: "svelte.config.*",       weight: 5}
+    - {match: "nuxt.config.*",         weight: 5}
+    - {match: "remix.config.*",        weight: 5}
+    - {match: "tsconfig.json",         weight: 1}
+  dependencies:
+    - {match: "react",                 weight: 4}
+    - {match: "vue",                   weight: 4}
+    - {match: "@sveltejs/kit",         weight: 5}
+    - {match: "svelte",                weight: 3}
+    - {match: "next",                  weight: 4}
+    - {match: "nuxt",                  weight: 4}
+    - {match: "@remix-run",            weight: 4}
+    - {match: "solid-js",              weight: 3}
+  paths:
+    - {match: "src/components",        weight: 3}
+    - {match: "src/pages",             weight: 3}
+    - {match: "src/hooks",             weight: 2}
+    - {match: "src/stores",            weight: 2}
+    - {match: "components",            weight: 1}

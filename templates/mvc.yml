@@ -1,0 +1,48 @@
+# MVC — Controller routes a request, Model holds state/persistence, View renders.
+# Fits Rails, Spring MVC, Laravel, classic Django.
+id: mvc
+name: "MVC"
+description: "Controller dispatches, Model holds data, View renders."
+
+layers:
+  - id: controller
+    name: Controllers
+    order: 0
+    summary: "Request dispatch, action handlers"
+    path_segments: [controllers, controller, actions]
+    name_suffixes: [Controller, Action]
+  - id: model
+    name: Models
+    order: 1
+    summary: "Domain models, ActiveRecord, ORM entities"
+    path_segments: [models, model, entities, entity]
+    name_suffixes: [Model, Entity, Record]
+  - id: view
+    name: Views
+    order: 2
+    summary: "Templates, view helpers, presenters"
+    path_segments: [views, view, templates, presenters, helpers]
+    name_suffixes: [View, Template, Presenter, Helper]
+  - id: infrastructure
+    name: Infrastructure
+    order: 3
+    summary: "Middleware, config, lib"
+    path_segments: [middleware, config, lib, initializers, support]
+    name_suffixes: [Middleware, Config, Initializer]
+
+signals:
+  files:
+    - {match: "config/routes.rb",      weight: 5}
+    - {match: "Gemfile",               weight: 3}
+    - {match: "artisan",               weight: 5}
+    - {match: "manage.py",             weight: 3}
+  dependencies:
+    - {match: "rails",                 weight: 4}
+    - {match: "django",                weight: 3}
+    - {match: "spring-boot-starter-web", weight: 3}
+    - {match: "spring-webmvc",         weight: 3}
+    - {match: "laravel/framework",     weight: 4}
+  paths:
+    - {match: "controllers",           weight: 3}
+    - {match: "models",                weight: 2}
+    - {match: "views",                 weight: 2}

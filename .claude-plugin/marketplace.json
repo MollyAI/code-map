@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "code-map",
+  "description": "Local marketplace for the code-map plugin — generates an interactive architectural map of any codebase.",
+  "owner": {
+    "name": "SkyKai"
+  },
+  "plugins": [
+    {
+      "name": "code-map",
+      "description": "Generate an interactive architectural map of any codebase — multi-language (Kotlin, Java, Python, Go, Rust, TypeScript), tree-sitter powered, served on localhost.",
+      "author": {
+        "name": "SkyKai"
+      },
+      "category": "development",
+      "source": "./"
+    }
+  ]
+}

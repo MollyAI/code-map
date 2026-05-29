@@ -1,0 +1,47 @@
+# Hexagonal / Ports & Adapters — Application orchestrates Domain through
+# Ports; Adapters implement Ports for specific tech. DDD-flavored backends.
+id: hexagonal
+name: "Hexagonal (Ports & Adapters)"
+description: "Application orchestrates Domain via Ports; Adapters bind tech."
+
+layers:
+  - id: application
+    name: Application
+    order: 0
+    summary: "Use cases, application services orchestrating the domain"
+    path_segments: [application, app, usecase, use_case]
+    name_suffixes: [UseCase, ApplicationService, CommandHandler, QueryHandler]
+  - id: domain
+    name: Domain
+    order: 1
+    summary: "Entities, value objects, domain services"
+    path_segments: [domain, model]
+    name_suffixes: [Entity, Aggregate, ValueObject, DomainEvent, DomainService]
+  - id: ports
+    name: Ports
+    order: 2
+    summary: "Interfaces the domain expects of the world"
+    path_segments: [ports, port, interfaces]
+    name_suffixes: [Port, Gateway]
+  - id: adapters
+    name: Adapters
+    order: 3
+    summary: "Concrete implementations of ports — HTTP, DB, message bus"
+    path_segments: [adapters, adapter, infrastructure, infra, persistence, http, rest, grpc]
+    name_suffixes: [Adapter, Repository, Controller, HttpClient]
+  - id: infrastructure
+    name: Infrastructure
+    order: 4
+    summary: "Wiring, config, cross-cutting"
+    path_segments: [config, wiring, bootstrap, di]
+    name_suffixes: [Config, Module, Bootstrap]
+
+signals:
+  files: []
+  dependencies: []
+  paths:
+    - {match: "ports",                 weight: 5}
+    - {match: "adapters",              weight: 5}
+    - {match: "application",           weight: 2}
+    - {match: "domain",                weight: 2}
+    - {match: "hexagonal",             weight: 4}

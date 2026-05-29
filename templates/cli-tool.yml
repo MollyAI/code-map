@@ -1,0 +1,50 @@
+# CLI tool — argparse/click/typer/cobra/clap-driven command-line program.
+id: cli-tool
+name: "CLI Tool"
+description: "Command-line program: an entry point dispatches into subcommands."
+
+layers:
+  - id: entry
+    name: Entry
+    order: 0
+    summary: "Argument parsing, top-level dispatch"
+    path_segments: [cmd, bin, main]
+    name_suffixes: [Main, Cli, Entry]
+  - id: commands
+    name: Commands
+    order: 1
+    summary: "Subcommand handlers"
+    path_segments: [commands, command, subcommands, cli]
+    name_suffixes: [Command, Cmd, Subcommand]
+  - id: core
+    name: Core
+    order: 2
+    summary: "Business logic invoked by commands"
+    path_segments: [core, internal, lib, services, logic]
+    name_suffixes: [Service, Runner, Engine]
+  - id: util
+    name: Util
+    order: 3
+    summary: "Output formatting, IO helpers, shared utilities"
+    path_segments: [util, utils, helpers, output, format, io]
+    name_suffixes: [Helper, Util, Formatter, Writer]
+
+signals:
+  files:
+    - {match: "Cargo.toml",            weight: 2}
+    - {match: "pyproject.toml",        weight: 1}
+    - {match: "go.mod",                weight: 1}
+  dependencies:
+    - {match: "clap",                  weight: 5}
+    - {match: "structopt",             weight: 4}
+    - {match: "click",                 weight: 4}
+    - {match: "typer",                 weight: 5}
+    - {match: "argparse",              weight: 2}
+    - {match: "spf13/cobra",           weight: 5}
+    - {match: "github.com/urfave/cli", weight: 5}
+    - {match: "commander",             weight: 3}
+  paths:
+    - {match: "cmd",                   weight: 4}
+    - {match: "commands",              weight: 3}
+    - {match: "subcommands",           weight: 3}
+    - {match: "cli",                   weight: 2}

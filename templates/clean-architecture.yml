@@ -1,0 +1,50 @@
+# Clean Architecture / Onion — Presentation -> Domain -> Data -> Infrastructure.
+# The most common shape for Android, JVM backend, and well-structured Go/Rust apps.
+id: clean-architecture
+name: "Clean Architecture"
+description: "Layered: Presentation depends on Domain depends on Data; Infrastructure cuts across."
+
+layers:
+  - id: presentation
+    name: Presentation
+    order: 0
+    summary: "UI, navigation, view models, controllers"
+    path_segments: [presentation, ui, view, screen, compose, components, pages, handlers, controllers, routes, endpoints]
+    name_suffixes: [Activity, Fragment, ViewModel, Screen, Controller, View, Page, Handler, Route]
+  - id: domain
+    name: Domain
+    order: 1
+    summary: "Business rules, use cases, entities"
+    path_segments: [domain, usecase, use_case, model, entity, service, logic, core]
+    name_suffixes: [UseCase, Service, Model, Entity, Aggregate, DomainEvent, Policy]
+  - id: data
+    name: Data
+    order: 2
+    summary: "Repositories, data sources, persistence, APIs"
+    path_segments: [data, repository, repo, dao, datasource, db, store, persistence, api, client, gateway, remote, local]
+    name_suffixes: [Repository, Dao, DataSource, Store, Client, Gateway, Api]
+  - id: infrastructure
+    name: Infrastructure
+    order: 3
+    summary: "DI, network, utilities, build/runtime plumbing"
+    path_segments: [di, ioc, inject, network, net, util, utils, common, shared, internal, pkg, cmd, lib, bin, config, infra]
+    name_suffixes: [Factory, Module, Provider, Container, Helper, Util, Config, Bootstrap]
+
+signals:
+  files:
+    - {match: "AndroidManifest.xml",   weight: 5}
+    - {match: "app/build.gradle*",     weight: 4}
+    - {match: "build.gradle*",         weight: 2}
+    - {match: "settings.gradle*",      weight: 2}
+    - {match: "pom.xml",               weight: 2}
+  dependencies:
+    - {match: "androidx.",             weight: 3}
+    - {match: "dagger",                weight: 2}
+    - {match: "hilt",                  weight: 2}
+    - {match: "koin",                  weight: 2}
+  paths:
+    - {match: "domain",                weight: 3}
+    - {match: "data",                  weight: 2}
+    - {match: "presentation",          weight: 3}
+    - {match: "usecase",               weight: 3}
+    - {match: "repository",            weight: 2}

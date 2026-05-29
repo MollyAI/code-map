@@ -1,0 +1,43 @@
+# Pipeline / Compiler — stages transform data left-to-right.
+# Covers compilers (lexer/parser/codegen), data ETL, interpreters.
+id: pipeline
+name: "Pipeline"
+description: "Staged transformation: Input -> Parse -> Transform -> Output."
+
+layers:
+  - id: input
+    name: Input
+    order: 0
+    summary: "Source loading, tokenization, lexing"
+    path_segments: [input, lex, lexer, scanner, tokenizer, source, reader]
+    name_suffixes: [Lexer, Scanner, Tokenizer, Reader, Loader]
+  - id: parse
+    name: Parse
+    order: 1
+    summary: "Parsing into AST / structured form"
+    path_segments: [parse, parser, ast, syntax]
+    name_suffixes: [Parser, Ast, AstNode, Syntax]
+  - id: transform
+    name: Transform
+    order: 2
+    summary: "IR passes, optimizations, semantic analysis"
+    path_segments: [transform, ir, sema, analyze, optimize, passes, middle]
+    name_suffixes: [Pass, Transformer, Analyzer, Optimizer, Visitor]
+  - id: output
+    name: Output
+    order: 3
+    summary: "Code generation, emission, serialization"
+    path_segments: [codegen, emit, output, backend, writer, gen]
+    name_suffixes: [CodeGen, Emitter, Writer, Backend, Generator]
+
+signals:
+  files: []
+  dependencies: []
+  paths:
+    - {match: "lexer",                 weight: 5}
+    - {match: "parser",                weight: 5}
+    - {match: "ast",                   weight: 4}
+    - {match: "codegen",               weight: 5}
+    - {match: "backend",               weight: 2}
+    - {match: "ir",                    weight: 3}
+    - {match: "passes",                weight: 3}

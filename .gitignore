@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.env
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / coverage / build (unused today but standard)
+.pytest_cache/
+.coverage
+.cache/
+build/
+dist/
+*.egg-info/
+
+# Output of /code-map:build's analyzer
+.code-map/
+
+# tree-sitter grammar wheels — bootstrap.py installs to CLAUDE_PLUGIN_DATA
+# by default, but ignore here in case anyone points it inside the repo
+wheels/
+
+# Legacy dev-mode scratch dir (the /build-code-map-dev command was removed).
+# Still ignored so any leftover files don't pollute git.
+scratch/
