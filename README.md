@@ -133,7 +133,7 @@ code-map/
 │   ├── frontend-spa.yml
 │   ├── cli-tool.yml
 │   └── pipeline.yml
-├── template/index.html                 # single-file visualization
+├── viewer/index.html                   # single-file visualization
 └── examples/
     ├── default-layers.yml              # starter layer config
     └── preview-*.png                   # screenshots
@@ -155,7 +155,7 @@ code-map/
 | Add an architectural template | drop a new `templates/<name>.yml` with `layers` + `signals` (see existing for shape) |
 | Override the chosen template | `.code-map/layers.yml` in your project (bypasses detection) |
 | Change `core` threshold | `scripts/analyze.py --core-percentile 0.15` (default 0.25) |
-| Change colors | `template/index.html`, `:root { --accent / --lang-* }` |
+| Change colors | `viewer/index.html`, `:root { --accent / --lang-* }` |
 | Add a new entry-point heuristic | `scripts/lib/core.py`, `ENTRY_POINT_HINTS` |
 
 ## License

@@ -32,7 +32,7 @@ scripts/
     extractors/
       __init__.py  base.py  _common.py  _generic.py
       kotlin.py  java.py  python.py  go.py  rust.py  typescript.py
-template/index.html
+viewer/index.html
 ```
 
 `analyze.py` prepends the repo root to `sys.path` at startup, which is what makes `from scripts.lib.extractors import ...` resolve regardless of where the command is invoked. `core.py` and `layers.py` use relative imports (`from .extractors.base import Declaration`), so `scripts/lib/` and `scripts/lib/extractors/` are real packages — the empty `scripts/__init__.py` and `scripts/lib/__init__.py` exist for that reason and shouldn't be deleted.
@@ -43,7 +43,7 @@ template/index.html
 |---|---|---|
 | 1. Extract | `analyze.py` (Python + tree-sitter) | Walks project, parses each source file with its grammar, builds the dependency graph, scores importance, **picks an architectural template by scanning filesystem signals** (`templates/*.yml` via `lib/templates.py`), pre-assigns layers using the winner. Writes `.code-map/raw_structure.json` (with `project.template_detection`) + `.code-map/unresolved.json`. Deterministic — never lies. |
 | 2. Refine | Claude, driven by `commands/build.md` | Verifies the chosen template against the actual code (may swap or tweak), writes one-sentence descriptions per declaration, overrides wrong layer assignments, recovers anything tree-sitter couldn't parse, applies the focus hint. Writes `.code-map/code-map.json` with `project.architecture`. |
-| 3. Serve | `serve.py` (stdlib HTTP), launched by `commands/run.md` | Serves `template/index.html` + re-reads `code-map.json` on every request so a rebuild is picked up by a browser refresh. Run detached: `run.md` writes the PID/URL to `.code-map/server.pid` / `.code-map/server.url`; `stop.md` kills it. |
+| 3. Serve | `serve.py` (stdlib HTTP), launched by `commands/run.md` | Serves `viewer/index.html` + re-reads `code-map.json` on every request so a rebuild is picked up by a browser refresh. Run detached: `run.md` writes the PID/URL to `.code-map/server.pid` / `.code-map/server.url`; `stop.md` kills it. |
 
 The split is deliberate — Phase 1 is auditable; Phase 2 burns tokens only where judgment helps.
 
@@ -63,7 +63,7 @@ python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/r
 # Phase 3: serve (data must exist). /code-map:run wraps this in `nohup ... &` and tracks the PID.
 python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/serve.py" \
   --data .code-map/code-map.json \
-  --template "${CLAUDE_PLUGIN_ROOT:-.}/template" --open
+  --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer" --open
 
 # Tune what gets marked core (default 0.25 = top quartile per layer)
 python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --core-percentile 0.15

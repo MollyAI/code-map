@@ -2,18 +2,18 @@
 """
 code-map :: local server.
 
-Serves the visualization template + the generated code-map.json from a
+Serves the viewer assets + the generated code-map.json from a
 free port on 127.0.0.1, optionally opening the browser.
 
 Designed to be zero-dep: stdlib only.
 
 Routes:
-  GET /                 -> template/index.html
+  GET /                 -> viewer/index.html
   GET /code-map.json    -> the data file (re-read on every request, so
                            `update` runs are picked up by a simple refresh)
   GET /_livereload      -> long-poll, dev mode only (--dev); returns when
-                           template/index.html or the data file changes
-  GET /<anything else>  -> served from template/ if present, else 404
+                           viewer/index.html or the data file changes
+  GET /<anything else>  -> served from viewer/ if present, else 404
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def find_free_port(preferred: int = 4178) -> int:
 
 class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
     # set by main()
-    template_dir: Path = Path(".")
+    viewer_dir: Path = Path(".")
     data_path: Path = Path(".code-map/code-map.json")
     dev_mode: bool = False
 
@@ -69,11 +69,11 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
             self._serve_data()
             return
 
-        # Static files from template/
+        # Static files from viewer/
         rel = path.lstrip("/")
-        candidate = (self.template_dir / rel).resolve()
+        candidate = (self.viewer_dir / rel).resolve()
         try:
-            candidate.relative_to(self.template_dir.resolve())
+            candidate.relative_to(self.viewer_dir.resolve())
         except ValueError:
             self.send_error(403, "forbidden")
             return
@@ -83,7 +83,7 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
         self.send_error(404, "not found")
 
     def _serve_index(self) -> None:
-        index_path = self.template_dir / "index.html"
+        index_path = self.viewer_dir / "index.html"
         try:
             body = index_path.read_bytes()
         except OSError as e:
@@ -160,9 +160,9 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _current_mtime(self) -> float:
-        """Latest mtime across template/index.html and the data file. Missing files contribute 0."""
+        """Latest mtime across viewer/index.html and the data file. Missing files contribute 0."""
         latest = 0.0
-        for p in (self.template_dir / "index.html", self.data_path):
+        for p in (self.viewer_dir / "index.html", self.data_path):
             try:
                 latest = max(latest, p.stat().st_mtime)
             except OSError:
@@ -170,7 +170,7 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
         return latest
 
     def _serve_livereload(self) -> None:
-        """Long-poll until template or data file mtime > since, or timeout (30s)."""
+        """Long-poll until viewer or data file mtime > since, or timeout (30s)."""
         qs = parse_qs(urlparse(self.path).query)
         try:
             since = float(qs.get("since", ["0"])[0])
@@ -225,20 +225,20 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--template", required=True, help="path to template directory")
+    ap.add_argument("--viewer", required=True, help="path to viewer directory")
     ap.add_argument("--data", required=True, help="path to code-map.json")
     ap.add_argument("--port", type=int, default=4178, help="preferred port (default 4178)")
     ap.add_argument("--open", action="store_true", help="open browser after start")
     ap.add_argument("--dev", action="store_true",
-                    help="enable live reload (watches template/index.html and the data file)")
+                    help="enable live reload (watches viewer/index.html and the data file)")
     args = ap.parse_args()
 
-    template = Path(args.template).resolve()
-    if not (template / "index.html").exists():
-        print(f"[serve] template directory has no index.html: {template}", file=sys.stderr)
+    viewer = Path(args.viewer).resolve()
+    if not (viewer / "index.html").exists():
+        print(f"[serve] viewer directory has no index.html: {viewer}", file=sys.stderr)
         return 2
 
-    CodeMapHandler.template_dir = template
+    CodeMapHandler.viewer_dir = viewer
     CodeMapHandler.data_path = Path(args.data).resolve()
     CodeMapHandler.dev_mode = bool(args.dev)
 
@@ -257,10 +257,10 @@ def main() -> int:
     thread.start()
 
     print(f"[serve] code map running at {url}")
-    print(f"[serve]   template: {template}")
+    print(f"[serve]   viewer:   {viewer}")
     print(f"[serve]   data:     {CodeMapHandler.data_path}")
     if CodeMapHandler.dev_mode:
-        print(f"[serve]   live reload: ON (template + data mtime polling)")
+        print(f"[serve]   live reload: ON (viewer + data mtime polling)")
     print(f"[serve] press Ctrl+C to stop")
 
     if args.open:

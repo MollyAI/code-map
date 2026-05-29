@@ -133,7 +133,7 @@ code-map/
 │   ├── frontend-spa.yml
 │   ├── cli-tool.yml
 │   └── pipeline.yml
-├── template/index.html                 # 单文件可视化
+├── viewer/index.html                   # 单文件可视化
 └── examples/
     └── default-layers.yml              # layer 配置起点
 ```
@@ -154,7 +154,7 @@ code-map/
 | 加一份架构模板 | 在 `templates/` 放一份 `<name>.yml`，写好 `layers` 和 `signals`（照现成模板的结构即可） |
 | 覆盖被自动选中的模板 | 在你的项目里写 `.code-map/layers.yml`（直接跳过 detection） |
 | 调整 `core` 阈值 | `scripts/analyze.py --core-percentile 0.15`（默认 0.25） |
-| 改颜色 | `template/index.html`，`:root { --accent / --lang-* }` |
+| 改颜色 | `viewer/index.html`，`:root { --accent / --lang-* }` |
 | 加新的入口点启发式 | `scripts/lib/core.py` 里的 `ENTRY_POINT_HINTS` |
 
 ## 许可证

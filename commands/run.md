@@ -24,7 +24,7 @@ Start `serve.py` detached, redirect output to a log file, capture the PID, and r
 
 !rm -f .code-map/server.pid .code-map/server.url .code-map/server.log
 
-!nohup python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/serve.py" --data .code-map/code-map.json --template "${CLAUDE_PLUGIN_ROOT:-.}/template" --open > .code-map/server.log 2>&1 & echo $! > .code-map/server.pid; disown
+!nohup python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/serve.py" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer" --open > .code-map/server.log 2>&1 & echo $! > .code-map/server.pid; disown
 
 Wait briefly for the server to print its URL into the log, then extract it:
 
