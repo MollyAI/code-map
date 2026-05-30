@@ -8,6 +8,30 @@ def text_of(node: Node, src: bytes) -> str:
     return src[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+# Identifier-ish leaf types across the grammars we support. A dotted reference
+# node (selector / member / field / navigation / scoped expression) carries the
+# called name as its *last* identifier-like child.
+_ID_TYPES = ("identifier", "field_identifier", "property_identifier",
+             "type_identifier", "simple_identifier")
+
+
+def tail_name(node, src: bytes):
+    """The trailing name of a (possibly dotted) reference node.
+
+    `foo` → "foo"; `pkg.Foo` / `obj.method` / `Type::assoc` / `a.b.c` → the last
+    segment ("Foo" / "method" / "assoc" / "c"). Returns None if no name is found.
+    Used by extractors to turn a call target into a resolvable short name.
+    """
+    if node is None:
+        return None
+    if node.type in _ID_TYPES:
+        return text_of(node, src)
+    for c in reversed(node.children):
+        if c.type in _ID_TYPES:
+            return text_of(c, src)
+    return None
+
+
 def has_error_in(node: Node) -> bool:
     """True if node's subtree contains any ERROR or MISSING."""
     if node.type == "ERROR" or node.is_missing:

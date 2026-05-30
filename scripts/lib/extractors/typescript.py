@@ -9,7 +9,7 @@ import tree_sitter_typescript as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods, tail_name
 
 name = "typescript"
 extensions = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
@@ -98,6 +98,28 @@ def _path_to_namespace(rel: str) -> str:
     return ".".join(parts)
 
 
+def _body_refs(decl_node, src) -> list[str]:
+    """Callees in this declaration's body — the basis for call-graph edges.
+    Collects call_expression targets (bare or `obj.method`) and `new Thing()`
+    constructors, resolved by their trailing name.
+    """
+    names = set()
+    for n in walk(decl_node):
+        if n.type == "call_expression":
+            nm = tail_name(n.child_by_field_name("function"), src)
+            if nm:
+                names.add(nm)
+        elif n.type == "new_expression":
+            c = n.child_by_field_name("constructor")
+            if c is None:
+                c = next((ch for ch in n.children
+                          if ch.type in ("identifier", "member_expression")), None)
+            nm = tail_name(c, src)
+            if nm:
+                names.add(nm)
+    return sorted(names)
+
+
 def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
     rel = str(path.relative_to(project_root))
     is_tsx = path.suffix in (".tsx", ".jsx")
@@ -133,7 +155,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(inner, src) + [i.qualified for i in imports if i.qualified],
             confidence=conf,
             loc=loc_of(decl),
             signature=signature_of(inner, src) if kind == "function" else "",

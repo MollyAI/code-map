@@ -6,7 +6,7 @@ import tree_sitter_rust as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, tail_name
 
 name = "rust"
 extensions = (".rs",)
@@ -94,6 +94,24 @@ def _path_to_namespace(rel: str) -> str:
     return ".".join(parts)
 
 
+def _body_refs(decl_node, src) -> list[str]:
+    """Callees in this declaration's body — the basis for call-graph edges.
+    Handles plain calls, method calls (`x.m()`), associated calls (`T::a()`)
+    via the call_expression function's trailing name, plus `name!` macros.
+    """
+    names = set()
+    for n in walk(decl_node):
+        if n.type == "call_expression":
+            nm = tail_name(n.child_by_field_name("function"), src)
+            if nm:
+                names.add(nm)
+        elif n.type == "macro_invocation":
+            m = next((c for c in n.children if c.type == "identifier"), None)
+            if m is not None:
+                names.add(text_of(m, src))
+    return sorted(names)
+
+
 def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
     rel = str(path.relative_to(project_root))
     namespace = _path_to_namespace(rel)
@@ -143,7 +161,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(decl, src) + [i.qualified for i in imports if i.qualified],
             confidence=conf,
             loc=loc_of(decl),
             signature=signature_of(decl, src) if kind == "function" else "",

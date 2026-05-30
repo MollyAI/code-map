@@ -5,7 +5,7 @@ import tree_sitter_kotlin as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods, tail_name
 
 name = "kotlin"
 extensions = (".kt", ".kts")
@@ -82,6 +82,21 @@ def _supertypes(decl_node, src):
     return out, conf
 
 
+def _body_refs(decl_node, src) -> list[str]:
+    """Callees in this declaration's body — the basis for call-graph edges.
+    A Kotlin call_expression's first child is the callee: a bare identifier or
+    a navigation_expression (`a.b.c`) whose trailing name we resolve. A bare
+    `Thing()` constructor call resolves to the class Thing.
+    """
+    names = set()
+    for n in walk(decl_node):
+        if n.type == "call_expression" and n.children:
+            nm = tail_name(n.children[0], src)
+            if nm:
+                names.add(nm)
+    return sorted(names)
+
+
 def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
     rel = str(path.relative_to(project_root))
     root = _PARSER.parse(src).root_node
@@ -113,7 +128,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(decl, src) + [i.qualified for i in imports if i.qualified],
             confidence=conf,
             loc=loc_of(decl),
             method_count=count_methods(decl, ("class_body", "enum_class_body"), ("function_declaration",)),
@@ -138,7 +153,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=[],
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(decl, src) + [i.qualified for i in imports if i.qualified],
             confidence="high",
             loc=loc_of(decl),
             signature=signature_of(decl, src),

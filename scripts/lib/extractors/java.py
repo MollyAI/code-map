@@ -5,7 +5,7 @@ import tree_sitter_java as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query, loc_of, count_methods
+from ._common import text_of, has_error_in, walk, run_query, loc_of, count_methods, tail_name
 
 name = "java"
 extensions = (".java",)
@@ -52,6 +52,24 @@ def _supertypes(decl_node, src):
     return out, conf
 
 
+def _body_refs(decl_node, src) -> list[str]:
+    """Callees in this declaration's body — the basis for call-graph edges.
+    method_invocation already exposes the bare method name; object_creation
+    contributes the constructed type's name. Both resolved by short name.
+    """
+    names = set()
+    for n in walk(decl_node):
+        if n.type == "method_invocation":
+            nm = tail_name(n.child_by_field_name("name"), src)
+            if nm:
+                names.add(nm)
+        elif n.type == "object_creation_expression":
+            nm = tail_name(n.child_by_field_name("type"), src)
+            if nm:
+                names.add(nm)
+    return sorted(names)
+
+
 def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
     rel = str(path.relative_to(project_root))
     root = _PARSER.parse(src).root_node
@@ -83,7 +101,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(decl, src) + [i.qualified for i in imports if i.qualified],
             confidence=conf,
             loc=loc_of(decl),
             method_count=count_methods(
