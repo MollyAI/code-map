@@ -75,6 +75,31 @@ def _supertypes(decl_node, src):
     return out, conf
 
 
+def _body_refs(decl_node, src) -> list[str]:
+    """Names this declaration calls in its body — the basis for call-graph edges.
+
+    Collects the callee of every call expression: a bare identifier (`foo()`)
+    or the final attribute of a dotted call (`mod.foo()` → `foo`). The framework
+    resolves these against known declarations by short name, so module paths and
+    builtins that match nothing are simply ignored. Walking the whole subtree
+    means a class's edges include the calls made by its methods.
+    """
+    names = set()
+    for n in walk(decl_node):
+        if n.type != "call":
+            continue
+        fn = n.child_by_field_name("function")
+        if fn is None:
+            continue
+        if fn.type == "identifier":
+            names.add(text_of(fn, src))
+        elif fn.type == "attribute":
+            attr = fn.child_by_field_name("attribute")
+            if attr is not None and attr.type == "identifier":
+                names.add(text_of(attr, src))
+    return sorted(names)
+
+
 def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
     rel = str(path.relative_to(project_root))
     namespace = _path_to_namespace(rel)
@@ -103,7 +128,7 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
-            refs=[i.qualified for i in imports if i.qualified],
+            refs=_body_refs(inner, src),
             confidence=conf,
             loc=loc_of(decl),
             signature=signature_of(inner, src) if kind == "function" else "",
