@@ -25,6 +25,14 @@ _MANIFEST_FILES = (
     "pom.xml", "Gemfile", "composer.json",
 )
 
+# Patterned manifests whose names are project-specific, so we glob (root + one
+# level down) instead of matching exact names. Without these, dependency signals
+# for .NET / Swift / C++ / Dart would never fire because their manifests are
+# never read. Kept to the same shallow bound as file-signal globbing.
+_MANIFEST_GLOBS = (
+    "*.csproj", "*.vcxproj", "Package.swift", "pubspec.yaml", "CMakeLists.txt",
+)
+
 # Directory names we never recurse into when counting path signals.
 _SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", "build", ".gradle", ".idea",
@@ -138,12 +146,24 @@ def _glob_top_two_levels(root: Path, pattern: str) -> list[Path]:
 
 
 def _read_manifests(root: Path) -> str:
-    """Read every known manifest file (top-level only) into one big string
-    for substring matching. Returns '' if none found or all unreadable."""
+    """Read every known manifest into one big string for substring matching.
+    Fixed-name manifests are read top-level only; patterned ones (_MANIFEST_GLOBS)
+    are globbed root + one level down. Returns '' if none found or all unreadable."""
     blobs = []
+    seen: set[Path] = set()
     for name in _MANIFEST_FILES:
         path = root / name
         if path.is_file():
+            try:
+                blobs.append(path.read_text(errors="ignore"))
+                seen.add(path)
+            except OSError:
+                continue
+    for pattern in _MANIFEST_GLOBS:
+        for path in _glob_top_two_levels(root, pattern):
+            if path in seen or not path.is_file():
+                continue
+            seen.add(path)
             try:
                 blobs.append(path.read_text(errors="ignore"))
             except OSError:

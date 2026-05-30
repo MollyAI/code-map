@@ -1,0 +1,57 @@
+# MVI — Unidirectional flow: the View emits Intents, a reducer folds them into
+# State, the View renders State. Modern Compose, Redux-style, Mobius/Mavericks/Orbit,
+# Flutter Bloc. (intent/ + reducer/ dirs separate it from MVVM.)
+id: mvi
+name: "MVI (Model-View-Intent)"
+description: "Unidirectional flow: the View emits Intents, a reducer folds them into State, the View renders State."
+
+layers:
+  - id: view
+    name: View
+    order: 0
+    summary: "UI rendering state — activities, composables, screens"
+    path_segments: [view, views, ui, screen, screens, compose, activity, fragment, page, pages]
+    name_suffixes: [Activity, Fragment, Screen, View, Page]
+  - id: intent
+    name: Intent / Action
+    order: 1
+    summary: "User intents and actions"
+    path_segments: [intent, intents, action, actions]
+    name_suffixes: [Intent, Action]
+  - id: state
+    name: State / Reducer
+    order: 2
+    summary: "View state, reducers, stores, side-effect processors"
+    path_segments: [state, states, reducer, reducers, store, stores, mvi]
+    name_suffixes: [State, ViewState, UiState, Reducer, Store]
+  - id: model
+    name: Model / Domain
+    order: 3
+    summary: "Use cases, repositories, domain model"
+    path_segments: [model, models, domain, usecase, usecases, repository, repositories, data, interactor]
+    name_suffixes: [UseCase, Repository, Model, Interactor]
+  - id: infrastructure
+    name: Infrastructure
+    order: 4
+    summary: "DI, utilities"
+    path_segments: [di, inject, util, utils, common]
+    name_suffixes: [Module, Provider, Util]
+
+signals:
+  files:
+    - {match: "AndroidManifest.xml", weight: 2}
+  dependencies:
+    - {match: "mavericks",          weight: 5}
+    - {match: "com.spotify.mobius", weight: 5}
+    - {match: "mobius",             weight: 4}
+    - {match: "orbit-mvi",          weight: 5}
+    - {match: "orbit",              weight: 3}
+    - {match: "flutter_bloc",       weight: 4}
+    - {match: "redux",              weight: 2}
+  paths:
+    - {match: "intent",   weight: 5}
+    - {match: "intents",  weight: 5}
+    - {match: "reducer",  weight: 5}
+    - {match: "reducers", weight: 5}
+    - {match: "mvi",      weight: 5}
+    - {match: "state",    weight: 2}

@@ -1,0 +1,52 @@
+# MVP — A passive View talks to a Presenter; the Presenter drives the Model.
+# Older Android (Mosby/Nucleus), GWT, WinForms.
+# (presenter/ + contract/ dirs are a near-unique fingerprint; mutually exclusive with MVVM.)
+id: mvp
+name: "MVP (Model-View-Presenter)"
+description: "A passive View talks to a Presenter; the Presenter drives the Model."
+
+layers:
+  - id: view
+    name: View
+    order: 0
+    summary: "Passive views — activities, fragments, UI"
+    path_segments: [view, views, ui, screen, screens, activity, activities, fragment, fragments, page, pages]
+    name_suffixes: [Activity, Fragment, View, Screen, Page]
+  - id: presenter
+    name: Presenter
+    order: 1
+    summary: "Presenters mediating between view and model"
+    path_segments: [presenter, presenters, presentation]
+    name_suffixes: [Presenter]
+  - id: contract
+    name: Contract
+    order: 2
+    summary: "View/Presenter interface contracts"
+    path_segments: [contract, contracts]
+    name_suffixes: [Contract]
+  - id: model
+    name: Model
+    order: 3
+    summary: "Domain model, repositories, interactors"
+    path_segments: [model, models, data, repository, repositories, domain, entity, entities, interactor, interactors]
+    name_suffixes: [Model, Repository, Entity, Interactor, UseCase]
+  - id: infrastructure
+    name: Infrastructure
+    order: 4
+    summary: "DI, networking, utilities"
+    path_segments: [di, inject, network, net, util, utils, common]
+    name_suffixes: [Module, Provider, Util, Helper]
+
+signals:
+  files:
+    - {match: "AndroidManifest.xml", weight: 2}
+  dependencies:
+    - {match: "mosby",   weight: 5}
+    - {match: "nucleus", weight: 4}
+  paths:
+    - {match: "presenter",  weight: 5}
+    - {match: "presenters", weight: 5}
+    - {match: "contract",   weight: 4}
+    - {match: "contracts",  weight: 4}
+    - {match: "view",       weight: 1}
+    - {match: "views",      weight: 1}

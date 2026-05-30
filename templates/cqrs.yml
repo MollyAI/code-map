@@ -1,0 +1,60 @@
+# Event-Driven / CQRS — Commands and queries flow through handlers; aggregates
+# emit events; projections build read models. Axon, MediatR, NestJS CQRS, ES.
+id: cqrs
+name: "Event-Driven / CQRS"
+description: "Commands and queries flow through handlers; aggregates emit events; projections build read models."
+
+layers:
+  - id: messages
+    name: Commands & Queries
+    order: 0
+    summary: "Command and query messages"
+    path_segments: [command, commands, query, queries, cqrs, messages]
+    name_suffixes: [Command, Query]
+  - id: handlers
+    name: Handlers
+    order: 1
+    summary: "Command/query handlers and dispatchers"
+    path_segments: [handler, handlers, dispatchers]
+    name_suffixes: [Handler, CommandHandler, QueryHandler, Dispatcher]
+  - id: domain
+    name: Domain / Aggregates
+    order: 2
+    summary: "Aggregates, entities, value objects"
+    path_segments: [domain, aggregate, aggregates]
+    name_suffixes: [Aggregate, AggregateRoot, Entity, ValueObject]
+  - id: events
+    name: Events
+    order: 3
+    summary: "Domain and integration events, event handlers"
+    path_segments: [event, events, eventbus, subscribers]
+    name_suffixes: [Event, DomainEvent, IntegrationEvent, EventHandler, Subscriber]
+  - id: readmodels
+    name: Read Models / Projections
+    order: 4
+    summary: "Projections, read models, query views"
+    path_segments: [projection, projections, readmodel, readmodels, readstore]
+    name_suffixes: [Projection, ReadModel]
+  - id: infrastructure
+    name: Infrastructure
+    order: 5
+    summary: "Buses, config, wiring"
+    path_segments: [infra, infrastructure, config, bus, messaging, store]
+    name_suffixes: [Bus, Config, Store]
+
+signals:
+  files: []
+  dependencies:
+    - {match: "axon",         weight: 5}
+    - {match: "MediatR",      weight: 5}
+    - {match: "@nestjs/cqrs", weight: 5}
+    - {match: "eventstore",   weight: 4}
+  paths:
+    - {match: "aggregate",   weight: 4}
+    - {match: "aggregates",  weight: 4}
+    - {match: "projection",  weight: 4}
+    - {match: "projections", weight: 4}
+    - {match: "commands",    weight: 3}
+    - {match: "queries",     weight: 3}
+    - {match: "cqrs",        weight: 5}
+    - {match: "events",      weight: 2}

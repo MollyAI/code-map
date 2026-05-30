@@ -44,7 +44,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 0. **Verify the architecture.** Read `project.template_detection` from `raw_structure.json` — it carries `chosen`, `scores`, and `evidence` from Phase 1's signal-based detection. Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
-   - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class.
+   - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
    - **Tweak** — keep the chosen template but rename / add / remove / merge layers. Each layer id within `layers[]` must remain unique. The frontend reads `name` and `summary`, so renaming is purely cosmetic to the UI.
 
    Record the decision in the output as:

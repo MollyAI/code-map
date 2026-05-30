@@ -1,0 +1,55 @@
+# ECS — Entity-Component-System. Systems process entities composed of data
+# components held in a world/registry. Game engines: Bevy, Unity DOTS, EnTT, flecs.
+id: ecs
+name: "ECS (Entity-Component-System)"
+description: "Systems process entities composed of data components held in a world/registry."
+
+layers:
+  - id: components
+    name: Components
+    order: 0
+    summary: "Data components attached to entities"
+    path_segments: [component, components, comp]
+    name_suffixes: [Component]
+  - id: systems
+    name: Systems
+    order: 1
+    summary: "Systems running logic over entities each tick"
+    path_segments: [system, systems]
+    name_suffixes: [System]
+  - id: entities
+    name: Entities
+    order: 2
+    summary: "Entity definitions, archetypes, bundles, prefabs"
+    path_segments: [entity, entities, archetype, archetypes, prefab, prefabs, bundle, bundles]
+    name_suffixes: [Entity, Archetype, Bundle, Prefab]
+  - id: world
+    name: Resources / World
+    order: 3
+    summary: "Shared resources, world, registry, scheduler"
+    path_segments: [resource, resources, world, registry, scheduler]
+    name_suffixes: [Resource, World, Registry, Scheduler]
+  - id: engine
+    name: Core / Engine
+    order: 4
+    summary: "Engine plumbing, ECS core, runtime"
+    path_segments: [engine, core, ecs, runtime, common]
+    name_suffixes: [Engine, Dispatcher]
+
+signals:
+  files: []
+  dependencies:
+    - {match: "bevy_ecs",       weight: 5}
+    - {match: "bevy",           weight: 5}
+    - {match: "specs",          weight: 4}
+    - {match: "hecs",           weight: 4}
+    - {match: "legion",         weight: 4}
+    - {match: "entt",           weight: 5}
+    - {match: "flecs",          weight: 5}
+    - {match: "Unity.Entities", weight: 5}
+  paths:
+    - {match: "systems",    weight: 4}
+    - {match: "components", weight: 3}
+    - {match: "ecs",        weight: 5}
+    - {match: "archetype",  weight: 4}
+    - {match: "entities",   weight: 2}

@@ -8,13 +8,13 @@ A Claude Code plugin that builds an interactive architectural map of any project
 
 ## Features / 功能简介
 
-Scans your project, picks a fitting architectural template (Clean Architecture, MVC, Hexagonal, Frontend SPA, CLI Tool, or Pipeline), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies.
+Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** and **subsystem** grouping.
 
-**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript.
+**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
 
-扫描项目并自动匹配合适的架构模板（整洁架构、MVC、六边形架构、前端 SPA、CLI 工具或流水线），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖。
+扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**与**子系统**两种分组之间切换。
 
-**支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript。
+**支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
 
 ---
 

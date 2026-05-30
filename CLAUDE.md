@@ -28,9 +28,11 @@ Bump when the push changes anything that ships in the installed plugin and alter
 commands/
   build.md   run.md   stop.md
 examples/default-layers.yml
-templates/
-  clean-architecture.yml  mvc.yml  hexagonal.yml
+templates/                # 13 architectural shapes
+  clean-architecture.yml  mvc.yml  mvvm.yml  mvp.yml  mvi.yml
+  layered.yml  hexagonal.yml  cqrs.yml
   frontend-spa.yml  cli-tool.yml  pipeline.yml
+  ecs.yml  microkernel.yml
 scripts/
   bootstrap.py  analyze.py  serve.py  mapctl.py
   lib/
@@ -114,6 +116,8 @@ Resolution precedence (`layers.load_config`): (1) project-local `.code-map/layer
 Within a template, `layers.assign_layer` reverses path + namespace segments so deeper packages outweigh prefixes (e.g. `app/domain/order/data/...` lands in `data`, not `domain`). First pass matches `path_segments`, second pass matches `name_suffixes`, fallback is `uncategorized` (auto-appended if a template omits it).
 
 The frontend reads only `layer.name`, `layer.summary`, and `layer.classes` — `layer.id` is internal to Phase 1/2. AI may freely rename `id` in Phase 2 as long as ids within a single `layers[]` stay unique.
+
+**Two grouping modes share one renderer.** `viewer/index.html` has a topbar toggle (`#group-toggle`) between *layer* grouping (the `layers[]` from `code-map.json`) and *subsystem* grouping (`subsystemLayers()`, which re-buckets every class by the top-level module derived from its file `path`). Subsystem mode is purely client-side — it synthesizes the same `{name, summary, classes}` band shape the renderer already consumes, so `layoutLayers`/`render` are untouched. The choice persists via `Settings` ("grouping"), orthogonal to the core/all filter.
 
 **Entry points are auto-promoted.** `core.is_entry_point` (matches `MainActivity`, `*Application`, `/cmd/`, etc.) forces `core: true` regardless of in-degree, and adds the `"entry-point"` tag. Both Phase 1 and the Phase 2 contract enforce this — keep them in sync if you edit either.
 

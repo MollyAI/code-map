@@ -140,7 +140,7 @@ layers:
      name_suffixes: [Module, Provider, Factory, Util, Helper]}
 signals:
   files:
-    - {match: "AndroidManifest.xml", weight: 3}
+    - {match: "AndroidManifest.xml", weight: 4}   # below clean's 5 — featureless Android still defaults to clean
     - {match: "Package.swift",       weight: 1}
     - {match: "build.gradle*",       weight: 1}
   dependencies:
@@ -150,16 +150,21 @@ signals:
     - {match: "pinia",                                  weight: 3}
     - {match: "vuex",                                   weight: 2}
   paths:
-    - {match: "viewmodel",  weight: 5}
-    - {match: "viewmodels", weight: 5}
+    - {match: "viewmodel",  weight: 6}   # MVVM's single strongest discriminator (intentionally above 0-5)
+    - {match: "viewmodels", weight: 6}
     - {match: "view",       weight: 1}
     - {match: "views",      weight: 1}
 ```
 
 Disambiguation: vs **clean-architecture** — MVVM is flat with no `usecase`/`domain`
-*signal*; the `viewmodel/` dir (weight 5) tilts MVVM. `UseCase` remains a name-suffix in
+*signal*; the `viewmodel/` dir (weight 6) tilts MVVM. `UseCase` remains a name-suffix in
 the model layer so stray use cases still get bucketed if MVVM is chosen, without being a
-*detection* signal.
+*detection* signal. **Tuning note:** a featureless Android app shares clean's
+`AndroidManifest`/`build.gradle` file signals, so MVVM would otherwise *tie* and lose the
+clean-favoring tie-break. `AndroidManifest` is kept at 4 (below clean's 5) and `viewmodel`
+raised to 6 so a real ViewModel package wins, while a `domain`/`usecase`-rich project still
+resolves to clean via its many layer-path signals. Verified against realistic fixtures
+(flat-MVVM beats clean 18→16; clean-Android beats MVVM 31→5).
 
 ### A.3 `templates/mvp.yml`
 
@@ -422,11 +427,17 @@ filter, export, zoom all work unchanged because they key off class `id`.
 3. Strip leading **noise** segments from each list:
    `NOISE = {src, main, java, kotlin, scala, source, sources, test, tests}`.
 4. Compute the longest common leading-segment prefix shared by **all** classes' stripped
-   lists and drop it (removes the shared org/root, e.g. `com/app`). Guard: never drop a
-   class's *last* remaining segment — cap the strip at `len-1` per class so every class
-   keeps at least one key segment (a flat single-dir project then yields one `"(root)"`
-   band rather than collapsing to nothing).
-5. Subsystem key = first remaining segment, or `"(root)"` if none remain.
+   lists (the shared org/root, e.g. `com/app`). The subsystem key is the first segment
+   *past* that prefix.
+5. Subsystem key per class:
+   - the first segment past the common prefix, if any; else
+   - the prefix's **last** segment — a class sitting directly at the shared root still
+     forms its own named band instead of collapsing the whole map; else
+   - `"(root)"` when there is no shared prefix at all.
+   This keeps deeply-nested code split from root-level files: on this repo it yields
+   `lib` (scripts/lib/**) + `scripts` (scripts/*.py) rather than one `scripts` band.
+   (An earlier "never strip a class's last segment" guard was dropped — it over-collapsed
+   exactly this nested-with-root-files case.)
 6. Bucket classes by key. Build synthetic layers `{id: key, name: key, summary: "",
    order: i, classes: [...]}` sorted by class count **descending** (`"(root)"` sorts last).
    `id` must be unique — keys are already distinct strings.

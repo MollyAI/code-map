@@ -1,0 +1,48 @@
+# Microkernel / Plugin — A minimal core loads plugins that extend it through
+# well-defined contracts. Plugin-based tools, IDEs, browser extensions (incl. this plugin).
+id: microkernel
+name: "Microkernel / Plugin"
+description: "A minimal core loads plugins that extend it through well-defined contracts."
+
+layers:
+  - id: core
+    name: Core / Host
+    order: 0
+    summary: "The kernel/host that loads and coordinates plugins"
+    path_segments: [core, host, kernel, engine, runtime]
+    name_suffixes: [Kernel, Host, Engine, Runtime]
+  - id: contracts
+    name: Contracts / API
+    order: 1
+    summary: "Extension points, SPIs, plugin-facing interfaces"
+    path_segments: [api, contract, contracts, spi, interfaces, extensionpoint, extensionpoints]
+    name_suffixes: [Api, Spi, Contract, ExtensionPoint]
+  - id: plugins
+    name: Plugins / Extensions
+    order: 2
+    summary: "Plugins, extensions, add-ons implementing the contracts"
+    path_segments: [plugin, plugins, extension, extensions, addon, addons, modules, integrations]
+    name_suffixes: [Plugin, Extension, Addon, Integration]
+  - id: infrastructure
+    name: Infrastructure
+    order: 3
+    summary: "Plugin loading, registry, config, utilities"
+    path_segments: [loader, registry, config, util, utils, common, internal]
+    name_suffixes: [Loader, Registry, Manager, Config, Util]
+
+signals:
+  files:
+    - {match: "*plugin.json",  weight: 3}
+    - {match: "manifest.json", weight: 2}
+  dependencies:
+    - {match: "pf4j",      weight: 5}
+    - {match: "org.osgi",  weight: 4}
+    - {match: "osgi",      weight: 3}
+    - {match: "pluggy",    weight: 4}
+    - {match: "stevedore", weight: 4}
+  paths:
+    - {match: "plugins",    weight: 4}
+    - {match: "extensions", weight: 4}
+    - {match: "plugin",     weight: 3}
+    - {match: "extension",  weight: 3}
+    - {match: "kernel",     weight: 4}

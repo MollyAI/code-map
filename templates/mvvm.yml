@@ -1,0 +1,58 @@
+# MVVM — View binds to a ViewModel; the ViewModel exposes observable state.
+# Android Jetpack (ViewModel + LiveData/StateFlow), SwiftUI, WPF, Vue.
+# (Distinct from Clean Architecture: flat, with no UseCase/Domain layer.)
+id: mvvm
+name: "MVVM"
+description: "View binds to a ViewModel; the ViewModel exposes observable state from the Model."
+
+layers:
+  - id: view
+    name: View
+    order: 0
+    summary: "Activities, fragments, composables, screens — the UI"
+    path_segments: [view, views, ui, screen, screens, page, pages, activity, activities, fragment, fragments, compose, widget, widgets]
+    name_suffixes: [Activity, Fragment, View, Screen, Page, Widget, Dialog]
+  - id: viewmodel
+    name: ViewModel
+    order: 1
+    summary: "ViewModels exposing observable UI state"
+    path_segments: [viewmodel, viewmodels, vm, presentation]
+    name_suffixes: [ViewModel, VM]
+  - id: model
+    name: Model / Repository
+    order: 2
+    summary: "Repositories and domain model backing the view state"
+    path_segments: [model, models, repository, repositories, repo, domain]
+    name_suffixes: [Repository, Model, Entity, UseCase, Interactor]
+  - id: data
+    name: Data / Services
+    order: 3
+    summary: "Remote/local data sources, network, persistence"
+    path_segments: [data, datasource, remote, local, network, net, api, db, service, services]
+    name_suffixes: [DataSource, Service, Api, Client, Dao]
+  - id: infrastructure
+    name: Infrastructure
+    order: 4
+    summary: "DI, utilities, app wiring"
+    path_segments: [di, ioc, inject, util, utils, common, shared, core]
+    name_suffixes: [Module, Provider, Factory, Util, Helper]
+
+signals:
+  files:
+    - {match: "AndroidManifest.xml", weight: 4}
+    - {match: "Package.swift",       weight: 1}
+    - {match: "build.gradle*",       weight: 1}
+  dependencies:
+    - {match: "androidx.lifecycle:lifecycle-viewmodel", weight: 5}
+    - {match: "lifecycle-viewmodel-compose",            weight: 4}
+    - {match: "androidx.lifecycle",                     weight: 2}
+    - {match: "pinia",                                  weight: 3}
+    - {match: "vuex",                                   weight: 2}
+  paths:
+    # viewmodel/ is MVVM's single strongest discriminator — weight 6 (above the usual
+    # 0-5 band) lets a real ViewModel package out-score generic-Android clean-architecture
+    # in flat MVVM apps, while domain/usecase-rich projects still resolve to clean.
+    - {match: "viewmodel",  weight: 6}
+    - {match: "viewmodels", weight: 6}
+    - {match: "view",       weight: 1}
+    - {match: "views",      weight: 1}
