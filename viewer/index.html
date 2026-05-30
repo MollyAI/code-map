@@ -1289,31 +1289,32 @@ function drawEdges() {
 }
 
 function buildEdgePath(from, to, isOut) {
-  // Connect from right-mid of `from` to left-mid of `to` (or vice versa
-  // when geometry suggests). Use a cubic bezier with horizontal tangents.
   const fc = { x: from.x + from.w / 2, y: from.y + from.h / 2 };
   const tc = { x: to.x + to.w / 2,     y: to.y + to.h / 2     };
-  // pick exit points to keep lines clean
-  let p1, p2;
-  if (Math.abs(tc.y - fc.y) < 6 && tc.x > fc.x + from.w) {
-    p1 = { x: from.x + from.w, y: fc.y };
-    p2 = { x: to.x,            y: tc.y };
-  } else if (Math.abs(tc.y - fc.y) < 6 && tc.x < fc.x - from.w) {
-    p1 = { x: from.x,             y: fc.y };
-    p2 = { x: to.x + to.w,        y: tc.y };
-  } else {
-    // vertical jumps between bands
-    p1 = { x: fc.x, y: fc.y + (tc.y > fc.y ? from.h / 2 : -from.h / 2) };
-    p2 = { x: tc.x, y: tc.y + (tc.y > fc.y ? -to.h / 2  : to.h / 2)   };
-  }
-  const dy = p2.y - p1.y;
-  const c1 = { x: p1.x, y: p1.y + dy * 0.5 };
-  const c2 = { x: p2.x, y: p2.y - dy * 0.5 };
-  const d = `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`;
 
   const path = document.createElementNS(NS, "path");
   path.setAttribute("class", "edge active " + (isOut ? "out" : "in"));
-  path.setAttribute("d", d);
+
+  if (Math.abs(tc.y - fc.y) < 6) {
+    // Same row: a straight mid-line link would cross the text of every node
+    // sitting between source and target (all labels are centred on the row's
+    // mid-line). Instead, drop out of both bottom edges and connect with a
+    // shallow downward arc that rides in the gap just under the row, so the
+    // line never overlaps any label no matter how many nodes it spans.
+    const yb = from.y + from.h;                 // shared row bottom
+    const dip = (LAYOUT.nodeH || 28) * 0.5;     // arc depth (peaks ~0.75*dip below)
+    const cy = yb + dip;
+    path.setAttribute("d", `M ${fc.x} ${yb} C ${fc.x} ${cy}, ${tc.x} ${cy}, ${tc.x} ${yb}`);
+    return path;
+  }
+
+  // Different bands: vertical cubic between the facing horizontal edges.
+  const p1 = { x: fc.x, y: fc.y + (tc.y > fc.y ? from.h / 2 : -from.h / 2) };
+  const p2 = { x: tc.x, y: tc.y + (tc.y > fc.y ? -to.h / 2  : to.h / 2)   };
+  const dy = p2.y - p1.y;
+  const c1 = { x: p1.x, y: p1.y + dy * 0.5 };
+  const c2 = { x: p2.x, y: p2.y - dy * 0.5 };
+  path.setAttribute("d", `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`);
   return path;
 }
 
