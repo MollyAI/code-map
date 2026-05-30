@@ -34,3 +34,6 @@ wheels/
 # Legacy dev-mode scratch dir (the /build-code-map-dev command was removed).
 # Still ignored so any leftover files don't pollute git.
 scratch/
+
+# Superpowers brainstorming visual-companion scratch files
+.superpowers/
