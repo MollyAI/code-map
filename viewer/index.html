@@ -81,7 +81,29 @@ body.light {
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-0); color: var(--text-0); font-family: var(--font-ui); transition: background-color 0.2s, color 0.2s; }
+html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-0); color: var(--text-0); font-family: var(--font-ui); }
+
+/* Theme cross-fade: only active for the brief window right after a manual theme
+   toggle (body.theme-switching, added/removed in JS). Applying it to every
+   element makes the whole UI — panels, SVG nodes, borders, text — ease between
+   palettes together instead of snapping, which is what felt jarring before.
+   It's temporary so it never interferes with hover/layout transitions. */
+body.theme-switching,
+body.theme-switching *,
+body.theme-switching *::before,
+body.theme-switching *::after {
+  transition:
+    background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    background-image 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    color            0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color     0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    fill             0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    stroke           0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.theme-switching, body.theme-switching *,
+  body.theme-switching *::before, body.theme-switching *::after { transition: none !important; }
+}
 body {
   /* blueprint grid background */
   background-image:
@@ -1588,10 +1610,17 @@ document.addEventListener("keydown", (ev) => {
   const stored = readStored();
   const systemLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
   apply(stored || (systemLight ? "light" : "dark"));
+
+  // Enable the global cross-fade only around a manual toggle, then strip it so
+  // it can't leak into other transitions. A timer reset handles rapid clicks.
+  let crossfadeTimer = null;
   els.themeToggle.addEventListener("click", () => {
     const next = document.body.classList.contains("light") ? "dark" : "light";
+    document.body.classList.add("theme-switching");
     apply(next);
     writeStored(next);
+    clearTimeout(crossfadeTimer);
+    crossfadeTimer = setTimeout(() => document.body.classList.remove("theme-switching"), 450);
   });
 })();
 
