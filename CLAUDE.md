@@ -9,8 +9,8 @@ A Claude Code plugin that builds an interactive architectural map of a target pr
 The plugin exposes three slash commands:
 
 - `/code-map:build` — runs Phase 1 (mechanical extraction) + Phase 2 (semantic refinement). Defined in `commands/build.md`. Produces `.code-map/code-map.json`.
-- `/code-map:run`   — runs Phase 3: starts `scripts/serve.py` detached in the background, captures the PID in `.code-map/server.pid` and the URL in `.code-map/server.url`, opens the browser. Defined in `commands/run.md`.
-- `/code-map:stop`  — kills the server using `.code-map/server.pid` and cleans up. Defined in `commands/stop.md`.
+- `/code-map:run`   — runs Phase 3 via `scripts/mapctl.py run`: ensures a server is up (reuses a live one, else launches `scripts/serve.py` detached) and opens the browser. Defined in `commands/run.md`.
+- `/code-map:stop`  — runs `scripts/mapctl.py stop`: SIGTERMs the recorded server and cleans up. Defined in `commands/stop.md`.
 
 The commands all shell into the Python scripts described below.
 
@@ -26,7 +26,7 @@ templates/
   clean-architecture.yml  mvc.yml  hexagonal.yml
   frontend-spa.yml  cli-tool.yml  pipeline.yml
 scripts/
-  bootstrap.py  analyze.py  serve.py
+  bootstrap.py  analyze.py  serve.py  mapctl.py
   lib/
     core.py  layers.py  templates.py
     extractors/
@@ -43,7 +43,7 @@ viewer/index.html
 |---|---|---|
 | 1. Extract | `analyze.py` (Python + tree-sitter) | Walks project, parses each source file with its grammar, builds the dependency graph, scores importance, **picks an architectural template by scanning filesystem signals** (`templates/*.yml` via `lib/templates.py`), pre-assigns layers using the winner. Writes `.code-map/raw_structure.json` (with `project.template_detection`) + `.code-map/unresolved.json`. Deterministic — never lies. |
 | 2. Refine | Claude, driven by `commands/build.md` | Verifies the chosen template against the actual code (may swap or tweak), writes one-sentence descriptions per declaration, overrides wrong layer assignments, recovers anything tree-sitter couldn't parse, applies the focus hint. Writes `.code-map/code-map.json` with `project.architecture`. |
-| 3. Serve | `serve.py` (stdlib HTTP), launched by `commands/run.md` | Serves `viewer/index.html` + re-reads `code-map.json` on every request so a rebuild is picked up by a browser refresh. Run detached: `run.md` writes the PID/URL to `.code-map/server.pid` / `.code-map/server.url`; `stop.md` kills it. |
+| 3. Serve | `serve.py` (stdlib HTTP), launched via `scripts/mapctl.py` from `commands/run.md` | Serves `viewer/index.html` + re-reads `code-map.json` on every request so a rebuild is picked up by a browser refresh. Run detached: `serve.py` atomically writes its pid/port/url to `.code-map/server.json` once the port is bound, and removes that file on graceful shutdown. `mapctl.py run`/`stop` treat `server.json` as the source of truth. |
 
 The split is deliberate — Phase 1 is auditable; Phase 2 burns tokens only where judgment helps.
 
@@ -60,10 +60,16 @@ python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/bootstrap.py" --root .
 # Phase 1: extract
 python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/raw_structure.json
 
-# Phase 3: serve (data must exist). /code-map:run wraps this in `nohup ... &` and tracks the PID.
+# Phase 3: serve (data must exist). /code-map:run goes through mapctl.py, which launches
+# serve.py detached and tracks state in .code-map/server.json. Direct serve.py for debugging:
 python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/serve.py" \
   --data .code-map/code-map.json \
   --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer" --open
+
+# Or via the control script (what the slash commands call):
+python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" run \
+  --plugin-root "${CLAUDE_PLUGIN_ROOT:-.}" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer"
+python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" stop
 
 # Tune what gets marked core (default 0.25 = top quartile per layer)
 python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --core-percentile 0.15
@@ -106,7 +112,9 @@ The frontend reads only `layer.name`, `layer.summary`, and `layer.classes` — `
 
 **Phase 3 is intentionally dumb.** `serve.py` re-reads `code-map.json` on every request (no caching) so a subsequent `/code-map:build` is picked up without restarting the server. Don't add caching.
 
-**Background server lifecycle.** `/code-map:run` launches `serve.py` with `nohup ... &` and writes `$!` to `.code-map/server.pid`; it then polls `.code-map/server.log` for the printed URL and stores it in `.code-map/server.url`. `/code-map:stop` reads the PID, `kill`s it, and removes both files. If you change the URL/PID file paths, update both command markdown files in lockstep.
+**Background server lifecycle is owned by `scripts/mapctl.py`, not the command markdown.** This is deliberate: the slash commands (`run.md`/`stop.md`) are one-shot — they each make a single `mapctl.py` call and relay its stdout verbatim. Keep them dumb; do not reintroduce shell-side PID files, stdout/log polling, or AI troubleshooting (the old design wasted tokens because `nohup` block-buffered serve.py's stdout, so the URL never reached the log and the command fell through to a "failed" branch).
+
+The mechanism: `serve.py --state .code-map/server.json` atomically writes `{pid, port, url, data, viewer, started_at}` the instant its port is bound (an atomic file write can't be hidden by buffering), and removes that file on graceful shutdown — `atexit` plus a `SIGTERM`→clean-exit handler. `mapctl.py run` checks `server.json`: if its `pid` is alive it just opens the browser (never a second instance); otherwise it launches `serve.py` detached (`start_new_session=True`) and waits for `server.json` to appear. `mapctl.py stop` reads the pid, `SIGTERM`s it, waits for the process to clear its own state, then removes `server.json` as a backstop. A stale `server.json` (process gone, e.g. after a reboot) is auto-cleared on the next `run`/`stop`. If you change the state file path, pass `--state` consistently from both command markdown files.
 
 ## Sources for the above
 

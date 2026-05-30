@@ -111,7 +111,8 @@ code-map/
 ├── scripts/
 │   ├── bootstrap.py                    # on-demand grammar installer
 │   ├── analyze.py                      # phase 1 orchestrator
-│   ├── serve.py                        # phase 3 HTTP server
+│   ├── serve.py                        # phase 3 HTTP server (writes .code-map/server.json)
+│   ├── mapctl.py                       # run/stop control — reuses or launches the server
 │   └── lib/
 │       ├── core.py                     # graph build + importance scoring (lang-agnostic)
 │       ├── layers.py                   # path-segment based layer assignment

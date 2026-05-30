@@ -5,12 +5,10 @@ allowed-tools: Bash
 
 # /code-map:stop
 
-Stops the local code-map server. Reads the PID from `.code-map/server.pid`, sends SIGTERM, and cleans up the PID/URL files.
+Stops the local code-map server. All logic lives in `scripts/mapctl.py`: it reads the server state file (`.code-map/server.json`), sends SIGTERM to the recorded PID, waits for it to clear its state, and cleans up. Deterministic and one-shot — just run it and relay the output.
 
-## Stop the server
-
-!if [ ! -f .code-map/server.pid ]; then echo "[code-map:stop] no .code-map/server.pid — nothing to stop."; exit 0; fi; PID=$(cat .code-map/server.pid); if kill -0 "$PID" 2>/dev/null; then kill "$PID" && echo "[code-map:stop] stopped server (PID $PID)"; else echo "[code-map:stop] PID $PID is not running (stale pid file)"; fi; rm -f .code-map/server.pid .code-map/server.url
+!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" stop --state .code-map/server.json
 
 ## Final user-facing summary
 
-Report whether a running server was stopped, the PID acted on (if any), or that nothing was running. Keep it to one short line.
+Relay the command's output verbatim (it reports stopped / nothing-running). Keep it to one short line; do not run additional diagnostics.

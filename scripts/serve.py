@@ -19,8 +19,11 @@ Routes:
 from __future__ import annotations
 
 import argparse
+import atexit
 import http.server
 import json
+import os
+import signal
 import socket
 import socketserver
 import sys
@@ -29,6 +32,15 @@ import time
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+
+def write_state(state_path: Path, payload: dict) -> None:
+    """Atomically write the server state JSON (pid/port/url/...) so the
+    /code-map:run and :stop commands never have to parse stdout."""
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp.replace(state_path)
 
 
 def find_free_port(preferred: int = 4178) -> int:
@@ -229,6 +241,9 @@ def main() -> int:
     ap.add_argument("--data", required=True, help="path to code-map.json")
     ap.add_argument("--port", type=int, default=4178, help="preferred port (default 4178)")
     ap.add_argument("--open", action="store_true", help="open browser after start")
+    ap.add_argument("--state", default=None,
+                    help="path to a JSON state file; pid/port/url are written here "
+                         "after the port is bound and removed on graceful shutdown")
     ap.add_argument("--dev", action="store_true",
                     help="enable live reload (watches viewer/index.html and the data file)")
     args = ap.parse_args()
@@ -252,16 +267,41 @@ def main() -> int:
 
     httpd = ReusableTCPServer(("127.0.0.1", port), CodeMapHandler)
 
+    # Persist state (pid/port/url) the moment the port is bound, so the
+    # slash commands can read it without parsing buffered stdout. Remove it
+    # again on graceful shutdown (atexit covers normal exit + SIGTERM below).
+    state_path = Path(args.state).resolve() if args.state else None
+    if state_path is not None:
+        write_state(state_path, {
+            "pid": os.getpid(),
+            "port": port,
+            "url": url,
+            "data": str(CodeMapHandler.data_path),
+            "viewer": str(viewer),
+            "started_at": int(time.time()),
+        })
+
+        def _cleanup_state() -> None:
+            try:
+                state_path.unlink()
+            except OSError:
+                pass
+
+        atexit.register(_cleanup_state)
+        # /code-map:stop sends SIGTERM; translate it into a clean exit so
+        # atexit fires and the state file is removed.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
     # Run in a thread so we can print the URL and (optionally) open the browser.
     thread = threading.Thread(target=httpd.serve_forever, name="code-map-server", daemon=False)
     thread.start()
 
-    print(f"[serve] code map running at {url}")
-    print(f"[serve]   viewer:   {viewer}")
-    print(f"[serve]   data:     {CodeMapHandler.data_path}")
+    print(f"[serve] code map running at {url}", flush=True)
+    print(f"[serve]   viewer:   {viewer}", flush=True)
+    print(f"[serve]   data:     {CodeMapHandler.data_path}", flush=True)
     if CodeMapHandler.dev_mode:
-        print(f"[serve]   live reload: ON (viewer + data mtime polling)")
-    print(f"[serve] press Ctrl+C to stop")
+        print(f"[serve]   live reload: ON (viewer + data mtime polling)", flush=True)
+    print(f"[serve] press Ctrl+C to stop", flush=True)
 
     if args.open:
         try:

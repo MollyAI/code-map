@@ -111,7 +111,8 @@ code-map/
 ├── scripts/
 │   ├── bootstrap.py                    # 按需安装 tree-sitter 语法包
 │   ├── analyze.py                      # phase 1 调度
-│   ├── serve.py                        # phase 3 HTTP server
+│   ├── serve.py                        # phase 3 HTTP server（写入 .code-map/server.json）
+│   ├── mapctl.py                       # run/stop 控制 —— 复用或启动 server
 │   └── lib/
 │       ├── core.py                     # 依赖图与重要性打分（语言无关）
 │       ├── layers.py                   # 基于路径段的 layer 分配
