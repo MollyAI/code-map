@@ -1,164 +1,86 @@
 # code-map
 
-> 中文文档 / Chinese version: **[README_CN.md](./README_CN.md)**
-
 A Claude Code plugin that builds an interactive architectural map of any project. Multi-language, tree-sitter powered, served as a local HTML page with click-through dependency navigation.
 
-```
-/code-map:build                          # extract + Phase 2 refinement → .code-map/code-map.json
-/code-map:run                            # start the local server in the background and open the browser
-/code-map:stop                           # stop the background server
-```
+一款可为任意项目构建交互式架构图谱的 Claude Code 插件。多语言支持，基于 tree-sitter，以本地 HTML 页面呈现，支持点击跳转的依赖导航。
+
+---
+
+## Features / 功能简介
+
+Scans your project, picks a fitting architectural template (Clean Architecture, MVC, Hexagonal, Frontend SPA, CLI Tool, or Pipeline), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies.
+
+**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript.
+
+扫描项目并自动匹配合适的架构模板（整洁架构、MVC、六边形架构、前端 SPA、CLI 工具或流水线），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖。
+
+**支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript。
+
+---
+
+## Screenshot / 效果截图
 
 <p align="center">
   <img src="screenshot/vibe_app_code_map.png" alt="Code Map visualization of VibeApp — layered architecture with dependency edges" width="900"/>
   <br/>
   <em>Interactive architectural map of <a href="https://github.com/Skykai521/VibeApp">VibeApp</a> — click any node to explore its dependencies, source path, and role.</em>
+  <br/>
+  <em>VibeApp 的交互式架构图谱——点击任意节点即可查看其依赖、源码路径与角色。</em>
 </p>
 
-## What it does
+---
 
-Scans your project, picks an architectural template that fits it (Clean Architecture, MVC, Hexagonal, Frontend SPA, CLI Tool, or Pipeline — AI may swap or tweak in Phase 2), extracts core classes/structs/traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and what it depends on.
+## Usage / 如何使用
 
-**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript. Each language is a thin extractor module — adding a new one is one file.
-
-## Three-phase pipeline
-
-The work is split so each phase plays to its strengths:
-
-| Phase | Who | What |
-|---|---|---|
-| **1. Extract** | Python + tree-sitter | Walks the project, parses each file with its language's tree-sitter grammar, builds the dependency graph, scores importance, picks a template by scanning filesystem signals, and pre-assigns layers. Writes `.code-map/raw_structure.json` and `.code-map/unresolved.json`. |
-| **2. Refine** | Claude (in the slash command) | Verifies the chosen template against the actual code (may swap or tweak), writes one-sentence descriptions for each declaration, overrides any wrong layer assignments, applies the focus hint, recovers anything tree-sitter couldn't parse. Writes `.code-map/code-map.json`. |
-| **3. Serve** | Python stdlib HTTP server | Re-reads `code-map.json` on every request and serves the interactive visualization. Running `/code-map:build` again rewrites the data file; the browser refresh picks it up immediately. |
-
-The split is deliberate: phase 1 is deterministic and auditable (it never lies), phase 2 burns tokens only where AI judgment actually helps.
-
-`/code-map:build` runs phases 1 + 2. `/code-map:run` starts phase 3 (the server) detached in the background and opens the browser. `/code-map:stop` kills that server.
-
-## Multi-language architecture
-
-The framework knows nothing language-specific. Each language is a module under `scripts/lib/extractors/` that exposes:
-
-```python
-name: str                       # "kotlin"
-extensions: tuple[str, ...]     # (".kt", ".kts")
-grammar_package: str            # "tree-sitter-kotlin"
-parse(path, src, project_root) -> ParseResult
+```
+/code-map:build   # extract + AI refinement → .code-map/code-map.json
+/code-map:run     # start the local server and open the browser
+/code-map:stop    # stop the background server
 ```
 
-The bootstrap script scans your project for source file extensions, then `pip install --target ${CLAUDE_PLUGIN_DATA}/wheels` only the tree-sitter grammars you actually need. First run is a few seconds; subsequent runs hit the cache.
+`build` runs the analysis, `run` opens the visualization, and `stop` shuts down the server.
 
-**Adding a new language** means writing one extractor file plus appending one tuple to the registry. No core code changes.
+`build` 执行分析，`run` 打开可视化页面，`stop` 关闭后台服务。
 
-### Why tree-sitter, not regex
+---
 
-Tree-sitter gives a real CST with error recovery. The `parser.py` of v0.1 used regex — fast but it would happily mistake a string literal like `"class FakeClass {}"` for a real declaration, and complex generics like `BaseViewModel<List<Map<String, T>>>` could trip it up. v0.2 uses `tree-sitter-kotlin`, `tree-sitter-java`, etc. for accuracy.
+## Install / 安装
 
-The design principle: **miss rather than misidentify**. Any declaration that tree-sitter couldn't parse cleanly goes to `unresolved.json` for Phase 2 review, never silently into the map.
+**Prerequisites:** Claude Code ≥ 2.x and Python 3.10+. The first `/code-map:build` lazily installs the tree-sitter grammars it needs — no manual `pip install`.
 
-## Visualization
-
-- **Layered SVG**: each layer is a horizontal band; nodes laid out left-to-right by importance.
-- **Per-language stripe**: a 3px colored stripe on the left edge of each node. Kotlin purple, Go cyan, Rust orange, TypeScript blue, Python aqua, Java amber, JavaScript yellow.
-- **Selection edges**: clicking a node draws its in/out edges only — keeps the map readable on larger projects.
-- **Detail panel**: layer · kind · language kicker, namespace chip, full file path with `@` prefix and one-click copy, the AI-written description, IN/OUT/WEIGHT/CORE metrics, and click-to-jump links for every dependency.
-- **Search & filter**: `/` focuses the search; CORE/ALL toggle controls density.
-
-## Templates
-
-The plugin ships with six architectural templates. Phase 1 picks one per project by scanning filesystem signals (build files, dependencies, directory names); Phase 2 AI verifies and may swap or tweak.
-
-| Template | Layers |
-| --- | --- |
-| `clean-architecture` | Presentation → Domain → Data → Infrastructure |
-| `mvc` | Controller → Model → View → Infrastructure |
-| `hexagonal` | Application → Domain → Ports → Adapters → Infrastructure |
-| `frontend-spa` | Pages → Components → Hooks/State → API/Services → Utils |
-| `cli-tool` | Entry → Commands → Core → Util |
-| `pipeline` | Input → Parse → Transform → Output |
-
-**Precedence:** a `.code-map/layers.yml` in the target project wins outright (detection is skipped). Otherwise the detector picks the template with the highest signal score. If signals are weak, Phase 2 AI is more likely to swap. To fully customize, copy `examples/default-layers.yml` to `<project>/.code-map/layers.yml`.
-
-Within a template, layers are assigned by **path segments** + **name suffixes**. Path matching runs right-to-left so deeper packages outweigh prefixes (`app/domain/order/data/...` lands in `data`, not `domain`). Name-suffix matching is the fallback. Anything still unmatched lands in `uncategorized`.
-
-## Install
-
-**Prerequisites:** Claude Code ≥ 2.x and Python 3.10+. The first `/code-map:build` lazily installs the tree-sitter grammars it needs into `${CLAUDE_PLUGIN_DATA}/wheels` — no manual `pip install`.
-
-Paste these two slash commands into Claude Code:
+**前置条件：** Claude Code ≥ 2.x 与 Python 3.10+。首次执行 `/code-map:build` 时会按需自动安装所需的 tree-sitter 语法包，无需手动 `pip install`。
 
 ```text
 /plugin marketplace add MollyAI/code-map
 /plugin install code-map@code-map
 ```
 
-That's it — `/plugin list` should show `code-map@code-map` enabled. From any project directory, run `/code-map:build`, then `/code-map:run` to open the visualization.
+To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall code-map@code-map`.
 
-To update, run `/plugin marketplace update code-map`. To remove, run `/plugin uninstall code-map@code-map` followed by `/plugin marketplace remove code-map`.
+更新：`/plugin marketplace update code-map`。卸载：`/plugin uninstall code-map@code-map`。
 
-## File layout
+---
 
-```
-code-map/
-├── .claude-plugin/
-│   ├── plugin.json                     # plugin manifest
-│   └── marketplace.json                # turns this repo into a single-plugin marketplace
-├── commands/
-│   ├── build.md                        # /code-map:build — extract + Phase 2 refine
-│   ├── run.md                          # /code-map:run   — start server + open browser
-│   └── stop.md                         # /code-map:stop  — stop background server
-├── scripts/
-│   ├── bootstrap.py                    # on-demand grammar installer
-│   ├── analyze.py                      # phase 1 orchestrator
-│   ├── serve.py                        # phase 3 HTTP server (writes .code-map/server.json)
-│   ├── mapctl.py                       # run/stop control — reuses or launches the server
-│   └── lib/
-│       ├── core.py                     # graph build + importance scoring (lang-agnostic)
-│       ├── layers.py                   # path-segment based layer assignment
-│       ├── templates.py                # template loader + signal-based detection
-│       └── extractors/
-│           ├── base.py                 # Declaration / ParseResult protocol
-│           ├── _common.py              # shared tree-sitter helpers
-│           ├── _generic.py             # fallback for unknown grammars
-│           ├── kotlin.py
-│           ├── java.py
-│           ├── python.py
-│           ├── go.py
-│           ├── rust.py
-│           └── typescript.py           # also handles .js / .jsx / .mjs / .cjs
-├── templates/                          # architectural templates (6 bundled)
-│   ├── clean-architecture.yml
-│   ├── mvc.yml
-│   ├── hexagonal.yml
-│   ├── frontend-spa.yml
-│   ├── cli-tool.yml
-│   └── pipeline.yml
-├── viewer/index.html                   # single-file visualization
-└── examples/
-    ├── default-layers.yml              # starter layer config
-    └── preview-*.png                   # screenshots
-```
+## How it works / 实现原理
 
-## Known limitations
+The work splits into three phases, each playing to its strengths:
 
-- **Cross-language edges** (JNI: Kotlin → C++, FFI: Rust → C, etc.) are not extracted by tree-sitter — they live in build configs and runtime conventions. Phase 2 AI refinement can add these manually.
-- **Go imports** are package URLs (`github.com/foo/bar`) and don't always resolve back to declaration namespaces in this project — edges may be sparser than in Kotlin/Java projects. Improvement target for v0.3.
-- **Method-to-receiver** edges (Go methods, Rust impl blocks) are not auto-linked back to their owning type. Tracked.
-- **One file = one extractor**. Polyglot files (e.g., `.svelte`, `.vue`, `.kt` with embedded SQL) aren't multi-parsed.
-- **Exotic languages** (Erlang, OCaml, F#, Clojure, Zig…) need either a tree-sitter grammar in the registry or AI fallback. The `_generic.py` extractor offers a best-effort path for any installed grammar.
+1. **Extract** (Python + tree-sitter) — walks the project, parses each file with its language grammar, builds the dependency graph, scores importance, and picks a template from filesystem signals. Deterministic and auditable.
+2. **Refine** (Claude) — verifies the template against the real code, writes one-line descriptions, fixes layer assignments, and recovers anything the parser missed. Spends tokens only where AI judgment helps.
+3. **Serve** (Python stdlib HTTP) — re-reads the data on every request and serves the interactive visualization.
 
-## Customizing
+Design principle: **miss rather than misidentify.** Tree-sitter produces a real CST with error recovery, so anything it can't parse cleanly is deferred to Phase 2 instead of being silently guessed.
 
-| What | Where |
-|---|---|
-| Add a new language | `scripts/lib/extractors/<lang>.py` + register in `__init__.py` |
-| Add an architectural template | drop a new `templates/<name>.yml` with `layers` + `signals` (see existing for shape) |
-| Override the chosen template | `.code-map/layers.yml` in your project (bypasses detection) |
-| Change `core` threshold | `scripts/analyze.py --core-percentile 0.15` (default 0.25) |
-| Change colors | `viewer/index.html`, `:root { --accent / --lang-* }` |
-| Add a new entry-point heuristic | `scripts/lib/core.py`, `ENTRY_POINT_HINTS` |
+整体分为三个阶段，各司其职：
 
-## License
+1. **提取**（Python + tree-sitter）——遍历项目，用对应语言的语法解析每个文件，构建依赖图、计算重要度，并依据文件系统信号选取模板。确定性强、可审计。
+2. **精炼**（Claude）——对照真实代码校验模板，为每个声明撰写一句话说明，修正分层，并补全解析器遗漏的内容。仅在 AI 判断真正有用之处消耗 token。
+3. **服务**（Python 标准库 HTTP）——每次请求都重新读取数据并提供交互式可视化。
+
+设计原则：**宁可漏掉，不可误判。** tree-sitter 提供带错误恢复的真实 CST，凡是无法干净解析的内容都交由第 2 阶段处理，绝不静默猜测。
+
+---
+
+## License / 开源协议
 
 MIT.
