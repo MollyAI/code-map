@@ -17,7 +17,22 @@ _REGISTRY = [
     ("scripts.lib.extractors.go",         (".go",)),
     ("scripts.lib.extractors.rust",       (".rs",)),
     ("scripts.lib.extractors.typescript", (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")),
+    ("scripts.lib.extractors.c",          (".c", ".h")),
+    ("scripts.lib.extractors.cpp",        (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".c++", ".h++")),
+    ("scripts.lib.extractors.csharp",     (".cs",)),
+    ("scripts.lib.extractors.swift",      (".swift",)),
+    ("scripts.lib.extractors.objc",       (".m", ".mm")),
+    ("scripts.lib.extractors.lua",        (".lua",)),
+    ("scripts.lib.extractors.dart",       (".dart",)),
 ]
+
+# Module short name → PyPI package, for the cases where the package name isn't
+# simply "tree-sitter-<module>" (used only by the fallback below).
+_PACKAGE_OVERRIDES = {
+    "typescript": "tree-sitter-typescript",
+    "csharp": "tree-sitter-c-sharp",
+    "dart": "tree-sitter-language-pack",
+}
 
 _loaded_cache: dict[str, object] = {}
 
@@ -42,10 +57,7 @@ def grammar_packages_for_extensions(exts: set[str]) -> set[str]:
             except Exception:
                 # Module not loaded yet — derive package name from module name
                 short = mod_path.rsplit(".", 1)[-1]
-                if short == "typescript":
-                    out.add("tree-sitter-typescript")
-                else:
-                    out.add(f"tree-sitter-{short}")
+                out.add(_PACKAGE_OVERRIDES.get(short, f"tree-sitter-{short}"))
     return out
 
 

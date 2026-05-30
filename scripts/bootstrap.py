@@ -30,6 +30,15 @@ EXTENSION_TO_PACKAGE = {
     ".ts": "tree-sitter-typescript", ".tsx": "tree-sitter-typescript",
     ".js": "tree-sitter-typescript", ".jsx": "tree-sitter-typescript",
     ".mjs": "tree-sitter-typescript", ".cjs": "tree-sitter-typescript",
+    ".c": "tree-sitter-c", ".h": "tree-sitter-c",
+    ".cpp": "tree-sitter-cpp", ".cc": "tree-sitter-cpp", ".cxx": "tree-sitter-cpp",
+    ".hpp": "tree-sitter-cpp", ".hh": "tree-sitter-cpp", ".hxx": "tree-sitter-cpp",
+    ".c++": "tree-sitter-cpp", ".h++": "tree-sitter-cpp",
+    ".cs": "tree-sitter-c-sharp",
+    ".swift": "tree-sitter-swift",
+    ".m": "tree-sitter-objc", ".mm": "tree-sitter-objc",
+    ".lua": "tree-sitter-lua",
+    ".dart": "tree-sitter-language-pack",
 }
 
 ALWAYS = ["tree-sitter"]  # base runtime

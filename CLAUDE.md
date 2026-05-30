@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Claude Code plugin that builds an interactive architectural map of a target project. Multi-language (Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript), tree-sitter powered, served as a local HTML visualization with click-through dependency navigation.
+A Claude Code plugin that builds an interactive architectural map of a target project. Multi-language (Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), tree-sitter powered, served as a local HTML visualization with click-through dependency navigation.
 
 The plugin exposes three slash commands:
 
@@ -38,6 +38,7 @@ scripts/
     extractors/
       __init__.py  base.py  _common.py  _generic.py
       kotlin.py  java.py  python.py  go.py  rust.py  typescript.py
+      c.py  cpp.py  csharp.py  swift.py  objc.py  dart.py  lua.py
 viewer/index.html
 ```
 
