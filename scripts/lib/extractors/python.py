@@ -5,7 +5,7 @@ import tree_sitter_python as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods
 
 name = "python"
 extensions = (".py",)
@@ -38,14 +38,17 @@ def _path_to_namespace(rel: str) -> str:
     return ".".join(parts) if parts else ""
 
 
-def _kind(decl_node):
-    inner = decl_node
+def _inner(decl_node):
+    """Unwrap a decorated_definition to the class/function it decorates."""
     if decl_node.type == "decorated_definition":
         for c in decl_node.children:
             if c.type in ("class_definition", "function_definition"):
-                inner = c
-                break
-    return "class" if inner.type == "class_definition" else "function"
+                return c
+    return decl_node
+
+
+def _kind(decl_node):
+    return "class" if _inner(decl_node).type == "class_definition" else "function"
 
 
 def _supertypes(decl_node, src):
@@ -91,14 +94,19 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             skipped.append({"path": rel, "line": decl.start_point[0]+1, "reason": "name_errored"})
             continue
         supers, conf = _supertypes(decl, src)
+        inner = _inner(decl)
+        kind = _kind(decl)
         decls.append(Declaration(
             name=text_of(name_node, src),
             namespace=namespace or None,
-            kind=_kind(decl),
+            kind=kind,
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
             refs=[i.qualified for i in imports if i.qualified],
             confidence=conf,
+            loc=loc_of(decl),
+            signature=signature_of(inner, src) if kind == "function" else "",
+            method_count=count_methods(inner, ("block",), ("function_definition", "decorated_definition")) if kind == "class" else 0,
         ))
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)

@@ -30,6 +30,9 @@ class Declaration:
     confidence: str = "high"                     # "high" | "low" | "ai-inferred"
     tags: list[str] = field(default_factory=list)
     language: str = ""                           # set by the framework
+    loc: int = 0                                 # lines of code = end_line - start_line + 1
+    signature: str = ""                          # full function header (params + return); "" for non-functions
+    method_count: int = 0                        # number of methods inside (classes only; best-effort for Go/Rust)
 
     @property
     def qualified_name(self) -> str:

@@ -320,6 +320,15 @@ body.light .theme-toggle .icon-moon { display: none; }
   font-style: italic;
   color: var(--accent);
 }
+/* When the title holds a full function signature, use mono + a calmer size so
+   long signatures stay readable instead of dominating the panel. */
+.class-title.is-signature {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: calc(15px * var(--fs-scale));
+  letter-spacing: 0;
+  line-height: 1.4;
+}
 
 .class-kind {
   display: inline-block;
@@ -733,10 +742,16 @@ const I18N = {
     class_other: "classes",
     no_package: "(no package)",
     no_desc: "no description — run /code-map:build to let Claude annotate this class.",
+    no_desc_core: "no description — only core classes / methods are annotated.",
     label_in: "in",
     label_out: "out",
     label_weight: "weight",
     label_core: "core",
+    label_file: "file",
+    label_loc: "lines",
+    label_calls: "calls",
+    label_methods: "methods",
+    label_refs: "referenced by",
     yes: "yes",
     no: "no",
     depends_on: "depends on",
@@ -765,10 +780,16 @@ const I18N = {
     class_other: "个类",
     no_package: "（无包名）",
     no_desc: "暂无描述 — 运行 /code-map:build 让 Claude 添加注释。",
+    no_desc_core: "暂无描述 — 仅对核心类 / 方法生成解释。",
     label_in: "入度",
     label_out: "出度",
     label_weight: "权重",
     label_core: "核心",
+    label_file: "文件名",
+    label_loc: "代码行数",
+    label_calls: "调用次数",
+    label_methods: "方法数",
+    label_refs: "被引用次数",
     yes: "是",
     no: "否",
     depends_on: "依赖",
@@ -896,6 +917,10 @@ function normalizeIds(d) {
     for (const c of L.classes) {
       if (!c.package && c.namespace) c.package = c.namespace;
       if (!c.namespace && c.package) c.namespace = c.package;
+      // Defaults for fields added by newer Phase 1 — keep old code-map.json loading
+      if (c.loc == null) c.loc = 0;
+      if (c.method_count == null) c.method_count = 0;
+      if (c.signature == null) c.signature = "";
     }
   }
   // Also populate in_degree/out_degree/importance from edges if missing
@@ -1285,6 +1310,16 @@ function buildEdgePath(from, to, isOut) {
 // detail panel
 // --------------------------------------------------------------------
 
+// Bilingual descriptions live on description_zh / description_en (core only).
+// Prefer the active language, fall back to the other, then the legacy single field.
+function pickDescription(c) {
+  const order = currentLang === "zh"
+    ? [c.description_zh, c.description_en]
+    : [c.description_en, c.description_zh];
+  for (const d of order) if (d) return d;
+  return c.description || null;
+}
+
 function renderDetail(c) {
   if (!c) {
     els.detailBody.innerHTML = `<div class="empty">
@@ -1300,11 +1335,20 @@ function renderDetail(c) {
   const layer = state.raw.layers.find(L => L.classes.some(cl => cl.id === c.id));
 
   const tags = Array.isArray(c.tags) ? c.tags : [];
+
+  // "method" = a free function / class method node; everything else is a "class".
+  const isMethod = ["function", "method", "composable_function"].includes(c.kind);
+  // Core declarations carry bilingual descriptions; prefer the current language,
+  // fall back to the other language, then the legacy single field.
+  const desc = pickDescription(c);
+  // Methods show their full signature as the title; classes show their name.
+  const titleText = (isMethod && c.signature) ? c.signature : c.name;
+  const fileName = (c.path || "").split("/").pop();
+
   els.detailBody.innerHTML = `
     <div>
       <div class="kicker">${escapeHtml(layer?.name || "")} <span style="opacity:0.5">·</span> ${escapeHtml(c.kind || "class")}${c.language ? ` <span style="opacity:0.5">·</span> <span class="lang-tag">${escapeHtml(c.language)}</span>` : ""}</div>
-      <h2 class="class-title">${escapeHtml(c.name)}</h2>
-      <span class="class-kind">${escapeHtml(c.package || t("no_package"))}</span>
+      <h2 class="class-title${(isMethod && c.signature) ? " is-signature" : ""}">${escapeHtml(titleText)}</h2>
       ${tags.length ? `<div class="tag-row">${tags.map(tag => {
         const muted = tag === "ai-inferred" || tag === "excluded";
         return `<span class="tag-chip${muted ? " muted" : ""}">${escapeHtml(tag)}</span>`;
@@ -1317,15 +1361,22 @@ function renderDetail(c) {
       <button class="copy" data-copy="${escapeAttr("@" + c.path)}">${escapeHtml(t("copy"))}</button>
     </div>
 
-    ${c.description
-        ? `<p class="description">${escapeHtml(c.description)}</p>`
-        : `<p class="description muted">${escapeHtml(t("no_desc"))}</p>`}
+    ${desc
+        ? `<p class="description">${escapeHtml(desc)}</p>`
+        : `<p class="description muted">${escapeHtml(t("no_desc_core"))}</p>`}
 
     <div class="meta-grid">
-      <div class="cell"><span class="label">${escapeHtml(t("label_in"))}</span><span class="value">${c.in_degree ?? 0}</span></div>
-      <div class="cell"><span class="label">${escapeHtml(t("label_out"))}</span><span class="value">${c.out_degree ?? 0}</span></div>
-      <div class="cell"><span class="label">${escapeHtml(t("label_weight"))}</span><span class="value">${(c.importance ?? 0).toFixed(2)}</span></div>
+      ${isMethod ? `
+      <div class="cell"><span class="label">${escapeHtml(t("label_file"))}</span><span class="value" title="${escapeAttr(c.path || "")}">${escapeHtml(fileName)}</span></div>
+      <div class="cell"><span class="label">${escapeHtml(t("label_loc"))}</span><span class="value">${c.loc ?? 0}</span></div>
+      <div class="cell"><span class="label">${escapeHtml(t("label_calls"))}</span><span class="value">${c.in_degree ?? 0}</span></div>
       <div class="cell"><span class="label">${escapeHtml(t("label_core"))}</span><span class="value">${c.core ? t("yes") : t("no")}</span></div>
+      ` : `
+      <div class="cell"><span class="label">${escapeHtml(t("label_methods"))}</span><span class="value">${c.method_count ?? 0}</span></div>
+      <div class="cell"><span class="label">${escapeHtml(t("label_loc"))}</span><span class="value">${c.loc ?? 0}</span></div>
+      <div class="cell"><span class="label">${escapeHtml(t("label_refs"))}</span><span class="value">${c.in_degree ?? 0}</span></div>
+      <div class="cell"><span class="label">${escapeHtml(t("label_core"))}</span><span class="value">${c.core ? t("yes") : t("no")}</span></div>
+      `}
     </div>
 
     ${outs.length ? `

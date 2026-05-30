@@ -9,7 +9,7 @@ import tree_sitter_typescript as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods
 
 name = "typescript"
 extensions = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
@@ -43,13 +43,18 @@ _Q_IMPORT_TS = Query(_TS_LANG, _IMPORT_QUERY)
 _Q_IMPORT_TSX = Query(_TSX_LANG, _IMPORT_QUERY)
 
 
-def _kind(decl_node):
-    """The export_statement wrapper may shadow the inner decl type."""
-    inner = decl_node
+def _inner(decl_node):
+    """Unwrap an export_statement to the declaration it exports."""
     if decl_node.type == "export_statement":
         for c in decl_node.children:
             if c.type.endswith("_declaration"):
-                inner = c; break
+                return c
+    return decl_node
+
+
+def _kind(decl_node):
+    """The export_statement wrapper may shadow the inner decl type."""
+    inner = _inner(decl_node)
     return {
         "class_declaration": "class",
         "interface_declaration": "interface",
@@ -119,14 +124,19 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             skipped.append({"path": rel, "line": decl.start_point[0]+1, "reason": "name_errored"})
             continue
         supers, conf = _supertypes(decl, src)
+        inner = _inner(decl)
+        kind = _kind(decl)
         decls.append(Declaration(
             name=text_of(name_node, src),
             namespace=namespace or None,
-            kind=_kind(decl),
+            kind=kind,
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
             refs=[i.qualified for i in imports if i.qualified],
             confidence=conf,
+            loc=loc_of(decl),
+            signature=signature_of(inner, src) if kind == "function" else "",
+            method_count=count_methods(inner, ("class_body",), ("method_definition",)) if kind == "class" else 0,
         ))
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)

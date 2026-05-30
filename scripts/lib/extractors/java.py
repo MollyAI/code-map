@@ -5,7 +5,7 @@ import tree_sitter_java as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query
+from ._common import text_of, has_error_in, walk, run_query, loc_of, count_methods
 
 name = "java"
 extensions = (".java",)
@@ -85,5 +85,11 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             supertypes=supers,
             refs=[i.qualified for i in imports if i.qualified],
             confidence=conf,
+            loc=loc_of(decl),
+            method_count=count_methods(
+                decl,
+                ("class_body", "interface_body", "enum_body", "enum_body_declarations"),
+                ("method_declaration",),
+            ),
         ))
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)

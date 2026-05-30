@@ -1,11 +1,12 @@
 """Go via tree-sitter-go. Namespace = package_clause + directory."""
 from __future__ import annotations
+from collections import defaultdict
 from pathlib import Path
 import tree_sitter_go as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of
 
 name = "go"
 extensions = (".go",)
@@ -46,6 +47,25 @@ def _kind(decl_node, src):
     return "function"
 
 
+def _receiver_type(method_node, src):
+    """`func (s *Server) Foo()` → 'Server' (pointer star stripped)."""
+    recv = method_node.child_by_field_name("receiver")
+    if recv is None:
+        return None
+    for d in walk(recv):
+        if d.type == "type_identifier":
+            return text_of(d, src)
+    return None
+
+
+def _interface_method_count(type_spec_node) -> int:
+    """Count method specs declared directly inside an interface type."""
+    for c in type_spec_node.children:
+        if c.type == "interface_type":
+            return sum(1 for d in c.children if d.type in ("method_spec", "method_elem"))
+    return 0
+
+
 def _supertypes(decl_node, src):
     """Go has no inheritance; for type_spec on interface, embedded interfaces ~ supertypes."""
     if decl_node.type != "type_spec":
@@ -80,6 +100,15 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             raw = text_of(n, src).strip('"')
             imports.append(ImportSpec(raw=raw, qualified=raw, alias=raw.rsplit("/", 1)[-1]))
 
+    # Methods live outside their type in Go — tally receiver→count so struct
+    # types can report a method_count (best-effort, same-file only).
+    recv_counts: dict[str, int] = defaultdict(int)
+    for c in root.children:
+        if c.type == "method_declaration":
+            rt = _receiver_type(c, src)
+            if rt:
+                recv_counts[rt] += 1
+
     decls, skipped = [], []
     for caps in run_query(_Q_DECL, root):
         decl = caps["decl"][0]
@@ -88,14 +117,25 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             skipped.append({"path": rel, "line": decl.start_point[0]+1, "reason": "name_errored"})
             continue
         supers, conf = _supertypes(decl, src)
+        kind = _kind(decl, src)
+        dname = text_of(name_node, src)
+        if kind == "interface":
+            mcount = _interface_method_count(decl)
+        elif decl.type == "type_spec":
+            mcount = recv_counts.get(dname, 0)
+        else:
+            mcount = 0
         decls.append(Declaration(
-            name=text_of(name_node, src),
+            name=dname,
             namespace=namespace,
-            kind=_kind(decl, src),
+            kind=kind,
             path=rel,
             line=decl.start_point[0] + 1,
             supertypes=supers,
             refs=[i.qualified for i in imports if i.qualified],
             confidence=conf,
+            loc=loc_of(decl),
+            signature=signature_of(decl, src) if kind in ("function", "method") else "",
+            method_count=mcount,
         ))
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)

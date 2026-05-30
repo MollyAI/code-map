@@ -5,7 +5,7 @@ import tree_sitter_kotlin as _grammar
 from tree_sitter import Language, Parser, Query
 
 from .base import Declaration, ImportSpec, ParseResult
-from ._common import text_of, has_error_in, walk, run_query
+from ._common import text_of, has_error_in, walk, run_query, loc_of, signature_of, count_methods
 
 name = "kotlin"
 extensions = (".kt", ".kts")
@@ -115,6 +115,8 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             supertypes=supers,
             refs=[i.qualified for i in imports if i.qualified],
             confidence=conf,
+            loc=loc_of(decl),
+            method_count=count_methods(decl, ("class_body", "enum_class_body"), ("function_declaration",)),
         ))
 
     # Top-level @Composable Screen/Page/Route/etc. functions — surface them
@@ -138,6 +140,8 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
             supertypes=[],
             refs=[i.qualified for i in imports if i.qualified],
             confidence="high",
+            loc=loc_of(decl),
+            signature=signature_of(decl, src),
         ))
 
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)
