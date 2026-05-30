@@ -823,6 +823,24 @@ const state = {
   fontScale: 1,        // numeric multiplier kept in sync with the CSS variable
 };
 
+// Single persistence entry point for every UI setting. New settings should read
+// their initial value via Settings.get(key, fallback) and call Settings.set(key,
+// value) on change — that's all it takes to survive a server/browser restart.
+// Keys are namespaced with "code-map-"; existing keys are kept verbatim so values
+// saved by older versions still load.
+const Settings = {
+  PREFIX: "code-map-",
+  get(key, fallback = null) {
+    try {
+      const v = localStorage.getItem(this.PREFIX + key);
+      return v === null ? fallback : v;
+    } catch (_) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(this.PREFIX + key, value); } catch (_) { /* ignore */ }
+  },
+};
+
 // canvas-wrap horizontal padding — must match the CSS so applyZoom knows the content-area width
 const CANVAS_PAD_L = 28;
 
@@ -1531,14 +1549,23 @@ els.svg.addEventListener("click", () => {
 // controls
 // --------------------------------------------------------------------
 
-els.toggle.addEventListener("click", (ev) => {
-  const b = ev.target.closest("button");
-  if (!b) return;
-  for (const btn of els.toggle.querySelectorAll("button")) btn.classList.remove("active");
-  b.classList.add("active");
-  state.view = b.dataset.mode;
-  render();
-});
+// view mode: core / all — persisted so a reload keeps the user's choice.
+(function initView() {
+  function apply(mode) {
+    state.view = (mode === "all") ? "all" : "core";
+    for (const btn of els.toggle.querySelectorAll("button")) {
+      btn.classList.toggle("active", btn.dataset.mode === state.view);
+    }
+  }
+  apply(Settings.get("view", "core"));   // before load(), so the first render already filters correctly
+  els.toggle.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    apply(b.dataset.mode);
+    Settings.set("view", state.view);
+    render();
+  });
+})();
 
 // resize re-layout
 let resizeT;
@@ -1598,16 +1625,10 @@ document.addEventListener("keydown", (ev) => {
 
 // theme: localStorage > system preference > dark
 (function initTheme() {
-  function readStored() {
-    try { return localStorage.getItem("code-map-theme"); } catch (_) { return null; }
-  }
-  function writeStored(v) {
-    try { localStorage.setItem("code-map-theme", v); } catch (_) { /* ignore */ }
-  }
   function apply(theme) {
     document.body.classList.toggle("light", theme === "light");
   }
-  const stored = readStored();
+  const stored = Settings.get("theme");
   const systemLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
   apply(stored || (systemLight ? "light" : "dark"));
 
@@ -1618,7 +1639,7 @@ document.addEventListener("keydown", (ev) => {
     const next = document.body.classList.contains("light") ? "dark" : "light";
     document.body.classList.add("theme-switching");
     apply(next);
-    writeStored(next);
+    Settings.set("theme", next);
     clearTimeout(crossfadeTimer);
     crossfadeTimer = setTimeout(() => document.body.classList.remove("theme-switching"), 450);
   });
@@ -1629,12 +1650,6 @@ document.addEventListener("keydown", (ev) => {
 // already lays nodes out at the user's preferred size.
 (function initFontSize() {
   const SCALES = { small: 0.875, medium: 1, large: 1.125 };
-  function readStored() {
-    try { return localStorage.getItem("code-map-font-size"); } catch (_) { return null; }
-  }
-  function writeStored(v) {
-    try { localStorage.setItem("code-map-font-size", v); } catch (_) { /* ignore */ }
-  }
   function apply(size) {
     const next = (size in SCALES) ? size : "medium";
     state.fontSize  = next;
@@ -1646,36 +1661,30 @@ document.addEventListener("keydown", (ev) => {
       btn.classList.toggle("active", btn.dataset.size === next);
     }
   }
-  apply(readStored() || "medium");
+  apply(Settings.get("font-size", "medium"));
   els.fontToggle.addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
     apply(b.dataset.size);
-    writeStored(state.fontSize);
+    Settings.set("font-size", state.fontSize);
     if (state.raw) render();   // re-layout SVG so node boxes follow the new scale
   });
 })();
 
 // language: localStorage > browser language > en
 (function initLang() {
-  function readStored() {
-    try { return localStorage.getItem("code-map-lang"); } catch (_) { return null; }
-  }
-  function writeStored(v) {
-    try { localStorage.setItem("code-map-lang", v); } catch (_) { /* ignore */ }
-  }
   function apply(lang) {
     currentLang = (lang in I18N) ? lang : "en";
     els.langToggle.textContent = currentLang === "zh" ? "中" : "EN";
     applyI18nStatic();
   }
-  const stored = readStored();
+  const stored = Settings.get("lang");
   const browserZh = navigator.language && navigator.language.startsWith("zh");
   apply(stored || (browserZh ? "zh" : "en"));
   els.langToggle.addEventListener("click", () => {
     const next = currentLang === "en" ? "zh" : "en";
     apply(next);
-    writeStored(next);
+    Settings.set("lang", next);
     if (state.raw) {
       render();
       if (state.selected && state.nodeById.has(state.selected)) {
