@@ -14,6 +14,12 @@ The plugin exposes three slash commands:
 
 The commands all shell into the Python scripts described below.
 
+## Releasing / versioning
+
+**Before every push to `main`, check whether `.claude-plugin/plugin.json`'s `version` needs to be bumped — and bump it in the same push if so.** This is a hard rule, not a suggestion: installed copies of the plugin are keyed on this version, and `/plugin` reports "already at the latest version" when it is unchanged, so a user's slash commands keep running the old cached code until the number changes. Pushing source fixes without a bump silently strips them of effect.
+
+Bump when the push changes anything that ships in the installed plugin and alters its behavior — `commands/*.md`, `scripts/**`, `viewer/**`, `templates/**`, `examples/**`, or `plugin.json`/`marketplace.json` metadata. Use semver: patch for fixes/tweaks, minor for new user-facing capability, major for breaking changes. Skip the bump only for changes that never reach an installed plugin (e.g. `README*.md`, `CLAUDE.md`, `LICENSE`, `docs/**`, `.gitignore`). `marketplace.json` carries no version field today, so bumping `plugin.json` is sufficient; keep them in sync if that changes.
+
 ## Repo layout
 
 ```
