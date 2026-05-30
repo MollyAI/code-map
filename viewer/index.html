@@ -165,7 +165,7 @@ header.topbar {
 .toggle button.active { background: var(--bg-3); color: var(--text-0); }
 .toggle button:hover:not(.active) { color: var(--text-1); }
 
-.theme-toggle, .lang-toggle {
+.theme-toggle, .lang-toggle, .export-toggle {
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -176,8 +176,9 @@ header.topbar {
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-.theme-toggle:hover, .lang-toggle:hover { color: var(--text-0); border-color: var(--line-strong); }
-.theme-toggle svg, .lang-toggle svg { width: 14px; height: 14px; display: block; }
+.theme-toggle:hover, .lang-toggle:hover, .export-toggle:hover { color: var(--text-0); border-color: var(--line-strong); }
+.theme-toggle svg, .lang-toggle svg, .export-toggle svg { width: 14px; height: 14px; display: block; }
+.export-toggle[aria-busy="true"] { opacity: 0.5; pointer-events: none; }
 .theme-toggle .icon-sun  { display: none; }
 .theme-toggle .icon-moon { display: block; }
 body.light .theme-toggle .icon-sun  { display: block; }
@@ -668,6 +669,13 @@ body.light .theme-toggle .icon-moon { display: none; }
       <button data-size="medium" class="active" data-i18n-title="font_medium">M</button>
       <button data-size="large" data-i18n-title="font_large">L</button>
     </div>
+    <button class="export-toggle" id="export-toggle" type="button" aria-label="export image" data-i18n-title="export_image">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 2v7.5"/>
+        <path d="M5 6.5 8 9.5 11 6.5"/>
+        <path d="M2.75 11.5v1.25c0 .55.45 1 1 1h8.5c.55 0 1-.45 1-1V11.5"/>
+      </svg>
+    </button>
     <button class="theme-toggle" id="theme-toggle" type="button" aria-label="toggle theme" data-i18n-title="toggle_theme">
       <svg class="icon-moon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M6 1.5a6.5 6.5 0 1 0 8.5 8.5A5.5 5.5 0 0 1 6 1.5z"/>
@@ -731,6 +739,7 @@ const I18N = {
     font_medium: "medium (default)",
     font_large: "large",
     toggle_theme: "toggle light / dark",
+    export_image: "export as image",
     zoom_out: "zoom out",
     zoom_reset: "reset to 100%",
     zoom_in: "zoom in",
@@ -769,6 +778,7 @@ const I18N = {
     font_medium: "中（默认）",
     font_large: "大",
     toggle_theme: "切换亮色 / 暗色主题",
+    export_image: "导出为图片",
     zoom_out: "缩小",
     zoom_reset: "重置为 100%",
     zoom_in: "放大",
@@ -823,6 +833,7 @@ const els = {
   tooltip:    document.getElementById("tooltip"),
   toggle:     document.getElementById("view-toggle"),
   themeToggle: document.getElementById("theme-toggle"),
+  exportBtn:  document.getElementById("export-toggle"),
   langToggle: document.getElementById("lang-toggle"),
   fontToggle: document.getElementById("font-size-toggle"),
   canvasWrap: document.getElementById("canvas-wrap"),
@@ -1693,6 +1704,139 @@ document.addEventListener("keydown", (ev) => {
     Settings.set("theme", next);
     clearTimeout(crossfadeTimer);
     crossfadeTimer = setTimeout(() => document.body.classList.remove("theme-switching"), 450);
+  });
+})();
+
+// export: rasterize the whole map SVG to a PNG and save it. The SVG's viewBox
+// always spans the full diagram (zoom/pan only scale the rendered element, not
+// the viewBox), so we export the entire architecture regardless of the current
+// view. Node styling comes from external CSS classes + CSS variables, which a
+// serialized SVG would lose — so we inline the computed paint/text properties
+// onto a clone first.
+(function initExport() {
+  // SVG presentation properties worth copying for a faithful render.
+  const PROPS = [
+    "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width",
+    "stroke-opacity", "stroke-linecap", "stroke-linejoin", "stroke-dasharray",
+    "opacity", "color", "display", "visibility",
+    "font-family", "font-size", "font-weight", "font-style",
+    "letter-spacing", "text-anchor", "dominant-baseline", "text-transform",
+  ];
+
+  function inlineStyles(srcRoot, cloneRoot) {
+    const src = [srcRoot, ...srcRoot.querySelectorAll("*")];
+    const dst = [cloneRoot, ...cloneRoot.querySelectorAll("*")];
+    for (let i = 0; i < src.length; i++) {
+      const cs = getComputedStyle(src[i]);
+      let decl = "";
+      for (const p of PROPS) {
+        const v = cs.getPropertyValue(p);
+        if (v) decl += `${p}:${v};`;
+      }
+      dst[i].setAttribute("style", decl);
+      // strip classes/ids so external CSS can't re-apply (and to slim the output)
+      dst[i].removeAttribute("class");
+      dst[i].removeAttribute("id");
+    }
+  }
+
+  async function saveBlob(blob, suggestedName) {
+    // Preferred path (Chromium): native "Save image" dialog with a location picker.
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        if (err && err.name === "AbortError") return; // user cancelled — done
+        // any other failure: fall back to a plain download
+      }
+    }
+    // Fallback (Firefox/Safari): trigger a download. Whether a save dialog appears
+    // depends on the browser's "always ask where to save" setting.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = suggestedName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function exportPng() {
+    const svg = els.svg;
+    const vb = svg.viewBox.baseVal;
+    if (!vb || !vb.width || !vb.height) return; // nothing rendered yet
+
+    // Temporarily drop selection highlighting so the export is a clean full map.
+    // Synchronous: removed before cloning, restored after — the browser never
+    // repaints the intermediate state on screen.
+    const marked = [...svg.querySelectorAll(".node.selected, .node.peer, .node.dimmed")];
+    const savedClass = marked.map((el) => el.getAttribute("class"));
+    marked.forEach((el) => el.classList.remove("selected", "peer", "dimmed"));
+    const gEdges = svg.querySelector("#edges");
+    const edgesDisplay = gEdges ? gEdges.style.display : null;
+    if (gEdges) gEdges.style.display = "none"; // edges only exist for a selected node
+
+    const clone = svg.cloneNode(true);
+    inlineStyles(svg, clone);
+
+    // restore the live SVG immediately
+    marked.forEach((el, i) => el.setAttribute("class", savedClass[i]));
+    if (gEdges) gEdges.style.display = edgesDisplay || "";
+
+    const scale = 2; // crisp on hi-dpi displays
+    clone.setAttribute("xmlns", NS);
+    clone.setAttribute("width", vb.width);
+    clone.setAttribute("height", vb.height);
+    clone.setAttribute("viewBox", `0 0 ${vb.width} ${vb.height}`);
+
+    const xml = new XMLSerializer().serializeToString(clone);
+    const svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error("svg render failed"));
+        img.src = svgUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(vb.width * scale);
+      canvas.height = Math.ceil(vb.height * scale);
+      const ctx = canvas.getContext("2d");
+      // paint the page background so the PNG isn't transparent
+      const bg = getComputedStyle(document.body).getPropertyValue("--bg-0").trim() || "#0a0e13";
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.drawImage(img, 0, 0);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      const name = (els.projectName.textContent || "code-map").trim().replace(/[^\w.-]+/g, "-") || "code-map";
+      await saveBlob(blob, `${name}-code-map.png`);
+    } finally {
+      URL.revokeObjectURL(svgUrl);
+    }
+  }
+
+  els.exportBtn.addEventListener("click", async () => {
+    if (els.exportBtn.getAttribute("aria-busy") === "true") return;
+    els.exportBtn.setAttribute("aria-busy", "true");
+    try {
+      await exportPng();
+    } catch (err) {
+      console.error("[code-map] export failed:", err);
+    } finally {
+      els.exportBtn.removeAttribute("aria-busy");
+    }
   });
 })();
 
