@@ -1373,15 +1373,74 @@ function layoutFlow(flow) {
 function buildFlowEdgePath(from, to) {
   const p1 = { x: from.x + from.w, y: from.y + from.h / 2 };
   const p2 = { x: to.x,           y: to.y + to.h / 2     };
-  const dx = (p2.x - p1.x) * 0.5;
+  const dx = Math.max((p2.x - p1.x) * 0.5, 20);
   const path = document.createElementNS(NS, "path");
   path.setAttribute("class", "edge active out");
   path.setAttribute("d", `M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`);
   return path;
 }
 
+// Builds one <g class="node"> for datum `n` ({datum,x,y,w,h}), wires events,
+// registers it in state.nodeById, and returns the group. Shared by render()
+// (layer bands) and renderFlow(). In flow mode it adds hub/core visual classes
+// and a double-click "trace from here" gesture.
+function makeNodeEl(n) {
+  const gNode = document.createElementNS(NS, "g");
+  let cls = "node";
+  if (state.grouping === "flow") {
+    if (n.datum.hub)  cls += " flow-hub";
+    if (n.datum.core) cls += " flow-core";
+  }
+  gNode.setAttribute("class", cls);
+  gNode.setAttribute("data-id", n.datum.id);
+  gNode.setAttribute("transform", `translate(${n.x}, ${n.y})`);
+
+  const nrect = document.createElementNS(NS, "rect");
+  nrect.setAttribute("width", n.w);
+  nrect.setAttribute("height", n.h);
+  nrect.setAttribute("rx", 3);
+  gNode.appendChild(nrect);
+
+  if (n.datum.language) {
+    const stripe = document.createElementNS(NS, "rect");
+    stripe.setAttribute("class", "lang-stripe");
+    stripe.setAttribute("width", 3);
+    stripe.setAttribute("height", n.h);
+    stripe.setAttribute("rx", 1.5);
+    stripe.setAttribute("style", "fill: " + langColor(n.datum.language));
+    gNode.appendChild(stripe);
+  }
+
+  const txt = document.createElementNS(NS, "text");
+  txt.setAttribute("class", "nlabel");
+  txt.setAttribute("x", LAYOUT.nodePadX);
+  txt.setAttribute("y", n.h / 2 + 1);
+  txt.textContent = truncate(n.datum.name, Math.max(5, Math.floor((n.w - LAYOUT.nodePadX * 2) / LAYOUT.charW)));
+  gNode.appendChild(txt);
+
+  gNode.addEventListener("click", (ev) => { ev.stopPropagation(); selectNode(n.datum.id); });
+  gNode.addEventListener("dblclick", (ev) => {
+    if (state.grouping !== "flow") return;
+    ev.stopPropagation();
+    traceFromNode(n.datum.id);
+  });
+  gNode.addEventListener("mouseenter", () => showTooltip(n.datum));
+  gNode.addEventListener("mouseleave", hideTooltip);
+  gNode.addEventListener("mousemove", positionTooltip);
+
+  state.nodeById.set(n.datum.id, { datum: n.datum, el: gNode, rectEl: nrect, x: n.x, y: n.y, w: n.w, h: n.h });
+  return gNode;
+}
+
+function traceFromNode(id) {
+  state.traceSeed = id;
+  state.selected = id;
+  render();
+}
+
 function render() {
   state.nodeById.clear();
+  if (state.grouping === "flow") { renderFlow(); return; }
   const layers = groupedLayers();
   const canvasWidth = els.canvasWrap.clientWidth - 56; // padding 28 each side
   const { bands, totalHeight } = layoutLayers(layers, canvasWidth);
@@ -1434,45 +1493,7 @@ function render() {
     gBand.appendChild(count);
 
     for (const n of b.nodes) {
-      const gNode = document.createElementNS(NS, "g");
-      gNode.setAttribute("class", "node");
-      gNode.setAttribute("data-id", n.datum.id);
-      gNode.setAttribute("transform", `translate(${n.x}, ${n.y})`);
-
-      const nrect = document.createElementNS(NS, "rect");
-      nrect.setAttribute("width", n.w);
-      nrect.setAttribute("height", n.h);
-      nrect.setAttribute("rx", 3);
-      gNode.appendChild(nrect);
-
-      // Language stripe on the left edge
-      if (n.datum.language) {
-        const stripe = document.createElementNS(NS, "rect");
-        stripe.setAttribute("class", "lang-stripe");
-        stripe.setAttribute("width", 3);
-        stripe.setAttribute("height", n.h);
-        stripe.setAttribute("rx", 1.5);
-        stripe.setAttribute("style", "fill: " + langColor(n.datum.language));
-        gNode.appendChild(stripe);
-      }
-
-      const t = document.createElementNS(NS, "text");
-      t.setAttribute("class", "nlabel");
-      t.setAttribute("x", LAYOUT.nodePadX);
-      t.setAttribute("y", n.h / 2 + 1);
-      t.textContent = truncate(n.datum.name, Math.max(5, Math.floor((n.w - LAYOUT.nodePadX * 2) / LAYOUT.charW)));
-      gNode.appendChild(t);
-
-      gNode.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        selectNode(n.datum.id);
-      });
-      gNode.addEventListener("mouseenter", () => showTooltip(n.datum));
-      gNode.addEventListener("mouseleave", hideTooltip);
-      gNode.addEventListener("mousemove", positionTooltip);
-
-      gBand.appendChild(gNode);
-      state.nodeById.set(n.datum.id, { datum: n.datum, el: gNode, rectEl: nrect, x: n.x, y: n.y, w: n.w, h: n.h });
+      gBand.appendChild(makeNodeEl(n));
     }
 
     els.svg.appendChild(gBand);
@@ -1491,6 +1512,91 @@ function render() {
     state.selected = null;
     drawEdges();
     renderDetail(null);
+  }
+}
+
+function resolveActiveFlow() {
+  if (state.traceSeed) {
+    const c = state.classById.get(state.traceSeed);
+    const { nodes, edges } = traceFlow(state.traceSeed);
+    return { id: "trace:" + state.traceSeed, name: c ? c.name : state.traceSeed,
+             description: "", seed: state.traceSeed, nodes, edges };
+  }
+  return state.flowsById.get(state.activeFlow) || null;
+}
+
+function renderFlow() {
+  populateFlowSelect();
+  const canvasWidth = els.canvasWrap.clientWidth - 56;
+  while (els.svg.firstChild) els.svg.removeChild(els.svg.firstChild);
+
+  const flow = resolveActiveFlow();
+  if (!flow) {
+    const w = Math.max(canvasWidth, 200);
+    els.svg.setAttribute("viewBox", `0 0 ${w} 200`);
+    state.baseWidth = w; state.baseHeight = 200;
+    const txt = document.createElementNS(NS, "text");
+    txt.setAttribute("class", "summary");
+    txt.setAttribute("x", w / 2);
+    txt.setAttribute("y", 100);
+    txt.setAttribute("text-anchor", "middle");
+    txt.textContent = t("flow_empty");
+    els.svg.appendChild(txt);
+    applyZoom();
+    renderDetail(null);
+    return;
+  }
+
+  const lay = layoutFlow(flow);
+  const contentW = Math.max(lay.width, canvasWidth);
+  const contentH = Math.max(lay.height, 200);
+  els.svg.setAttribute("viewBox", `0 0 ${contentW} ${contentH}`);
+  state.baseWidth = contentW;
+  state.baseHeight = contentH;
+
+  const gEdges = document.createElementNS(NS, "g");
+  gEdges.setAttribute("id", "edges");
+
+  // flow edges are the content — always drawn
+  const pos = new Map(lay.nodes.map(n => [n.datum.id, n]));
+  for (const e of lay.edges) {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    if (a && b) gEdges.appendChild(buildFlowEdgePath(a, b));
+  }
+
+  const gNodes = document.createElementNS(NS, "g");
+  for (const n of lay.nodes) gNodes.appendChild(makeNodeEl(n));
+
+  els.svg.appendChild(gEdges);   // edges under nodes
+  els.svg.appendChild(gNodes);
+  applyZoom();
+
+  if (state.selected && state.nodeById.has(state.selected)) {
+    applySelection();
+  } else {
+    state.selected = null;
+    renderDetail(null);
+  }
+}
+
+function populateFlowSelect() {
+  const sel = els.flowSelect;
+  sel.innerHTML = "";
+  for (const f of state.flowsById.values()) {
+    const opt = document.createElement("option");
+    opt.value = f.id;
+    opt.textContent = f.description ? `${f.name} — ${f.description}` : f.name;
+    sel.appendChild(opt);
+  }
+  if (state.traceSeed) {
+    const opt = document.createElement("option");
+    opt.value = "__trace__";
+    const c = state.classById.get(state.traceSeed);
+    opt.textContent = `⌖ ${c ? c.name : state.traceSeed}`;
+    sel.appendChild(opt);
+    sel.value = "__trace__";
+  } else if (state.activeFlow) {
+    sel.value = state.activeFlow;
   }
 }
 
@@ -1533,6 +1639,7 @@ function applySelection() {
 // --------------------------------------------------------------------
 
 function drawEdges() {
+  if (state.grouping === "flow") return;  // flow edges are drawn by renderFlow and must persist
   const layer = els.svg.querySelector("#edges");
   while (layer.firstChild) layer.removeChild(layer.firstChild);
   if (!state.selected) return;
