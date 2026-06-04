@@ -1117,86 +1117,12 @@ function visibleClasses() {
 }
 
 // --------------------------------------------------------------------
-// grouping — layer bands (architecture) vs subsystem/module bands (paths)
+// grouping — layer bands (architecture). Flow mode bypasses this entirely
+// and uses its own left→right renderer (renderFlow / layoutFlow).
 // --------------------------------------------------------------------
-//
-// Both modes feed the same band renderer; only the bucketing differs. Layer
-// mode uses the predefined layers[] from code-map.json. Subsystem mode re-buckets
-// every class by the top-level module derived from its file path, so the map can
-// be read by feature/package instead of by architectural layer.
 
 function groupedLayers() {
-  return state.grouping === "subsystem" ? subsystemLayers() : visibleClasses();
-}
-
-// Leading path segments stripped before deriving a subsystem key — build/source
-// roots that carry no module meaning. Small and tunable.
-const SUBSYSTEM_NOISE = new Set([
-  "src", "main", "java", "kotlin", "scala", "source", "sources", "test", "tests",
-]);
-
-function dirSegments(path) {
-  const slash = (path || "").lastIndexOf("/");
-  const dir = slash < 0 ? "" : path.slice(0, slash);
-  return dir.split("/").map(s => s.trim().toLowerCase()).filter(Boolean);
-}
-
-function subsystemLayers() {
-  // 1. flatten all classes, applying the same core/all filter as layer mode
-  const all = [];
-  for (const L of state.raw.layers) {
-    for (const c of L.classes) {
-      if (state.view === "core" && !c.core) continue;
-      all.push(c);
-    }
-  }
-  if (!all.length) return [];
-
-  // 2-3. per-class path-dir segments (path is universal across languages), then
-  // strip leading noise roots (src/main/java/...).
-  const segLists = all.map(c => {
-    const segs = dirSegments(c.path);
-    let i = 0;
-    while (i < segs.length && SUBSYSTEM_NOISE.has(segs[i])) i++;
-    return segs.slice(i);
-  });
-
-  // 4. find the longest common leading prefix shared by ALL classes (the org/root,
-  // e.g. com/app, or a single src-less root) — the key is the first segment past it.
-  const minLen = segLists.reduce((m, s) => Math.min(m, s.length), Infinity);
-  let common = minLen;
-  for (let i = 0; i < minLen; i++) {
-    const seg = segLists[0][i];
-    if (segLists.every(s => s[i] === seg)) continue;
-    common = i;
-    break;
-  }
-  const prefix = segLists.length ? segLists[0].slice(0, common) : [];
-
-  // 5-6. bucket by the first segment past the shared prefix. A class that IS the
-  // shared prefix (nothing past it — e.g. a file sitting directly at the root that
-  // deeper files nest under) is keyed by the prefix's last segment, so it forms its
-  // own named band rather than collapsing the whole map. Only a class with no shared
-  // prefix at all falls back to "(root)".
-  const buckets = new Map();   // key -> { classes: [] }
-  all.forEach((c, idx) => {
-    const rest = segLists[idx].slice(common);
-    const key = rest.length ? rest[0]
-              : (prefix.length ? prefix[prefix.length - 1] : "(root)");
-    if (!buckets.has(key)) buckets.set(key, { classes: [] });
-    buckets.get(key).classes.push(c);
-  });
-
-  // sort by class count desc; "(root)" always last
-  const entries = [...buckets.entries()].sort((a, b) => {
-    if (a[0] === "(root)") return 1;
-    if (b[0] === "(root)") return -1;
-    return b[1].classes.length - a[1].classes.length;
-  });
-
-  return entries.map(([key, b], i) => ({
-    id: "subsystem:" + key, name: key, summary: "", order: i, classes: b.classes,
-  }));
+  return visibleClasses();
 }
 
 // --------------------------------------------------------------------
@@ -1998,13 +1924,14 @@ els.svg.addEventListener("click", () => {
   });
 })();
 
-// grouping: layer bands / subsystem bands — persisted, mirrors initView.
+// grouping: layer bands / flow pipeline — persisted, mirrors initView.
 (function initGrouping() {
   function apply(mode) {
-    state.grouping = (mode === "subsystem") ? "subsystem" : "layer";
+    state.grouping = (mode === "flow") ? "flow" : "layer";   // migrates legacy "subsystem" → "layer"
     for (const btn of els.groupToggle.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.dataset.group === state.grouping);
     }
+    els.flowSelect.hidden = (state.grouping !== "flow");
   }
   apply(Settings.get("grouping", "layer"));   // before load(), so the first render groups correctly
   els.groupToggle.addEventListener("click", (ev) => {
@@ -2012,7 +1939,15 @@ els.svg.addEventListener("click", () => {
     if (!b) return;
     apply(b.dataset.group);
     Settings.set("grouping", state.grouping);
-    state.selected = null;   // bands change; clear stale selection before re-render
+    state.selected = null;     // view changes; clear stale selection
+    state.traceSeed = null;    // leaving/entering flow mode resets any live trace
+    render();
+  });
+  els.flowSelect.addEventListener("change", (ev) => {
+    if (ev.target.value === "__trace__") return;  // the synthetic current-trace entry
+    state.traceSeed = null;
+    state.activeFlow = ev.target.value;
+    state.selected = null;
     render();
   });
 })();
