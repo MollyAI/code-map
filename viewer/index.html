@@ -501,6 +501,12 @@ body.light .theme-toggle .icon-moon { display: none; }
 .flow-select[hidden] { display: none; }
 .node.flow-hub rect { stroke-dasharray: 4 3; opacity: 0.55; }
 .node.flow-core rect { stroke: var(--accent); stroke-width: 1.8; }
+.trace-btn {
+  margin-top: 8px; padding: 4px 10px; font: inherit; font-size: 0.78rem;
+  background: var(--bg-1); color: var(--text-0);
+  border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+}
+.trace-btn:hover { border-color: var(--accent); }
 
 .node { cursor: pointer; }
 .node rect {
@@ -1666,6 +1672,7 @@ function renderDetail(c) {
       <div class="path-text" title="${escapeHtml(c.path + lineSuffix)}">${escapeHtml(c.path + lineSuffix)}</div>
       <button class="copy" data-copy="${escapeAttr("@" + c.path + lineSuffix)}">${escapeHtml(t("copy"))}</button>
     </div>
+    ${state.grouping === "flow" ? `<button class="trace-btn" data-trace="${escapeAttr(c.id)}">${escapeHtml(t("trace_from_here"))}</button>` : ""}
 
     ${desc
         ? `<p class="description">${escapeHtml(desc)}</p>`
@@ -1717,6 +1724,10 @@ function renderDetail(c) {
       btn.textContent = t("failed");
       setTimeout(() => { btn.textContent = t("copy"); }, 1400);
     });
+  });
+
+  els.detailBody.querySelector(".trace-btn")?.addEventListener("click", (ev) => {
+    traceFromNode(ev.currentTarget.getAttribute("data-trace"));
   });
 
   els.detailBody.querySelectorAll(".edge-row[data-target]").forEach(row => {
