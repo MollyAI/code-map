@@ -941,6 +941,8 @@ function onLoaded() {
   normalizeIds(d);
   renderLangStats(d);
   buildEdgeIndex();
+  buildClassIndex();
+  buildFlowIndex();
   render();
 }
 
@@ -1035,6 +1037,68 @@ function buildEdgeIndex() {
     state.edgesFromIdx.get(e.from).push(e);
     if (!state.edgesToIdx.has(e.to)) state.edgesToIdx.set(e.to, []);
     state.edgesToIdx.get(e.to).push(e);
+  }
+}
+
+// id -> class datum, and the set of hub ids — both consumed by flow mode.
+function buildClassIndex() {
+  state.classById.clear();
+  state.hubIds.clear();
+  for (const L of state.raw.layers) {
+    for (const c of L.classes) {
+      state.classById.set(c.id, c);
+      if (c.hub) state.hubIds.add(c.id);
+    }
+  }
+}
+
+// Forward BFS over 'uses' edges, mirroring scripts/lib/flows.py:trace_flow.
+// Hubs are leaves (not expanded) unless they are the seed. Depth-capped.
+function traceFlow(seedId) {
+  const visited = new Set([seedId]);
+  const nodes = [seedId];
+  const edges = [];
+  const depth = new Map([[seedId, 0]]);
+  const queue = [seedId];
+  while (queue.length) {
+    const u = queue.shift();
+    if (u !== seedId && state.hubIds.has(u)) continue;
+    if (depth.get(u) >= state.flowMaxDepth) continue;
+    const outs = (state.edgesFromIdx.get(u) || []).filter(e => e.kind === "uses");
+    for (const e of outs) {
+      const v = e.to;
+      if (!state.classById.has(v) || visited.has(v)) continue;
+      visited.add(v);
+      depth.set(v, depth.get(u) + 1);
+      nodes.push(v);
+      edges.push({ from: u, to: v });
+      queue.push(v);
+    }
+  }
+  return { nodes, edges };
+}
+
+// Synthesize flows client-side when the JSON has none (old builds): one per
+// entry-point class, traced with the same rules. New builds use raw.flows.
+function synthesizeFlows() {
+  const out = [];
+  for (const [id, c] of state.classById) {
+    const tags = Array.isArray(c.tags) ? c.tags : [];
+    if (!tags.includes("entry-point")) continue;
+    const { nodes, edges } = traceFlow(id);
+    out.push({ id: "flow:" + id, name: c.name, description: "",
+               seed: id, nodes, edges, confidence: "high" });
+  }
+  return out;
+}
+
+function buildFlowIndex() {
+  state.flowsById.clear();
+  const flows = (state.raw.flows && state.raw.flows.length)
+    ? state.raw.flows : synthesizeFlows();
+  for (const f of flows) state.flowsById.set(f.id, f);
+  if (state.activeFlow == null || !state.flowsById.has(state.activeFlow)) {
+    state.activeFlow = flows.length ? flows[0].id : null;
   }
 }
 
