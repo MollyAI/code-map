@@ -97,6 +97,13 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 
 6. Mark entry points: any class with `MainActivity`, `*Application`, `App`, `main`, or path containing `/cmd/` should have `core: true` and `tags` include `"entry-point"`.
 
+6b. **Name and curate flows.** Phase 1 wrote `flows[]` — one candidate flow per entry point, each `{id, name, description, seed, nodes, edges, confidence:"high"}` where `name` is just the seed's function name. For each flow worth surfacing:
+   - Rewrite `name` to a human flow name ("启动流程" / "Startup", "渲染流程" / "Render").
+   - Write a one-sentence `description` (shown as the dropdown subtitle).
+   - Optionally change `seed` or add a new flow whose seed is not an entry point (e.g. a render loop) — recompute `nodes`/`edges` by walking `uses`-edges forward from the seed, treating any class with `hub:true` as a leaf, capped at ~6 hops.
+   - Mark any flow you changed `confidence: "ai-inferred"`.
+   Drop flows that are noise (e.g. a trivial entry point with a one-node flow) by omitting them from `flows[]`.
+
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied.
 
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
