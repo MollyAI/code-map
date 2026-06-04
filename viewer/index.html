@@ -1301,6 +1301,85 @@ function layoutLayers(layers, canvasWidth) {
   return { bands, totalHeight: y };
 }
 
+// Left→right layered DAG layout for a single flow. Columns = hop distance from
+// the seed (computed over the flow's own edges, which form a tree). Within a
+// column, nodes stack vertically and the column is centred against the tallest.
+function layoutFlow(flow) {
+  const COL_GAP = Math.round(64 * state.fontScale);
+  const ROW_GAP = LAYOUT.nodeGapY + 6;
+  const PAD_X = LAYOUT.bandPadX;
+  const PAD_Y = LAYOUT.bandPadTop;
+
+  // resolve ids → data; drop any that aren't in the map
+  const data = flow.nodes.map(id => state.classById.get(id)).filter(Boolean);
+  if (!data.length) return { nodes: [], edges: [], width: 0, height: 0 };
+
+  // depth via BFS over flow.edges from the seed
+  const children = new Map();
+  for (const e of flow.edges) {
+    if (!children.has(e.from)) children.set(e.from, []);
+    children.get(e.from).push(e.to);
+  }
+  const depth = new Map([[flow.seed, 0]]);
+  const q = [flow.seed];
+  while (q.length) {
+    const u = q.shift();
+    for (const v of (children.get(u) || [])) {
+      if (!depth.has(v)) { depth.set(v, depth.get(u) + 1); q.push(v); }
+    }
+  }
+
+  // bucket by depth
+  const cols = new Map();   // depth -> [datum]
+  for (const c of data) {
+    const dp = depth.has(c.id) ? depth.get(c.id) : 0;
+    if (!cols.has(dp)) cols.set(dp, []);
+    cols.get(dp).push(c);
+  }
+  const depths = [...cols.keys()].sort((a, b) => a - b);
+
+  // column widths + x positions
+  const colW = new Map();
+  for (const dp of depths) {
+    colW.set(dp, Math.max(...cols.get(dp).map(c => nodeWidth(c.name, c.importance))));
+  }
+  const colX = new Map();
+  let x = PAD_X;
+  for (const dp of depths) { colX.set(dp, x); x += colW.get(dp) + COL_GAP; }
+  const totalWidth = x - COL_GAP + PAD_X;
+
+  // column heights → vertical centring
+  const colH = new Map();
+  for (const dp of depths) {
+    const n = cols.get(dp).length;
+    colH.set(dp, n * LAYOUT.nodeH + (n - 1) * ROW_GAP);
+  }
+  const maxColH = Math.max(...depths.map(dp => colH.get(dp)));
+  const totalHeight = maxColH + PAD_Y * 2;
+
+  const positioned = [];
+  for (const dp of depths) {
+    const items = cols.get(dp);
+    let y = PAD_Y + (maxColH - colH.get(dp)) / 2;
+    for (const c of items) {
+      positioned.push({ datum: c, x: colX.get(dp), y, w: colW.get(dp), h: LAYOUT.nodeH });
+      y += LAYOUT.nodeH + ROW_GAP;
+    }
+  }
+  return { nodes: positioned, edges: flow.edges, width: totalWidth, height: totalHeight };
+}
+
+// Horizontal cubic from the right edge of `from` to the left edge of `to`.
+function buildFlowEdgePath(from, to) {
+  const p1 = { x: from.x + from.w, y: from.y + from.h / 2 };
+  const p2 = { x: to.x,           y: to.y + to.h / 2     };
+  const dx = (p2.x - p1.x) * 0.5;
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("class", "edge active out");
+  path.setAttribute("d", `M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`);
+  return path;
+}
+
 function render() {
   state.nodeById.clear();
   const layers = groupedLayers();
