@@ -6,10 +6,11 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 # /code-map:build
 
-You are running the `code-map` build pipeline. This command produces `.code-map/code-map.json` from scratch. The pipeline has two phases here:
+You are running the `code-map` build pipeline. This command produces `.code-map/code-map.json` from scratch. The pipeline:
 
-- **Phase 1 (mechanical)** — Python walks the project, tree-sitter parses each source file, builds the dependency graph, assigns layers.
-- **Phase 2 (semantic, this is you)** — review Phase 1's `raw_structure.json` and `unresolved.json`, then write the final `code-map.json` with bilingual descriptions (core declarations only), layer overrides, and entry-point markers.
+- **Phase 0 (architecture, this is you)** — read `README.md` + the directory tree + the detector's advisory scores, then pick & tweak one of the bundled templates and write `.code-map/architecture.yml`.
+- **Phase 1 (mechanical)** — Python walks the project, tree-sitter parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
+- **Phase 2 (semantic, this is you)** — review Phase 1's `raw_structure.json` and `unresolved.json`, confirm/correct the architecture against the real code, then write the final `code-map.json` with bilingual descriptions (core declarations only), layer overrides, and entry-point markers.
 
 To view the resulting map in a browser, run `/code-map:run` after this completes.
 
@@ -17,17 +18,37 @@ If `$1` is non-empty, treat the whole argument string as a **focus hint** for Ph
 
 ---
 
-## Phase 1: install grammars + run analyzer
+## Phase 0: propose the architecture (your job)
 
-First, wipe any previous Phase 1 output so this is a clean rebuild:
+First, wipe any previous build output for a clean rebuild:
 
-!rm -f .code-map/raw_structure.json
+!rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detection.json
 
-Ensure tree-sitter grammars for languages present in this project are installed. The bootstrap script scans extensions and only installs what's needed, caching into `${CLAUDE_PLUGIN_DATA}/wheels`:
+Ensure tree-sitter grammars + PyYAML are installed (Phase 0's detection needs PyYAML; the script only installs what's missing, caching into `${CLAUDE_PLUGIN_DATA}/wheels`):
 
 !python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/bootstrap.py" --root .
 
-Then run the analyzer:
+**Guard:** if `.code-map/layers.yml` exists, the user has hand-authored a layer override — **skip the rest of Phase 0** (do not write `architecture.yml`) and go straight to Phase 1.
+
+Otherwise, get the deterministic detector's signal scores as advisory input:
+
+!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --detect-only
+
+Then propose the architecture:
+
+1. `Read` `README.md` (and any other obvious top-level docs — `ARCHITECTURE.md`, `docs/`).
+2. List the top-level directories (`Glob` `*/` or `ls`).
+3. `Read` `.code-map/detection.json` — the detector's `chosen`, `scores`, and `evidence`.
+4. Pick the best-fitting template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml`, weighing the README's stated intent + the directory shape + the detector scores. The menu is the 13 bundled shapes (`ls ${CLAUDE_PLUGIN_ROOT}/templates`). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
+5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
+
+Phase 1 will pick this file up automatically (it wins over detection but loses to a user `layers.yml`).
+
+---
+
+## Phase 1: run analyzer
+
+Run the analyzer (it reads `.code-map/architecture.yml` from Phase 0, else falls back to detection):
 
 !python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/raw_structure.json
 
@@ -41,7 +62,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 
 ## Phase 2: semantic refinement (your job)
 
-0. **Verify the architecture.** Read `project.template_detection` from `raw_structure.json` — it carries `chosen`, `scores`, and `evidence` from Phase 1's signal-based detection. If it instead carries a `reason` (e.g. `"pyyaml-missing"`, `"no-templates-dir"`, `"user-override"`), then signal-based detection did **not** run and `chosen` is just a fallback — treat the architecture as unverified and lean toward globbing + swapping. Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
+0. **Confirm the architecture.** Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"user-override"` means a hand-authored `layers.yml` is in force — accept it. `"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
    - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
