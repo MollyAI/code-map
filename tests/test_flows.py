@@ -83,3 +83,51 @@ class TestTraceFlow(unittest.TestCase):
         # d entered once (via b, the first-seen path); the c→d join edge is omitted
         self.assertIn({"from": "b", "to": "d"}, edges)
         self.assertNotIn({"from": "c", "to": "d"}, edges)
+
+
+class TestBuildFlows(unittest.TestCase):
+    def _decls(self, names):
+        out = []
+        for n in names:
+            d = Declaration(name=n, namespace="app", kind="function", path="app.py", line=1)
+            out.append(d)
+        return out
+
+    def test_one_flow_per_seed_with_pruned_membership(self):
+        decls = self._decls(["main", "setup", "render", "log"])
+        edges = [
+            {"from": "app.main", "to": "app.setup", "kind": "uses"},
+            {"from": "app.setup", "to": "app.render", "kind": "uses"},
+            {"from": "app.render", "to": "app.log", "kind": "uses"},
+            {"from": "app.setup", "to": "app.log", "kind": "uses"},
+        ]
+        hub_ids = {"app.log"}
+        result = flows.build_flows(["app.main"], decls, edges, hub_ids, max_depth=6)
+        self.assertEqual(len(result), 1)
+        f = result[0]
+        self.assertEqual(f["id"], "flow:app.main")
+        self.assertEqual(f["name"], "main")
+        self.assertEqual(f["seed"], "app.main")
+        self.assertEqual(f["confidence"], "high")
+        self.assertEqual(f["description"], "")
+        self.assertEqual(set(f["nodes"]), {"app.main", "app.setup", "app.render", "app.log"})
+        # log is a hub leaf: reached once, never expanded
+        self.assertIn("app.log", f["nodes"])
+
+    def test_extends_edges_ignored(self):
+        decls = self._decls(["main", "Base"])
+        edges = [{"from": "app.main", "to": "app.Base", "kind": "extends"}]
+        result = flows.build_flows(["app.main"], decls, edges, set(), max_depth=6)
+        self.assertEqual(result[0]["nodes"], ["app.main"])  # extends not traversed
+
+    def test_unknown_seed_skipped(self):
+        decls = self._decls(["main"])
+        result = flows.build_flows(["app.ghost"], decls, [], set(), max_depth=6)
+        self.assertEqual(result, [])
+
+    def test_entry_point_with_no_outgoing_edges_emits_single_node_flow(self):
+        decls = self._decls(["main"])
+        result = flows.build_flows(["app.main"], decls, [], set(), max_depth=6)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["nodes"], ["app.main"])
+        self.assertEqual(result[0]["edges"], [])
