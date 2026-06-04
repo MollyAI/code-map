@@ -57,6 +57,11 @@ def main():
                     help="Top fraction per layer to mark as core (default 0.25)")
     ap.add_argument("--core-max-per-layer", type=int, default=40,
                     help="Absolute cap on core declarations per layer (0 = no cap, default 40)")
+    ap.add_argument("--flow-hub-percentile", type=float, default=0.05,
+                    help="Top fraction by global in-degree to treat as flow hubs "
+                         "(non-expandable leaves; default 0.05)")
+    ap.add_argument("--flow-max-depth", type=int, default=6,
+                    help="Max hops a flow expands from its entry point (default 6)")
     ap.add_argument("--skip", action="append", default=None, metavar="DIR",
                     help="Extra directory name to skip (repeatable); merges with the defaults "
                          "and .code-map/skip-dirs.txt")
@@ -74,7 +79,7 @@ def main():
 
     # Imports must come after the sys.path setup above.
     from scripts.lib.extractors import extractor_for
-    from scripts.lib import core, layers
+    from scripts.lib import core, layers, flows as flowmod
     from scripts.lib.skipdirs import load_skip_dirs
 
     # plugin_root resolves to this script's grandparent (the code-map repo).
@@ -130,6 +135,12 @@ def main():
     core.mark_core(decls, percentile=args.core_percentile,
                    max_per_layer=args.core_max_per_layer)
 
+    # Flows: mark high-in-degree hubs, then build one candidate flow per entry point.
+    hub_ids = flowmod.mark_hubs(decls, percentile=args.flow_hub_percentile)
+    entry_seeds = [d.qualified_name for d in decls if core.is_entry_point(d)]
+    flow_list = flowmod.build_flows(entry_seeds, decls, edges, hub_ids,
+                                    max_depth=args.flow_max_depth)
+
     project_meta = {
         "name": args.name or root.name,
         "root": str(root),
@@ -150,6 +161,7 @@ def main():
         edges=edges,
         layers=[{k: l[k] for k in ("id", "name", "order", "summary")} for l in layer_config],
         project_meta=project_meta,
+        flows=flow_list,
     )
 
     with open(out_path, "w") as f:
@@ -176,6 +188,7 @@ def main():
         ranked_str = ", ".join(f"{tid}={sc}" for tid, sc in ranked)
         print(f"[analyze] template: {detection['chosen']} (top: {ranked_str})")
     print(f"[analyze] files scanned: {len(files)}  declarations: {len(decls)}  edges: {len(edges)}")
+    print(f"[analyze] flows: {len(flow_list)} (entry-point seeds)")
     print(f"[analyze] skipped/low-confidence: {len(all_skipped)} entries")
     print(f"[analyze] wrote {out_path}")
     print(f"[analyze] wrote {unresolved_path}")
