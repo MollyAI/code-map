@@ -8,8 +8,8 @@ layers:
   - id: core
     name: Core / Host
     order: 0
-    summary: "The kernel/host that loads and coordinates plugins"
-    path_segments: [core, host, kernel, engine, runtime]
+    summary: "The kernel/host that loads and coordinates plugins (incl. RTOS kernel/arch/HAL)"
+    path_segments: [core, host, kernel, engine, runtime, arch, kal, hal, bsp]
     name_suffixes: [Kernel, Host, Engine, Runtime]
   - id: contracts
     name: Contracts / API
@@ -20,9 +20,10 @@ layers:
   - id: plugins
     name: Plugins / Extensions
     order: 2
-    summary: "Plugins, extensions, add-ons implementing the contracts"
-    path_segments: [plugin, plugins, extension, extensions, addon, addons, modules, integrations]
-    name_suffixes: [Plugin, Extension, Addon, Integration]
+    summary: "Plugins, extensions, components, drivers, subsystems implementing the contracts"
+    path_segments: [plugin, plugins, extension, extensions, addon, addons, modules, integrations,
+                    component, components, driver, drivers, subsystem, subsystems]
+    name_suffixes: [Plugin, Extension, Addon, Integration, Driver]
   - id: infrastructure
     name: Infrastructure
     order: 3
@@ -34,6 +35,10 @@ signals:
   files:
     - {match: "*plugin.json",  weight: 3}
     - {match: "manifest.json", weight: 2}
+    # RTOS / embedded kernel build systems (OpenHarmony LiteOS, Zephyr, NuttX, …)
+    - {match: "Kconfig",       weight: 3}
+    - {match: "BUILD.gn",      weight: 3}
+    - {match: "bundle.json",   weight: 2}
   dependencies:
     - {match: "pf4j",      weight: 5}
     - {match: "org.osgi",  weight: 4}
@@ -45,4 +50,13 @@ signals:
     - {match: "extensions", weight: 4}
     - {match: "plugin",     weight: 3}
     - {match: "extension",  weight: 3}
+    # Microkernel/RTOS kernel-tree directory names. A plain components/ dir is
+    # intentionally NOT a signal here (it would steal frontend/ECS projects);
+    # these names are unambiguous kernel markers.
     - {match: "kernel",     weight: 4}
+    - {match: "arch",       weight: 3}
+    - {match: "kal",        weight: 3}
+    - {match: "drivers",    weight: 3}
+    - {match: "subsystems", weight: 3}
+    - {match: "hal",        weight: 2}
+    - {match: "bsp",        weight: 2}

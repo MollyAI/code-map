@@ -44,6 +44,24 @@ Scans your project, picks a fitting architectural template (Clean Architecture, 
 
 ---
 
+## Configuration / 配置
+
+Everything works with zero config — these are optional, project-local overrides (all under `.code-map/`):
+
+- **`layers.yml`** — define your own layers and bypass automatic template detection entirely.
+- **`skip-dirs.txt`** — one directory name per line to skip during analysis; `#` for comments, and a leading `-` *un-skips* a default (e.g. `-testsuites` to include a project whose real source lives under `testsuites/`). The defaults already skip the usual `node_modules`, `build`, `test`/`tests`/`testsuites`, etc.
+
+Template auto-detection covers the 13 shapes above, including **C / RTOS kernels** (recognizes `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` and the like). Phase 2 always verifies the pick against the real code.
+
+零配置即可运行——以下均为可选的、项目级覆盖项（都放在 `.code-map/` 下）：
+
+- **`layers.yml`** —— 自定义分层，完全跳过自动模板检测。
+- **`skip-dirs.txt`** —— 每行一个要在分析时跳过的目录名；`#` 为注释，行首 `-` 表示*取消*某个默认跳过项（例如 `-testsuites`，用于真实源码就放在 `testsuites/` 下的项目）。默认已跳过 `node_modules`、`build`、`test`/`tests`/`testsuites` 等常见目录。
+
+模板自动检测覆盖上述 13 种形态，包括 **C / RTOS 内核**（可识别 `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` 等信号）。第 2 阶段始终会对照真实代码校验所选模板。
+
+---
+
 ## Install / 安装
 
 **Prerequisites:** Claude Code ≥ 2.x and Python 3.10+. The first `/code-map:build` lazily installs the tree-sitter grammars it needs — no manual `pip install`.

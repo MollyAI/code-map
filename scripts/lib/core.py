@@ -3,6 +3,7 @@ Language-agnostic graph construction, importance scoring, and core
 identification. Operates only on Declaration objects from extractors.
 """
 from __future__ import annotations
+import math
 from collections import defaultdict
 from .extractors.base import Declaration
 
@@ -54,12 +55,12 @@ def build_graph(declarations: list[Declaration]) -> tuple[list[Declaration], lis
         targets = set()
         # 1) Supertypes — strong signal
         for raw in src_decl.supertypes:
-            target = _resolve(raw, by_qname, by_short)
+            target = _resolve(raw, by_qname, by_short, src_decl)
             if target and target is not src_decl:
                 targets.add((target.qualified_name, "extends"))
         # 2) refs (imports + body refs)
         for raw in src_decl.refs:
-            target = _resolve(raw, by_qname, by_short)
+            target = _resolve(raw, by_qname, by_short, src_decl)
             if target and target is not src_decl:
                 targets.add((target.qualified_name, "uses"))
 
@@ -71,14 +72,20 @@ def build_graph(declarations: list[Declaration]) -> tuple[list[Declaration], lis
             in_deg[tgt_qname] += 1
             out_deg[src_decl.qualified_name] += 1
 
-    # Score importance.
+    # Score importance. Normalize degrees on a log scale so a single
+    # super-hub (e.g. a kernel's LOS_TaskDelete with in_degree 420) doesn't
+    # crush the entire long tail toward 0 — linear `deg/max_deg` made p90
+    # importance ~0.005 on large C kernels, collapsing the distribution to
+    # near-binary. log1p keeps it monotonic, maps 0→0 and max→1.
     max_in = max(in_deg.values(), default=1)
     max_out = max(out_deg.values(), default=1)
+    denom_in = math.log1p(max_in)
+    denom_out = math.log1p(max_out)
     for d in declarations:
         ind = in_deg[d.qualified_name]
         outd = out_deg[d.qualified_name]
-        in_norm = ind / max_in if max_in else 0.0
-        out_norm = outd / max_out if max_out else 0.0
+        in_norm = math.log1p(ind) / denom_in if denom_in else 0.0
+        out_norm = math.log1p(outd) / denom_out if denom_out else 0.0
         role_boost = 1.0 if is_entry_point(d) else 0.0
         importance = 0.7 * in_norm + 0.2 * out_norm + 0.1 * role_boost
         # Cache as attributes for the serializer
@@ -92,8 +99,10 @@ def build_graph(declarations: list[Declaration]) -> tuple[list[Declaration], lis
     return declarations, edges
 
 
-def _resolve(raw: str, by_qname: dict, by_short: dict) -> Declaration | None:
-    """Try qualified, then last segment short-name."""
+def _resolve(raw: str, by_qname: dict, by_short: dict,
+             src_decl: Declaration | None = None) -> Declaration | None:
+    """Try qualified, then last-segment short-name with visibility-aware
+    disambiguation when several declarations share that short name."""
     if not raw:
         return None
     if raw in by_qname:
@@ -106,20 +115,51 @@ def _resolve(raw: str, by_qname: dict, by_short: dict) -> Declaration | None:
     candidates = by_short.get(short, [])
     if len(candidates) == 1:
         return candidates[0]
-    return None  # ambiguous or external
+    if len(candidates) > 1:
+        # Same-name collision. In C this is the rule, not the exception: many
+        # file-local `static` helpers share a name, and a name often has one
+        # externally-visible definition plus several private ones.
+        # 1) A definition in the *same file* takes precedence — covers calling
+        #    your own file-local `static` (and shadowing) correctly.
+        if src_decl is not None:
+            same_file = [c for c in candidates if c.path == src_decl.path]
+            if len(same_file) == 1:
+                return same_file[0]
+        # 2) Otherwise a cross-file ref can only reach an externally-visible
+        #    definition, so if exactly one candidate is public it's unambiguous.
+        public = [c for c in candidates
+                  if getattr(c, "visibility", "public") != "private"]
+        if len(public) == 1:
+            return public[0]
+    return None  # genuinely ambiguous or external
 
 
-def mark_core(declarations: list[Declaration], percentile: float = 0.25) -> None:
-    """Mark top-`percentile` per layer as core, plus all entry points unconditionally."""
+def mark_core(declarations: list[Declaration], percentile: float = 0.25,
+              max_per_layer: int = 40) -> None:
+    """Mark the architectural core per layer, plus all entry points.
+
+    Selection is rank-based: sort a layer by importance and take the top
+    `percentile` (capped at `max_per_layer`), but only declarations that
+    actually carry a signal (importance > 0). Entry points are always core.
+
+    Why rank-based instead of `importance >= threshold`: in a large
+    homogeneous layer — e.g. a 2500-function test suite where almost every
+    declaration has importance 0.0 — the percentile boundary lands inside the
+    zero block, so the threshold is 0.0 and `>= 0.0` marks the *entire* layer
+    core. The `importance > 0` gate also keeps in-degree-0 leaves (typical
+    test cases) out of core entirely. `max_per_layer=0` disables the cap.
+    """
     by_layer = defaultdict(list)
     for d in declarations:
         by_layer[getattr(d, "_layer", "uncategorized")].append(d)
     for layer, items in by_layer.items():
         items.sort(key=lambda d: d._importance, reverse=True)  # type: ignore[attr-defined]
         k = max(1, int(len(items) * percentile))
-        threshold = items[k-1]._importance if items else 0  # type: ignore[attr-defined]
-        for d in items:
-            d._core = d._importance >= threshold or is_entry_point(d)  # type: ignore[attr-defined]
+        if max_per_layer:
+            k = min(k, max_per_layer)
+        for i, d in enumerate(items):
+            top_k = i < k and d._importance > 0  # type: ignore[attr-defined]
+            d._core = bool(top_k or is_entry_point(d))  # type: ignore[attr-defined]
 
 
 def to_json_shape(declarations: list[Declaration], edges: list[dict],
@@ -132,6 +172,7 @@ def to_json_shape(declarations: list[Declaration], edges: list[dict],
             "id": d.qualified_name,
             "name": d.name,
             "path": d.path,
+            "line": getattr(d, "line", 0),
             "namespace": d.namespace,
             "package": d.namespace,  # legacy alias
             "kind": d.kind,

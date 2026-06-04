@@ -1449,6 +1449,8 @@ function renderDetail(c) {
   // Methods show their full signature as the title; classes show their name.
   const titleText = (isMethod && c.signature) ? c.signature : c.name;
   const fileName = (c.path || "").split("/").pop();
+  // `@path:line` is a Claude Code file reference that deep-links to the line.
+  const lineSuffix = c.line ? `:${c.line}` : "";
 
   els.detailBody.innerHTML = `
     <div>
@@ -1462,8 +1464,8 @@ function renderDetail(c) {
 
     <div class="path-row">
       <div class="path-at">@</div>
-      <div class="path-text" title="${escapeHtml(c.path)}">${escapeHtml(c.path)}</div>
-      <button class="copy" data-copy="${escapeAttr("@" + c.path)}">${escapeHtml(t("copy"))}</button>
+      <div class="path-text" title="${escapeHtml(c.path + lineSuffix)}">${escapeHtml(c.path + lineSuffix)}</div>
+      <button class="copy" data-copy="${escapeAttr("@" + c.path + lineSuffix)}">${escapeHtml(t("copy"))}</button>
     </div>
 
     ${desc

@@ -11,8 +11,11 @@ deterministic, language-agnostic, and easy to override (the user can
 drop a `.code-map/layers.yml` to bypass detection entirely).
 """
 from __future__ import annotations
+import os
 import sys
 from pathlib import Path
+
+from .skipdirs import DEFAULT_SKIP_DIRS, load_skip_dirs
 
 
 # Manifests we know how to scan for dependency names. We just concatenate
@@ -33,12 +36,9 @@ _MANIFEST_GLOBS = (
     "*.csproj", "*.vcxproj", "Package.swift", "pubspec.yaml", "CMakeLists.txt",
 )
 
-# Directory names we never recurse into when counting path signals.
-_SKIP_DIRS = {
-    ".git", ".hg", ".svn", "node_modules", "build", ".gradle", ".idea",
-    "vendor", "target", "dist", "__pycache__", ".venv", "venv", ".env",
-    ".code-map", ".pytest_cache",
-}
+# Directory names we never recurse into when counting path signals — shared
+# with analyze.py and bootstrap.py via skipdirs so all three scan one set.
+_SKIP_DIRS = DEFAULT_SKIP_DIRS
 
 # Cap per-rule path matches so a single dir name doesn't dominate scoring.
 _PATH_COUNT_CAP = 3
@@ -80,7 +80,7 @@ def detect_template(project_root: Path, templates: list[dict]) -> dict:
     evidence: list[dict] = []
 
     manifest_text = _read_manifests(project_root)
-    project_dirs = _list_project_dirs(project_root)
+    project_dirs = _list_project_dirs(project_root, load_skip_dirs(project_root))
 
     for t in templates:
         tid = t["id"]
@@ -171,14 +171,17 @@ def _read_manifests(root: Path) -> str:
     return "\n".join(blobs)
 
 
-def _list_project_dirs(root: Path) -> list[str]:
-    """All directory paths relative to root, normalized with forward slashes."""
+def _list_project_dirs(root: Path, skip: set[str]) -> list[str]:
+    """All directory paths relative to root, normalized with forward slashes.
+
+    os.walk with in-place pruning so we don't enumerate/stat the contents of
+    skipped trees (node_modules etc.) just to discard them — the old rglob('*')
+    walked everything before filtering.
+    """
     out = []
-    for path in root.rglob("*"):
-        if not path.is_dir():
-            continue
-        parts = path.relative_to(root).parts
-        if any(p in _SKIP_DIRS for p in parts):
-            continue
-        out.append("/".join(parts))
+    for dirpath, dirnames, _ in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        rel = Path(dirpath).relative_to(root)
+        if rel.parts:  # skip root itself (relative path ".")
+            out.append("/".join(rel.parts))
     return out

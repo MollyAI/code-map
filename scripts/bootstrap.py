@@ -19,6 +19,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Share the one canonical skip list with analyze.py / templates.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+try:
+    from scripts.lib.skipdirs import DEFAULT_SKIP_DIRS
+except Exception:  # pragma: no cover — defensive: keep bootstrap self-sufficient
+    DEFAULT_SKIP_DIRS = frozenset({
+        ".git", ".hg", ".svn", "node_modules", "vendor", "build", "dist",
+        "out", "target", ".gradle", ".idea", ".vscode", "__pycache__",
+        ".venv", "venv", ".env", ".pytest_cache", ".mypy_cache",
+        "test", "tests", "testsuites", "androidTest", "__tests__", ".code-map",
+    })
+
+# Lowest Python we'll attempt grammar installs on. Below this the modern
+# tree-sitter wheels won't resolve and the failure is a cryptic traceback.
+MIN_PYTHON = (3, 9)
+
 
 # Map: source extension → PyPI grammar package name
 EXTENSION_TO_PACKAGE = {
@@ -41,7 +57,18 @@ EXTENSION_TO_PACKAGE = {
     ".dart": "tree-sitter-language-pack",
 }
 
-ALWAYS = ["tree-sitter"]  # base runtime
+# Base runtime. PyYAML is here (not just lazily) because template detection and
+# the user's .code-map/layers.yml override both silently no-op without it —
+# making the plugin's whole auto-architecture feature interpreter-dependent.
+ALWAYS = ["tree-sitter", "PyYAML"]
+
+# The tree-sitter core must stay ABI-compatible with the grammar wheels. Each
+# grammar wheel declares its own `tree-sitter>=X` floor, so whenever we install
+# ANY grammar we re-resolve the core in the SAME pip transaction (and --upgrade)
+# — that lets pip move the core up to satisfy a newly added grammar. The classic
+# crash ("Incompatible Language version 15. Must be between 13 and 14") happens
+# precisely when a freshly added grammar is installed against a stale cached core.
+CORE_RUNTIME = "tree-sitter"
 
 
 def cache_dir() -> Path:
@@ -58,13 +85,12 @@ def cache_dir() -> Path:
 def scan_extensions(root: Path) -> set[str]:
     """Find all source extensions present in the project."""
     found = set()
-    skip_dirs = {".git", "node_modules", "build", ".gradle", ".idea",
-                 "vendor", "target", "dist", "__pycache__", ".venv", "venv"}
-    for path in root.rglob("*"):
-        if any(part in skip_dirs for part in path.parts):
-            continue
-        if path.is_file() and path.suffix in EXTENSION_TO_PACKAGE:
-            found.add(path.suffix)
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in DEFAULT_SKIP_DIRS]
+        for fn in filenames:
+            suffix = Path(fn).suffix
+            if suffix in EXTENSION_TO_PACKAGE:
+                found.add(suffix)
     return found
 
 
@@ -72,10 +98,15 @@ def install(packages: list[str], target: Path) -> None:
     """pip install --target into our cache dir."""
     target.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "pip", "install", "--quiet",
-           "--disable-pip-version-check", "--target", str(target), *packages]
+           "--disable-pip-version-check", "--upgrade", "--target", str(target),
+           *packages]
     print(f"[bootstrap] installing {len(packages)} packages → {target}", file=sys.stderr)
     print(f"[bootstrap] cmd: {' '.join(cmd)}", file=sys.stderr)
     subprocess.check_call(cmd)
+
+
+# PyPI distribution name → importable module name, where they differ.
+IMPORT_NAME = {"PyYAML": "yaml"}
 
 
 def needed(packages: list[str], target: Path) -> list[str]:
@@ -84,7 +115,7 @@ def needed(packages: list[str], target: Path) -> list[str]:
         sys.path.insert(0, str(target))
     out = []
     for pkg in packages:
-        mod_name = pkg.replace("-", "_")
+        mod_name = IMPORT_NAME.get(pkg, pkg.replace("-", "_"))
         if importlib.util.find_spec(mod_name) is None:
             out.append(pkg)
     return out
@@ -97,6 +128,13 @@ def main():
                     help="Print the cache dir path for sys.path injection")
     args = ap.parse_args()
 
+    if sys.version_info < MIN_PYTHON:
+        need = ".".join(map(str, MIN_PYTHON))
+        have = ".".join(map(str, sys.version_info[:3]))
+        sys.exit(f"[bootstrap] Python {need}+ required to install tree-sitter grammars; "
+                 f"this interpreter is {have} ({sys.executable}). "
+                 f"Re-run with a newer python3 (e.g. `python3.12 {Path(__file__).name} ...`).")
+
     target = cache_dir()
     root = Path(args.root).resolve()
 
@@ -105,7 +143,10 @@ def main():
 
     missing = needed(pkgs, target)
     if missing:
-        install(missing, target)
+        # Co-resolve the tree-sitter core alongside any new grammar so pip can
+        # upgrade it to a compatible ABI in one transaction (see CORE_RUNTIME).
+        install_set = sorted(set(missing) | {CORE_RUNTIME})
+        install(install_set, target)
         # Refresh import cache
         importlib.invalidate_caches()
 

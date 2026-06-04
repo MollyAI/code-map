@@ -32,24 +32,20 @@ if _WHEELS.exists() and str(_WHEELS) not in sys.path:
     sys.path.insert(0, str(_WHEELS))
 
 
-SKIP_DIRS = {
-    ".git", ".hg", ".svn", "node_modules", "build", ".gradle", ".idea",
-    "vendor", "target", "dist", "__pycache__", ".venv", "venv", ".env",
-    "test", "tests", "androidTest", "__tests__", ".code-map", ".pytest_cache",
-}
+def walk_project(root: Path, skip_dirs: set[str]):
+    """Yield Path objects for all source files we might extract.
 
-
-def walk_project(root: Path):
-    """Yield Path objects for all source files we might extract."""
+    Uses os.walk with in-place dir pruning so we never descend into skipped
+    trees (node_modules, build, testsuites, …). rglob('*') + a post-filter
+    would still enumerate and stat() everything inside those dirs.
+    """
     from scripts.lib.extractors import all_extensions
     exts = all_extensions()
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        if path.suffix in exts:
-            yield path
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        for fn in filenames:
+            if Path(fn).suffix in exts:
+                yield Path(dirpath) / fn
 
 
 def main():
@@ -59,6 +55,11 @@ def main():
                     help="Output JSON path")
     ap.add_argument("--core-percentile", type=float, default=0.25,
                     help="Top fraction per layer to mark as core (default 0.25)")
+    ap.add_argument("--core-max-per-layer", type=int, default=40,
+                    help="Absolute cap on core declarations per layer (0 = no cap, default 40)")
+    ap.add_argument("--skip", action="append", default=None, metavar="DIR",
+                    help="Extra directory name to skip (repeatable); merges with the defaults "
+                         "and .code-map/skip-dirs.txt")
     ap.add_argument("--name", default=None, help="Project display name")
     args = ap.parse_args()
 
@@ -71,13 +72,15 @@ def main():
     # Imports must come after the sys.path setup above.
     from scripts.lib.extractors import extractor_for
     from scripts.lib import core, layers
+    from scripts.lib.skipdirs import load_skip_dirs
 
     # plugin_root resolves to this script's grandparent (the code-map repo).
     # When the plugin is installed normally, $CLAUDE_PLUGIN_ROOT also points here.
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or HERE.parent)
     layer_config, detection = layers.load_config(root, plugin_root)
 
-    files = list(walk_project(root))
+    skip_dirs = load_skip_dirs(root, args.skip)
+    files = list(walk_project(root, skip_dirs))
     all_decls = []
     all_skipped = []
     parse_failures = 0
@@ -108,7 +111,8 @@ def main():
 
     # Assign layers and core flag
     layers.apply_to(decls, layer_config)
-    core.mark_core(decls, percentile=args.core_percentile)
+    core.mark_core(decls, percentile=args.core_percentile,
+                   max_per_layer=args.core_max_per_layer)
 
     project_meta = {
         "name": args.name or root.name,
@@ -120,8 +124,10 @@ def main():
         "parse_failures": parse_failures,
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
     }
-    if detection is not None:
-        project_meta["template_detection"] = detection
+    # Always present so Phase 2 (build.md step 0) can rely on it. On the
+    # fallback paths it carries a `reason` and empty scores/evidence instead
+    # of detection signals — see layers.load_config.
+    project_meta["template_detection"] = detection
 
     data = core.to_json_shape(
         declarations=decls,
@@ -146,7 +152,10 @@ def main():
 
     print(f"[analyze] root: {root}")
     print(f"[analyze] languages: {', '.join(project_meta['languages']) or '(none)'}")
-    if detection is not None:
+    if detection.get("reason"):
+        print(f"[analyze] template: {detection['chosen']} (fallback: {detection['reason']} "
+              f"— no signal-based detection; Phase 2 should verify the architecture)")
+    else:
         ranked = sorted(detection["scores"].items(), key=lambda kv: kv[1], reverse=True)[:3]
         ranked_str = ", ".join(f"{tid}={sc}" for tid, sc in ranked)
         print(f"[analyze] template: {detection['chosen']} (top: {ranked_str})")

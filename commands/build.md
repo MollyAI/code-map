@@ -41,7 +41,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 
 ## Phase 2: semantic refinement (your job)
 
-0. **Verify the architecture.** Read `project.template_detection` from `raw_structure.json` — it carries `chosen`, `scores`, and `evidence` from Phase 1's signal-based detection. Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
+0. **Verify the architecture.** Read `project.template_detection` from `raw_structure.json` — it carries `chosen`, `scores`, and `evidence` from Phase 1's signal-based detection. If it instead carries a `reason` (e.g. `"pyyaml-missing"`, `"no-templates-dir"`, `"user-override"`), then signal-based detection did **not** run and `chosen` is just a fallback — treat the architecture as unverified and lean toward globbing + swapping. Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
    - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
@@ -56,7 +56,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
    ```
    Set `customized: true` if you swapped templates or tweaked the layer set.
 
-   If `template_detection.scores` are all 0 or very low, the detector had nothing to go on — be more skeptical and more willing to swap.
+   If `template_detection.scores` are all 0 or very low (or absent, with a `reason` present), the detector had nothing to go on — be more skeptical and more willing to swap.
 
 1. `Read` `.code-map/raw_structure.json` and `.code-map/unresolved.json`.
 

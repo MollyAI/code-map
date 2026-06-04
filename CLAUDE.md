@@ -36,7 +36,7 @@ templates/                # 13 architectural shapes
 scripts/
   bootstrap.py  analyze.py  serve.py  mapctl.py
   lib/
-    core.py  layers.py  templates.py
+    core.py  layers.py  templates.py  skipdirs.py
     extractors/
       __init__.py  base.py  _common.py  _generic.py
       kotlin.py  java.py  python.py  go.py  rust.py  typescript.py
@@ -80,11 +80,15 @@ python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" run \
   --plugin-root "${CLAUDE_PLUGIN_ROOT:-.}" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer"
 python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" stop
 
-# Tune what gets marked core (default 0.25 = top quartile per layer)
-python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --core-percentile 0.15
+# Tune what gets marked core (default 0.25 = top quartile per layer, capped at 40/layer)
+python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --core-percentile 0.15 --core-max-per-layer 60
+
+# Skip extra directories beyond the defaults (repeatable). Also honors
+# .code-map/skip-dirs.txt (one name per line; a leading "-" un-skips a default).
+python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --skip generated --skip third_party
 ```
 
-`bootstrap.py` installs grammars into `${CLAUDE_PLUGIN_DATA}/wheels` (falls back to `~/.cache/code-map/wheels`) and is the only thing that ever runs `pip install`. `analyze.py` adds that wheels dir to `sys.path` so the grammars import.
+`bootstrap.py` installs grammars into `${CLAUDE_PLUGIN_DATA}/wheels` (falls back to `~/.cache/code-map/wheels`) and is the only thing that ever runs `pip install`. `analyze.py` adds that wheels dir to `sys.path` so the grammars import. `PyYAML` is in bootstrap's `ALWAYS` set (so template detection / `layers.yml` override are reliably available), and whenever any grammar is (re)installed the `tree-sitter` core is re-resolved in the same `pip --upgrade` transaction — that keeps the core's ABI compatible with a freshly added grammar (the classic "Incompatible Language version" crash is a stale cached core + a new grammar).
 
 There is no test suite, no linter config, and no build step — it's a stdlib Python script + a single HTML file.
 
@@ -107,11 +111,15 @@ That's the entire surface. Extractors return `Declaration` objects; the framewor
 
 **Lazy grammar loading.** Extractor modules are imported via `importlib.import_module` in `extractors/__init__.py:_load_module` only when their extension is actually present. A missing grammar doesn't crash the framework — the language just isn't available.
 
-**Design principle: miss rather than misidentify.** Anything tree-sitter can't parse cleanly goes to `unresolved.json` for Phase 2 review, never silently into the map. Don't add regex fallbacks to the extractors; that's what `_generic.py` and the AI Phase 2 step are for.
+**Design principle: miss rather than misidentify.** Anything tree-sitter can't parse cleanly goes to `unresolved.json` for Phase 2 review, never silently into the map. Don't add regex fallbacks to the extractors; that's what `_generic.py` and the AI Phase 2 step are for. (This is why C `#include` and macro/function-pointer dispatch deliberately do **not** synthesize edges — they'd be guesses; recovering them is Phase 2's job.)
+
+**Edge resolution, importance, core (`core.py`).** `_resolve` tries the qualified name, then the de-adorned base, then the short name. On a short-name *collision* (multiple declarations sharing a name — the norm in C, full of file-local `static` helpers) it disambiguates by real linkage semantics, not by guessing: a definition in the **same file** as the caller wins (handles calling your own `static`/shadowing); otherwise, if exactly one candidate is **public** (`Declaration.visibility != "private"`), a cross-file ref can only mean that one. This is language-agnostic — extractors set `visibility` (currently the C extractor marks `static` functions `"private"`); everything else defaults `"public"`. Importance uses **log-normalized** in/out degree (`log1p(deg)/log1p(max_deg)`) so a single super-hub (e.g. a kernel's 400-in-degree `LOS_TaskDelete`) doesn't crush the long tail toward 0. `mark_core` selects **rank-based** top-`percentile` per layer (default 0.25), capped at `--core-max-per-layer` (default 40) and gated on `importance > 0` — so a large homogeneous layer (a 2500-fn test suite where most have importance 0.0) can't have its entire contents marked core by a degenerate `>= 0.0` threshold. `Declaration.line` (1-indexed) is serialized so the viewer can deep-link via `@path:line`.
 
 **Templates & layer assignment.** Phase 1 picks an architectural template from `templates/*.yml` by signal-scoring the project — files, manifest dependencies, and directory names (see `lib/templates.py:detect_template`). The winner's `layers` become the predefined buckets; Phase 2 AI can accept, swap, or tweak.
 
-Resolution precedence (`layers.load_config`): (1) project-local `.code-map/layers.yml` wins outright and skips detection; (2) otherwise `templates/` + detection; (3) embedded clean-architecture fallback when `templates/` is missing or PyYAML is absent. PyYAML is optional throughout — every YAML path silently falls back.
+Resolution precedence (`layers.load_config`): (1) project-local `.code-map/layers.yml` wins outright and skips detection; (2) otherwise `templates/` + detection; (3) embedded clean-architecture fallback when `templates/` is missing or PyYAML is absent. PyYAML is installed by default (it's in bootstrap's `ALWAYS`), but every YAML path still falls back gracefully if it's somehow missing. **`load_config` always returns a detection dict — never `None`.** On the fallback/override paths that dict carries a `reason` (`"pyyaml-missing"`, `"no-templates-dir"`, `"user-override"`, …) with empty `scores`/`evidence`, so `project.template_detection` is always present for the Phase 2 contract; when `reason` is set, signal-based detection did *not* run and Phase 2 should treat the architecture as unverified.
+
+**One canonical skip list (`lib/skipdirs.py`).** `analyze.py` (the Phase-1 walk), `templates.py` (detection's directory scan), and `bootstrap.py` (grammar selection) all pull `DEFAULT_SKIP_DIRS` from `skipdirs.py` so they scan a consistent file set — previously each kept a divergent literal (e.g. only `analyze` skipped `test/`, none skipped `testsuites/`, so test-heavy repos flooded the graph and polluted `core`). Per-project tuning without code edits: a repeatable `--skip DIR` CLI flag and `.code-map/skip-dirs.txt` (one name per line; `#` comments; a leading `-` *removes* a default). All three walkers use `os.walk` with in-place dir pruning so skipped trees are never descended into.
 
 Within a template, `layers.assign_layer` reverses path + namespace segments so deeper packages outweigh prefixes (e.g. `app/domain/order/data/...` lands in `data`, not `domain`). First pass matches `path_segments`, second pass matches `name_suffixes`, fallback is `uncategorized` (auto-appended if a template omits it).
 

@@ -33,6 +33,19 @@ def _has_body(node) -> bool:
     return any(c.type in _BODY_FIELDS for c in node.children)
 
 
+def _is_static(node, src) -> bool:
+    """True if a `static` storage-class specifier precedes this definition.
+
+    `static` gives a function internal linkage (file-local), so a call from
+    another translation unit provably cannot reach it — the resolver uses this
+    to break same-name ambiguity (kernels are full of file-local `static`
+    helpers that collide with one externally-visible definition of the name)."""
+    for c in node.children:
+        if c.type == "storage_class_specifier" and text_of(c, src) == "static":
+            return True
+    return False
+
+
 def _declarator_name(node, src):
     """Walk a (possibly nested) declarator chain to the leaf identifier.
 
@@ -121,5 +134,6 @@ def parse(path: Path, src: bytes, project_root: Path) -> ParseResult:
                 path=rel, line=c.start_point[0]+1,
                 refs=_body_refs(c, src) + [i.qualified for i in imports if i.qualified],
                 loc=loc_of(c), signature=signature_of(c, src),
+                visibility="private" if _is_static(c, src) else "public",
             ))
     return ParseResult(declarations=decls, imports=imports, skipped=skipped)

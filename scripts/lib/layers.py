@@ -71,17 +71,22 @@ DEFAULT_CONFIG = _EMBEDDED_FALLBACK + [_UNCATEGORIZED]
 
 
 def load_config(project_root: Path, plugin_root: Optional[Path] = None
-                ) -> tuple[list[dict], Optional[dict]]:
-    """Return (layer_config, detection_result | None).
+                ) -> tuple[list[dict], dict]:
+    """Return (layer_config, detection_result).
 
     Precedence:
       1. <project_root>/.code-map/layers.yml — user override.
       2. <plugin_root>/templates/*.yml + detection.
       3. Embedded fallback (clean-architecture).
+
+    The detection result is ALWAYS a dict so Phase 2 (build.md step 0) can rely
+    on `project.template_detection` existing. On the override and fallback paths
+    it carries a `reason` (e.g. "user-override", "pyyaml-missing") with empty
+    `scores`/`evidence` rather than signal-based detection.
     """
     override = _load_user_override(project_root)
     if override is not None:
-        return _ensure_uncategorized(override), None
+        return _ensure_uncategorized(override), _fallback_detection("custom", "user-override")
 
     if plugin_root is not None:
         tpls = _templates.load_templates(plugin_root)
@@ -90,7 +95,26 @@ def load_config(project_root: Path, plugin_root: Optional[Path] = None
             chosen = next((t for t in tpls if t["id"] == detection["chosen"]), tpls[0])
             return _ensure_uncategorized(list(chosen["layers"])), detection
 
-    return list(DEFAULT_CONFIG), None
+    reason = _no_templates_reason(plugin_root)
+    return list(DEFAULT_CONFIG), _fallback_detection("clean-architecture", reason)
+
+
+def _fallback_detection(chosen: str, reason: str) -> dict:
+    """A detection-shaped dict for the non-detection paths. Same keys as
+    templates.detect_template plus `reason`, so downstream code is uniform."""
+    return {"chosen": chosen, "scores": {}, "evidence": [], "reason": reason}
+
+
+def _no_templates_reason(plugin_root: Optional[Path]) -> str:
+    if plugin_root is None:
+        return "no-plugin-root"
+    if not (plugin_root / "templates").is_dir():
+        return "no-templates-dir"
+    try:
+        import yaml  # type: ignore  # noqa: F401
+    except ImportError:
+        return "pyyaml-missing"
+    return "no-valid-templates"
 
 
 def _load_user_override(project_root: Path) -> Optional[list[dict]]:

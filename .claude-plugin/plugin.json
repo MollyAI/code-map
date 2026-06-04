@@ -1,7 +1,7 @@
 {
   "name": "code-map",
   "displayName": "Code Map",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Generate an interactive architectural map of any codebase — multi-language (Kotlin, Java, Python, Go, Rust, TypeScript/JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), tree-sitter powered, served on localhost.",
   "author": {
     "name": "SkyKai"

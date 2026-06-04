@@ -28,6 +28,7 @@ class Declaration:
     supertypes: list[str] = field(default_factory=list)
     refs: list[str] = field(default_factory=list)     # raw identifier names for edge resolution
     confidence: str = "high"                     # "high" | "low" | "ai-inferred"
+    visibility: str = "public"                   # "public" | "private" (file-local, e.g. C `static`); used to disambiguate same-name edges
     tags: list[str] = field(default_factory=list)
     language: str = ""                           # set by the framework
     loc: int = 0                                 # lines of code = end_line - start_line + 1
