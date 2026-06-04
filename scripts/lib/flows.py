@@ -35,7 +35,7 @@ def mark_hubs(declarations: list[Declaration], percentile: float = 0.05) -> set[
     return hub_ids
 
 
-def trace_flow(seed: str, adjacency: dict, hub_ids: set[str],
+def trace_flow(seed: str, adjacency: dict[str, list[str]], hub_ids: set[str],
                max_depth: int = 6) -> tuple[list[str], list[dict]]:
     """Forward BFS from `seed` over `adjacency` (from → [to], built from
     'uses' edges). A hub node is included but not expanded (leaf) — unless it
@@ -73,14 +73,18 @@ def build_flows(seeds: list[str], declarations: list[Declaration],
     real declarations. An entry point with no outgoing edges yields a valid
     single-node flow (an honest "no downstream calls resolved" result).
     """
-    adjacency: dict = defaultdict(list)
+    adjacency: dict[str, list[str]] = defaultdict(list)
     for e in edges:
         if e.get("kind") == "uses":
             adjacency[e["from"]].append(e["to"])
 
     by_qname = {d.qualified_name: d for d in declarations}
     out: list[dict] = []
+    seen_seeds: set[str] = set()
     for seed in seeds:
+        if seed in seen_seeds:
+            continue                      # dedup: one flow per id, even if a name collides
+        seen_seeds.add(seed)
         decl = by_qname.get(seed)
         if decl is None:
             continue

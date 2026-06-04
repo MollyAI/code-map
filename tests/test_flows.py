@@ -60,6 +60,11 @@ class TestTraceFlow(unittest.TestCase):
         self.assertEqual(edges, [{"from": "a", "to": "hub"}])  # but not expanded
         self.assertNotIn("x", nodes)
 
+    def test_isolated_seed_returns_single_node(self):
+        nodes, edges = flows.trace_flow("a", {}, set(), max_depth=6)  # seed absent from adjacency
+        self.assertEqual(nodes, ["a"])
+        self.assertEqual(edges, [])
+
     def test_seed_that_is_a_hub_still_expands(self):
         adj = self._adj([("hub", "x"), ("hub", "y")])
         nodes, _ = flows.trace_flow("hub", adj, {"hub"}, max_depth=6)
@@ -113,6 +118,11 @@ class TestBuildFlows(unittest.TestCase):
         self.assertEqual(set(f["nodes"]), {"app.main", "app.setup", "app.render", "app.log"})
         # log is a hub leaf: reached once, never expanded
         self.assertIn("app.log", f["nodes"])
+
+    def test_duplicate_seeds_produce_one_flow(self):
+        decls = self._decls(["main"])
+        result = flows.build_flows(["app.main", "app.main"], decls, [], set(), max_depth=6)
+        self.assertEqual([f["id"] for f in result], ["flow:app.main"])  # deduped, no id collision
 
     def test_extends_edges_ignored(self):
         decls = self._decls(["main", "Base"])
