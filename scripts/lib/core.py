@@ -163,7 +163,8 @@ def mark_core(declarations: list[Declaration], percentile: float = 0.25,
 
 
 def to_json_shape(declarations: list[Declaration], edges: list[dict],
-                  layers: list[dict], project_meta: dict) -> dict:
+                  layers: list[dict], project_meta: dict,
+                  flows: list[dict] | None = None) -> dict:
     """Serialize into the format the visualization expects."""
     classes_by_layer = defaultdict(list)
     for d in declarations:
@@ -184,6 +185,7 @@ def to_json_shape(declarations: list[Declaration], edges: list[dict],
             "method_count": getattr(d, "method_count", 0),
             "importance": getattr(d, "_importance", 0.0),
             "core": bool(getattr(d, "_core", False)),
+            "hub": bool(getattr(d, "_hub", False)),
             "in_degree": getattr(d, "_in_degree", 0),
             "out_degree": getattr(d, "_out_degree", 0),
             "confidence": d.confidence,
@@ -197,4 +199,5 @@ def to_json_shape(declarations: list[Declaration], edges: list[dict],
             for layer_spec in layers
         ],
         "edges": edges,
+        "flows": flows or [],
     }
