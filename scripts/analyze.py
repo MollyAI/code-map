@@ -61,6 +61,9 @@ def main():
                     help="Extra directory name to skip (repeatable); merges with the defaults "
                          "and .code-map/skip-dirs.txt")
     ap.add_argument("--name", default=None, help="Project display name")
+    ap.add_argument("--detect-only", action="store_true",
+                    help="Run only template detection; write detection.json next "
+                         "to --out and skip extraction (used by Phase 0)")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -78,6 +81,19 @@ def main():
     # When the plugin is installed normally, $CLAUDE_PLUGIN_ROOT also points here.
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or HERE.parent)
     layer_config, detection = layers.load_config(root, plugin_root)
+
+    if args.detect_only:
+        detect_path = out_path.parent / "detection.json"
+        with open(detect_path, "w") as f:
+            json.dump(detection, f, indent=2)
+        if detection.get("reason"):
+            print(f"[analyze] template: {detection['chosen']} (fallback: {detection['reason']})")
+        else:
+            ranked = sorted(detection["scores"].items(), key=lambda kv: kv[1], reverse=True)[:3]
+            ranked_str = ", ".join(f"{tid}={sc}" for tid, sc in ranked)
+            print(f"[analyze] template: {detection['chosen']} (top: {ranked_str})")
+        print(f"[analyze] wrote {detect_path} (detect-only; skipped extraction)")
+        return
 
     skip_dirs = load_skip_dirs(root, args.skip)
     files = list(walk_project(root, skip_dirs))
