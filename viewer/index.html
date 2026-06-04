@@ -2116,7 +2116,9 @@ document.addEventListener("keydown", (ev) => {
     marked.forEach((el) => el.classList.remove("selected", "peer", "dimmed"));
     const gEdges = svg.querySelector("#edges");
     const edgesDisplay = gEdges ? gEdges.style.display : null;
-    if (gEdges) gEdges.style.display = "none"; // edges only exist for a selected node
+    // In layer mode #edges only holds the selected node's highlight — hide it for a
+    // clean full map. In flow mode the flow edges ARE the content, so keep them.
+    if (gEdges && state.grouping !== "flow") gEdges.style.display = "none";
 
     const clone = svg.cloneNode(true);
     inlineStyles(svg, clone);
