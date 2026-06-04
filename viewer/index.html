@@ -493,6 +493,15 @@ body.light .theme-toggle .icon-moon { display: none; }
   text-anchor: end;
 }
 
+.flow-select {
+  background: var(--bg-1); color: var(--text-0); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 0.78rem;
+  max-width: 240px;
+}
+.flow-select[hidden] { display: none; }
+.node.flow-hub rect { stroke-dasharray: 4 3; opacity: 0.55; }
+.node.flow-core rect { stroke: var(--accent); stroke-width: 1.8; }
+
 .node { cursor: pointer; }
 .node rect {
   fill: var(--bg-2);
@@ -666,8 +675,9 @@ body.light .theme-toggle .icon-moon { display: none; }
     </div>
     <div class="toggle" id="group-toggle" role="group" aria-label="grouping">
       <button data-group="layer" class="active" data-i18n="group_layers">layers</button>
-      <button data-group="subsystem" data-i18n="group_subsystems">subsystems</button>
+      <button data-group="flow" data-i18n="group_flows">flows</button>
     </div>
+    <select class="flow-select" id="flow-select" aria-label="flow" hidden></select>
     <div class="toggle" id="font-size-toggle" role="group" aria-label="font size">
       <button data-size="small" data-i18n-title="font_small">S</button>
       <button data-size="medium" class="active" data-i18n-title="font_medium">M</button>
@@ -740,7 +750,10 @@ const I18N = {
     core: "core",
     all: "all",
     group_layers: "layers",
-    group_subsystems: "subsystems",
+    group_flows: "flows",
+    flow_empty: "no flows — pick a flow or double-click any node to trace from it",
+    flow_pick: "select a flow",
+    trace_from_here: "trace from here",
     font_small: "small",
     font_medium: "medium (default)",
     font_large: "large",
@@ -781,7 +794,10 @@ const I18N = {
     core: "核心",
     all: "全部",
     group_layers: "分层",
-    group_subsystems: "子系统",
+    group_flows: "流程",
+    flow_empty: "暂无流程 — 选择一条流程，或双击任意节点从它开始追踪",
+    flow_pick: "选择流程",
+    trace_from_here: "从此处追踪",
     font_small: "小",
     font_medium: "中（默认）",
     font_large: "大",
@@ -841,6 +857,7 @@ const els = {
   tooltip:    document.getElementById("tooltip"),
   toggle:     document.getElementById("view-toggle"),
   groupToggle: document.getElementById("group-toggle"),
+  flowSelect: document.getElementById("flow-select"),
   themeToggle: document.getElementById("theme-toggle"),
   exportBtn:  document.getElementById("export-toggle"),
   langToggle: document.getElementById("lang-toggle"),
@@ -853,7 +870,13 @@ const els = {
 const state = {
   raw: null,           // unfiltered data from server
   view: "core",        // "core" | "all"
-  grouping: "layer",   // "layer" | "subsystem" — how nodes are bucketed into bands
+  grouping: "layer",   // "layer" | "flow" — band grouping vs flow traversal
+  activeFlow: null,    // id of the flow shown in flow mode (null → first/synthesized)
+  traceSeed: null,     // when set, flow mode renders a live trace rooted at this id
+  classById: new Map(),// id -> class datum (resolves flow node ids to data)
+  flowsById: new Map(),// id -> flow object (from raw.flows or synthesized)
+  hubIds: new Set(),   // qualified_names flagged hub (flow-leaf)
+  flowMaxDepth: 6,     // mirror of Python --flow-max-depth for client-side trace
   selected: null,      // class id
   nodeById: new Map(), // id -> { datum, gEl, rectEl }
   edgesFromIdx: new Map(),
