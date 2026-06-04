@@ -38,3 +38,48 @@ class TestMarkHubs(unittest.TestCase):
                  _decl("low", in_deg=1)]
         hub_ids = flows.mark_hubs(decls, percentile=0.34)  # int(3*0.34)=1 → one of the two 9s
         self.assertEqual(hub_ids, {"app.alpha"})  # tie → lexicographically smallest qualified_name
+
+
+class TestTraceFlow(unittest.TestCase):
+    def _adj(self, pairs):
+        adj = {}
+        for a, b in pairs:
+            adj.setdefault(a, []).append(b)
+        return adj
+
+    def test_linear_chain(self):
+        adj = self._adj([("a", "b"), ("b", "c")])
+        nodes, edges = flows.trace_flow("a", adj, set(), max_depth=6)
+        self.assertEqual(nodes, ["a", "b", "c"])
+        self.assertEqual(edges, [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}])
+
+    def test_hub_is_a_leaf_not_expanded(self):
+        adj = self._adj([("a", "hub"), ("hub", "x"), ("hub", "y")])
+        nodes, edges = flows.trace_flow("a", adj, {"hub"}, max_depth=6)
+        self.assertEqual(nodes, ["a", "hub"])          # hub shown
+        self.assertEqual(edges, [{"from": "a", "to": "hub"}])  # but not expanded
+        self.assertNotIn("x", nodes)
+
+    def test_seed_that_is_a_hub_still_expands(self):
+        adj = self._adj([("hub", "x"), ("hub", "y")])
+        nodes, _ = flows.trace_flow("hub", adj, {"hub"}, max_depth=6)
+        self.assertEqual(set(nodes), {"hub", "x", "y"})  # leaf rule never applies to the root
+
+    def test_depth_cap(self):
+        adj = self._adj([("a", "b"), ("b", "c"), ("c", "d")])
+        nodes, _ = flows.trace_flow("a", adj, set(), max_depth=2)
+        self.assertEqual(nodes, ["a", "b", "c"])  # depth 0,1,2 kept; d at depth 3 dropped
+
+    def test_cycle_terminates_and_omits_back_edge(self):
+        adj = self._adj([("a", "b"), ("b", "a")])
+        nodes, edges = flows.trace_flow("a", adj, set(), max_depth=6)
+        self.assertEqual(nodes, ["a", "b"])
+        self.assertEqual(edges, [{"from": "a", "to": "b"}])  # b→a omitted (a already placed)
+
+    def test_diamond_keeps_first_path_only(self):
+        adj = self._adj([("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")])
+        nodes, edges = flows.trace_flow("a", adj, set(), max_depth=6)
+        self.assertEqual(set(nodes), {"a", "b", "c", "d"})
+        # d entered once (via b, the first-seen path); the c→d join edge is omitted
+        self.assertIn({"from": "b", "to": "d"}, edges)
+        self.assertNotIn({"from": "c", "to": "d"}, edges)
