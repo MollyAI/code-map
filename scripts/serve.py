@@ -172,9 +172,18 @@ class CodeMapHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _current_mtime(self) -> float:
-        """Latest mtime across viewer/index.html and the data file. Missing files contribute 0."""
+        """Latest mtime across every file under viewer/ plus the data file. Missing files contribute 0.
+
+        Recursive so multi-file ESM modules (viewer/src/**, viewer/style.css) trigger live reload,
+        not just viewer/index.html.
+        """
         latest = 0.0
-        for p in (self.viewer_dir / "index.html", self.data_path):
+        paths = [self.data_path]
+        try:
+            paths.extend(p for p in self.viewer_dir.rglob("*") if p.is_file())
+        except OSError:
+            pass
+        for p in paths:
             try:
                 latest = max(latest, p.stat().st_mtime)
             except OSError:
