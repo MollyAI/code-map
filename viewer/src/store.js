@@ -9,8 +9,12 @@
 export const state = /** @type {any} */ ({
   raw: null, model: null, view: 'core', activeView: 'layer',
   activeFlow: null, traceSeed: null, selected: null,
-  zoom: 1, fontScale: 1, lang: 'en',
+  zoom: 1, fontScale: 1, fontSize: 'medium', lang: 'en',
+  flowMaxDepth: 6,             // mirror of Python --flow-max-depth for client-side trace
+  LAYOUT: null,                // current layout metrics (makeLayout(fontScale)); set in controls
+  baseWidth: 0, baseHeight: 0, // SVG content dims at zoom=1
   classById: new Map(), flowsById: new Map(),
+  nodeById: new Map(),         // id -> { datum, el, rectEl, x, y, w, h }
   hubIds: new Set(), edgesFromIdx: new Map(), edgesToIdx: new Map(),
 });
 
