@@ -140,15 +140,6 @@ header.topbar {
   letter-spacing: -0.01em;
   color: var(--text-0);
 }
-.brand .mark {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  color: var(--text-2);
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-}
-.brand .mark::before { content: "/"; color: var(--accent); margin-right: 2px; }
 
 .controls { display: flex; gap: 10px; align-items: center; }
 
@@ -672,7 +663,6 @@ body.light .theme-toggle .icon-moon { display: none; }
 <header class="topbar">
   <div class="brand">
     <div class="project" id="project-name">…</div>
-    <div class="mark">code-map</div>
   </div>
   <div class="controls">
     <div class="toggle" id="view-toggle">
@@ -944,6 +934,7 @@ ${escapeHtml(t("error_hint"))}</code>
 function onLoaded() {
   const d = state.raw;
   els.projectName.textContent = d.project?.name || "—";
+  document.title = d.project?.name || "code map";
   normalizeIds(d);
   renderLangStats(d);
   buildEdgeIndex();
