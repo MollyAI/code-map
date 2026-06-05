@@ -1,13 +1,12 @@
 """
 Layer assignment by path segments + name suffixes.
 
-Four-level config resolution (highest precedence first):
-  1. <project_root>/.code-map/layers.yml — user override, no detection.
-  2. <project_root>/.code-map/architecture.yml — AI Phase 0 product.
-  3. <plugin_root>/templates/*.yml + signal-based detection.
-  4. Embedded clean-architecture fallback (templates/ missing or PyYAML absent).
+Three-level config resolution (highest precedence first):
+  1. <project_root>/.code-map/architecture.yml — AI Phase 0 product.
+  2. <plugin_root>/templates/*.yml + signal-based detection.
+  3. Embedded clean-architecture fallback (templates/ missing or PyYAML absent).
 
-The detector runs even when architecture.yml is present (tier 2): its
+The detector runs even when architecture.yml is present (tier 1): its
 scores/evidence stay in template_detection for Phase 2, while the layers
 come from architecture.yml (detection reason marked "ai-phase0").
 
@@ -79,24 +78,18 @@ def load_config(project_root: Path, plugin_root: Optional[Path] = None
     """Return (layer_config, detection_result).
 
     Precedence:
-      1. <project_root>/.code-map/layers.yml — user override.
+      1. <project_root>/.code-map/architecture.yml — AI Phase 0 product.
       2. <plugin_root>/templates/*.yml + detection.
       3. Embedded fallback (clean-architecture).
 
     The detection result is ALWAYS a dict so Phase 2 (build.md step 0) can rely
-    on `project.template_detection` existing. On override/fallback paths it
-    carries a `reason` ("user-override", "ai-phase0", "pyyaml-missing", …). On
-    tier 2 it keeps the detector's real scores/evidence with reason overridden
-    to "ai-phase0", so Phase 2 has the signal evidence even though the layers
-    were AI-proposed.
+    on `project.template_detection` existing. On fallback paths it carries a
+    `reason` ("ai-phase0", "pyyaml-missing", …). On tier 1 it keeps the
+    detector's real scores/evidence with reason overridden to "ai-phase0", so
+    Phase 2 has the signal evidence even though the layers were AI-proposed.
     """
-    # Tier 1: user hand-authored override wins outright, skips all detection.
-    user = _load_layers_file(project_root / ".code-map" / "layers.yml")
-    if user is not None:
-        return _ensure_uncategorized(user), _fallback_detection("custom", "user-override")
-
     # Detector runs regardless — its scores/evidence are useful to Phase 2 even
-    # when Phase 0 (tier 2) has already AI-proposed the layers.
+    # when Phase 0 (tier 1) has already AI-proposed the layers.
     tpls: list[dict] = []
     detection: Optional[dict] = None
     if plugin_root is not None:
@@ -104,19 +97,19 @@ def load_config(project_root: Path, plugin_root: Optional[Path] = None
         if tpls:
             detection = _templates.detect_template(project_root, tpls)
 
-    # Tier 2: AI Phase 0 product. Use its layers; keep detector scores; mark reason.
+    # Tier 1: AI Phase 0 product. Use its layers; keep detector scores; mark reason.
     ai = _load_layers_file(project_root / ".code-map" / "architecture.yml")
     if ai is not None:
         det = dict(detection) if detection is not None else _fallback_detection("custom", "ai-phase0")
         det["reason"] = "ai-phase0"
         return _ensure_uncategorized(ai), det
 
-    # Tier 3: signal-based detection.
+    # Tier 2: signal-based detection.
     if detection is not None:
         chosen = next((t for t in tpls if t["id"] == detection["chosen"]), tpls[0])
         return _ensure_uncategorized(list(chosen["layers"])), detection
 
-    # Tier 4: embedded fallback.
+    # Tier 3: embedded fallback.
     reason = _no_templates_reason(plugin_root)
     return list(DEFAULT_CONFIG), _fallback_detection("clean-architecture", reason)
 
@@ -142,8 +135,7 @@ def _no_templates_reason(plugin_root: Optional[Path]) -> str:
 def _load_layers_file(cfg_path: Path) -> Optional[list[dict]]:
     """Load a `layers:` list from a YAML file. Returns None if the file is
     absent, PyYAML is missing, the file is unparseable, or it has no non-empty
-    `layers` list. Shared by the user-override (layers.yml) and Phase 0
-    (architecture.yml) paths."""
+    `layers` list. Used by the Phase 0 (architecture.yml) path."""
     if not cfg_path.exists():
         return None
     try:

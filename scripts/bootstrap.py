@@ -58,7 +58,7 @@ EXTENSION_TO_PACKAGE = {
 }
 
 # Base runtime. PyYAML is here (not just lazily) because template detection and
-# the user's .code-map/layers.yml override both silently no-op without it —
+# the AI Phase 0 .code-map/architecture.yml both silently no-op without it —
 # making the plugin's whole auto-architecture feature interpreter-dependent.
 ALWAYS = ["tree-sitter", "PyYAML"]
 

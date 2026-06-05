@@ -7,8 +7,8 @@ at files, dependency manifests, and directory names.
 
 Detection is intentionally cheap: glob the project root, read a few
 well-known manifests, count directory-name occurrences. The result is
-deterministic, language-agnostic, and easy to override (the user can
-drop a `.code-map/layers.yml` to bypass detection entirely).
+deterministic, language-agnostic, and superseded by the AI Phase 0
+`.code-map/architecture.yml` when present.
 """
 from __future__ import annotations
 import os

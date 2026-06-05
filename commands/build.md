@@ -28,9 +28,7 @@ Ensure tree-sitter grammars + PyYAML are installed (Phase 0's detection needs Py
 
 !python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/bootstrap.py" --root .
 
-**Guard:** if `.code-map/layers.yml` exists, the user has hand-authored a layer override — **skip the rest of Phase 0** (do not write `architecture.yml`) and go straight to Phase 1.
-
-Otherwise, get the deterministic detector's signal scores as advisory input:
+Get the deterministic detector's signal scores as advisory input:
 
 !python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --detect-only
 
@@ -42,7 +40,7 @@ Then propose the architecture:
 4. Pick the best-fitting template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml`, weighing the README's stated intent + the directory shape + the detector scores. The menu is the 13 bundled shapes (`ls ${CLAUDE_PLUGIN_ROOT}/templates`). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
 
-Phase 1 will pick this file up automatically (it wins over detection but loses to a user `layers.yml`).
+Phase 1 will pick this file up automatically (it wins over signal-based detection).
 
 ---
 
@@ -62,7 +60,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 
 ## Phase 2: semantic refinement (your job)
 
-0. **Confirm the architecture.** Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"user-override"` means a hand-authored `layers.yml` is in force — accept it. `"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
+0. **Confirm the architecture.** Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
    - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
