@@ -37,3 +37,6 @@ scratch/
 
 # Superpowers brainstorming visual-companion scratch files
 .superpowers/
+
+# Local design docs (plans / specs) — kept locally, not shipped or tracked
+/docs/
