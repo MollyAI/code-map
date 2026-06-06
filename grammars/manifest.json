@@ -7,6 +7,7 @@
     "python":     { "mode": "bundled", "file": "tree-sitter-python.wasm",     "sha256": "f8f4a2ee6294815aa1e46f7f3db84c5b05103406ee7cfd9f8466b70074120b03", "bytes": 475554 },
     "javascript": { "mode": "bundled", "file": "tree-sitter-javascript.wasm", "sha256": "5fbc49ebb6ec349f76c9ac94f94946f0d07ed00fbf6c86b434f21e5f21bf4fe7", "bytes": 646695 },
     "typescript": { "mode": "bundled", "file": "tree-sitter-typescript.wasm", "sha256": "f6bc2c0449b8c7d2d186ea0644bf6abd16e9a686374431c5fe014bad688d99cf", "bytes": 2342051 },
+    "tsx":        { "mode": "bundled", "file": "tree-sitter-tsx.wasm",        "sha256": "12e4a73c9a90cd88cae2fa435b20f54e4ce1f081c167475d6cf192ae5673a3da", "bytes": 2410710 },
     "go":         { "mode": "bundled", "file": "tree-sitter-go.wasm",         "sha256": "bc03621dae417f002473ae1b015822ae7b6e854979599098e94a509d5f189c26", "bytes": 235901 },
     "java":       { "mode": "bundled", "file": "tree-sitter-java.wasm",       "sha256": "b20554d0aa6170a1f35801c93a0bab0f5aca7aefea075cbd084b0aea77f0481b", "bytes": 430183 },
     "rust":       { "mode": "bundled", "file": "tree-sitter-rust.wasm",       "sha256": "b9b1cc93dd2959b30ebf477b5fb823a54c81b03e993fc69e18875ad8ff62ff97", "bytes": 818183 },
