@@ -12,17 +12,40 @@
 import { state, setState } from '../store.js';
 import { createSettings, migrateGrouping } from '../settings.js';
 import { makeLayout } from '../layout/metrics.js';
-import { applyI18nStatic } from '../i18n.js';
+import { applyI18nStatic, pickLangText, t } from '../i18n.js';
+import { loadGitHistory, nodeIdsForCommit } from '../data/githistory.js';
 
 const settings = createSettings();
 
+/** Resolve a flow's `name`/`description` for the active language. Prefers
+ *  explicit bilingual fields (`<base>_zh` / `<base>_en`) and otherwise splits a
+ *  combined "中文 · English" string — so the sidebar never mixes the two
+ *  languages in one line (red line: show only the chosen language).
+ * @param {any} f @param {string} base @param {string} lang */
+function flowField(f, base, lang) {
+  const zh = f[base + '_zh'];
+  const en = f[base + '_en'];
+  if (zh || en) return lang === 'zh' ? (zh || en) : (en || zh);
+  return pickLangText(f[base], lang);
+}
+
+/** unix 秒 → 本地 "YYYY-MM-DD HH:mm"(与构建徽章一致的分钟精度)。@param {number} sec */
+function fmtCommitTime(sec) {
+  if (!sec) return '';
+  const d = new Date(sec * 1000);
+  const p = (/** @type {number} */ n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** Fill the left flow sidebar list from state.flowsById; highlight the active
- *  flow. Each item shows the flow name + (when present) its description.
+ *  flow. Each item shows the flow name + (when present) its description, in the
+ *  active language only.
  * @param {any} els */
 export function populateFlowList(els) {
   const list = els.flowList;
   if (!list) return;
   list.innerHTML = '';
+  const lang = state.lang;
   for (const f of state.flowsById.values()) {
     const item = document.createElement('button');
     item.type = 'button';
@@ -30,13 +53,77 @@ export function populateFlowList(els) {
     item.dataset.flow = f.id;
     const name = document.createElement('span');
     name.className = 'flow-item-name';
-    name.textContent = f.name;
+    name.textContent = flowField(f, 'name', lang) || f.name || f.id;
     item.appendChild(name);
-    if (f.description) {
+    const descText = flowField(f, 'description', lang);
+    if (descText) {
       const desc = document.createElement('span');
       desc.className = 'flow-item-desc';
-      desc.textContent = f.description;
+      desc.textContent = descText;
       item.appendChild(desc);
+    }
+    list.appendChild(item);
+  }
+}
+
+/** Toggle the commit sidebar chrome classes. Active only in layer mode with git.
+ * @param {any} els */
+export function applyCommitChrome(els) {
+  const active = state.activeView === 'layer' && state.hasGit;
+  els.layout.classList.toggle('commit-active', active);
+  els.layout.classList.toggle('commit-open', active && state.commitSidebarOpen);
+}
+
+/** Close the commit sidebar back to its edge tab and clear its highlight/state.
+ *  Does NOT re-render — the caller decides (node-click vs collapse button).
+ * @param {any} els */
+export function closeCommitSidebar(els) {
+  state.commitSidebarOpen = false;
+  state.selectedCommit = null;
+  state.highlightedNodeIds = new Set();
+  applyCommitChrome(els);
+}
+
+/** Render the commit list from state.gitHistory; reflect the active commit and
+ *  loading/empty/error states.
+ * @param {any} els */
+export function populateCommitList(els) {
+  const list = els.commitList;
+  if (!list) return;
+  list.innerHTML = '';
+  const lang = state.lang;
+  const gh = state.gitHistory;
+  if (!gh || !gh.loaded) {
+    const p = document.createElement('div'); p.className = 'commit-note';
+    p.textContent = t('commits_loading', lang); list.appendChild(p); return;
+  }
+  if (!gh.commits.length) {
+    const p = document.createElement('div'); p.className = 'commit-note';
+    p.textContent = t('commits_empty', lang); list.appendChild(p); return;
+  }
+  for (const c of gh.commits) {
+    const ids = nodeIdsForCommit(c, state.nodesByPath);
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'commit-item'
+      + (c.hash === state.selectedCommit ? ' active' : '')
+      + (ids.size ? '' : ' no-match');
+    item.dataset.hash = c.hash;
+    const name = document.createElement('span');
+    name.className = 'commit-item-name';
+    name.textContent = `${c.short} · ${fmtCommitTime(c.time)}`;
+    item.appendChild(name);
+    if (c.subject) {
+      const desc = document.createElement('span');
+      desc.className = 'commit-item-desc';
+      desc.textContent = c.subject;
+      item.appendChild(desc);
+    }
+    if (c.hash === state.selectedCommit && !ids.size) {
+      const note = document.createElement('span');
+      note.className = 'commit-note';
+      note.textContent = t('commit_no_mapped', lang);
+      item.appendChild(note);
     }
     list.appendChild(item);
   }
@@ -80,6 +167,8 @@ export function initControls(els) {
       state.activeView = migrateGrouping(mode);
       for (const btn of els.groupToggle.querySelectorAll('button')) btn.classList.toggle('active', btn.dataset.group === state.activeView);
       applyFlowChrome();
+      if (state.activeView !== 'layer') closeCommitSidebar(els);
+      applyCommitChrome(els);
     }
     state.flowSidebarCollapsed = settings.get('flow-collapsed') === 'true';
     apply(settings.get('grouping', 'layer') || 'layer');
@@ -105,6 +194,40 @@ export function initControls(els) {
     els.flowExpand.addEventListener('click', () => {
       state.flowSidebarCollapsed = false; settings.set('flow-collapsed', 'false');
       applyFlowChrome(); setState({});
+    });
+  })();
+
+  // commit-history sidebar (layer mode + git): edge-tab opens it; clicking a
+  // commit set-highlights its changed classes; collapse clears the highlight.
+  (function initCommitSidebar() {
+    if (!els.commitExpand) return;
+    applyCommitChrome(els);
+    els.commitExpand.addEventListener('click', () => {
+      state.commitSidebarOpen = true;
+      applyCommitChrome(els);
+      setState({});                       // re-fit canvas for the new margin
+      populateCommitList(els);            // shows "loading…" until the fetch lands
+      loadGitHistory().then(() => populateCommitList(els));
+    });
+    els.commitCollapse.addEventListener('click', () => {
+      closeCommitSidebar(els);
+      populateCommitList(els);
+      setState({});                       // resting view (scene clears highlight)
+    });
+    els.commitList.addEventListener('click', (/** @type {Event} */ ev) => {
+      const item = ev.target instanceof Element ? ev.target.closest('.commit-item') : null;
+      if (!item) return;
+      const hash = /** @type {HTMLElement} */ (item).dataset.hash;
+      if (!hash) return;
+      if (hash === state.selectedCommit) {          // toggle off
+        state.selectedCommit = null; state.highlightedNodeIds = new Set();
+      } else {
+        const commit = (state.gitHistory?.commits || []).find((/** @type {any} */ c) => c.hash === hash);
+        state.selectedCommit = hash;
+        state.highlightedNodeIds = commit ? nodeIdsForCommit(commit, state.nodesByPath) : new Set();
+      }
+      populateCommitList(els);            // reflect active + no-match note
+      setState({});                       // scene → applyHighlight
     });
   })();
 

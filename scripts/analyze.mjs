@@ -24,6 +24,7 @@ function parseArgs(argv) {
     core_percentile: 0.25, core_max_per_layer: 40,
     flow_hub_percentile: 0.05, flow_max_depth: 6,
     skip: [], name: null, detect_only: false,
+    git_history_limit: 200, git_history: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
@@ -37,6 +38,8 @@ function parseArgs(argv) {
     else if (k === '--skip') a.skip.push(next());
     else if (k === '--name') a.name = next();
     else if (k === '--detect-only') a.detect_only = true;
+    else if (k === '--git-history-limit') a.git_history_limit = parseInt(next(), 10);
+    else if (k === '--no-git-history') a.git_history = false;
   }
   return a;
 }
@@ -162,6 +165,18 @@ export async function main(argv) {
   if (advisories.length) projectMeta.advisories = advisories;
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
+  // Commit-history sidecar (separate file — keeps code-map.json lean & Claude-editable).
+  if (git && args.git_history) {
+    const commits = gitmeta.commitHistory(root, { limit: args.git_history_limit });
+    if (commits) {
+      const historyPath = join(dirname(outPath), 'git-history.json');
+      writeFileSync(historyPath, JSON.stringify({
+        anchor: git.commit, limit: args.git_history_limit,
+        truncated: commits.length >= args.git_history_limit, commits,
+      }, null, 2));
+      console.log(`[analyze] wrote ${historyPath} (${commits.length} commits)`);
+    }
+  }
 
   const data = core.toJsonShape(
     decls, edges,

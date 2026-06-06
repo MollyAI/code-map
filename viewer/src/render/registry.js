@@ -156,7 +156,11 @@ const flowView = {
       const a = pos.get(e.from), b = pos.get(e.to);
       if (a && b) {
         const path = document.createElementNS(NS, 'path');
-        path.setAttribute('class', 'edge active out');
+        // resting flow edge; selection re-styles it active/dimmed by endpoint
+        // (interact/selection drawEdges) via the data-from/data-to ids.
+        path.setAttribute('class', 'edge flow');
+        path.setAttribute('data-from', e.from);
+        path.setAttribute('data-to', e.to);
         path.setAttribute('d', buildFlowEdgePath(a, b));
         gEdges.appendChild(path);
       }

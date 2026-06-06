@@ -25,6 +25,12 @@ export const I18N = {
     flow_empty: "no flows — pick a flow from the sidebar",
     collapse_flows: "collapse flow list",
     expand_flows: "show flow list",
+    commit_history: "Commit History",
+    collapse_commits: "collapse commit list",
+    expand_commits: "show commit history",
+    commits_empty: "no commits",
+    commits_loading: "loading…",
+    commit_no_mapped: "this commit changed no classes in the map",
     font_small: "small",
     font_medium: "medium (default)",
     font_large: "large",
@@ -73,6 +79,12 @@ export const I18N = {
     flow_empty: "暂无流程 — 请从左侧选择一条流程",
     collapse_flows: "收起流程列表",
     expand_flows: "展开流程列表",
+    commit_history: "提交记录",
+    collapse_commits: "收起提交记录",
+    expand_commits: "展开提交记录",
+    commits_empty: "暂无提交记录",
+    commits_loading: "加载中…",
+    commit_no_mapped: "本次提交未改动地图中的类",
     font_small: "小",
     font_medium: "中（默认）",
     font_large: "大",
@@ -128,6 +140,38 @@ export const I18N = {
 export function t(key, lang) {
   const dict = /** @type {Record<string, LangDict>} */ (I18N)[lang];
   return (dict && dict[key]) || I18N.en[key] || key;
+}
+
+/**
+ * Pick the active-language half of a possibly-bilingual string.
+ *
+ * Flow names / descriptions may be authored as a single combined string
+ * ("中文 · English" / "中文描述 / English description"). When the string
+ * splits on a known separator into two halves that differ in CJK content,
+ * return the half matching `lang`; otherwise return the whole string
+ * unchanged (monolingual, or an ambiguous split we won't guess at). This is
+ * the fallback for legacy flow data that predates the explicit
+ * name_zh/name_en/description_zh/description_en fields.
+ * @param {string | null | undefined} combined
+ * @param {string} lang  'zh' | 'en'
+ * @returns {string}
+ */
+export function pickLangText(combined, lang) {
+  if (!combined) return combined || '';
+  const CJK = /[㐀-鿿]/;   // CJK Unified Ideographs (+ Ext A) — "is this the 中文 half?"
+  for (const sep of [' / ', ' · ', ' | ', ' — ']) {
+    const i = combined.indexOf(sep);
+    if (i <= 0) continue;
+    const a = combined.slice(0, i).trim();
+    const b = combined.slice(i + sep.length).trim();
+    if (!a || !b) continue;
+    const aCJK = CJK.test(a), bCJK = CJK.test(b);
+    if (aCJK === bCJK) continue;        // both / neither CJK — not a clean zh|en split
+    const zh = aCJK ? a : b;
+    const en = aCJK ? b : a;
+    return lang === 'zh' ? zh : en;
+  }
+  return combined;
 }
 
 /**

@@ -26,7 +26,8 @@ export const CANVAS_PAD_L = 28;
  * @property {() => void} applyZoom
  * @property {() => void} updateZoomLabel
  * @property {() => void} goHome
- * @property {(nodeById: Map<string, any>, layoutEl: HTMLElement) => void} applyVisualState
+ * @property {(nodeById: Map<string, any>, layoutEl: HTMLElement, peers?: Set<string>|null) => void} applyVisualState
+ * @property {(nodeById: Map<string, any>, layoutEl: HTMLElement, idSet?: Set<string>|null) => void} applySetHighlight
  */
 
 /**
@@ -89,23 +90,37 @@ export function createSvgBackend(svg, canvasWrap) {
   }
 
   // Toggle selected/peer/dimmed classes on the rendered node elements, and the
-  // layout's has-selection class. Peers come from the edge indices on state.
-  /** @param {Map<string, any>} nodeById @param {HTMLElement} layoutEl */
-  function applyVisualState(nodeById, layoutEl) {
+  // layout's has-selection class. The peer set is computed by the caller
+  // (interact/selection) so it can be mode-aware — global graph neighbours in
+  // layer mode, the connected flow slice in flow mode — keeping this backend
+  // free of grouping logic.
+  /** @param {Map<string, any>} nodeById @param {HTMLElement} layoutEl @param {Set<string>|null} [peers] */
+  function applyVisualState(nodeById, layoutEl, peers) {
     const id = state.selected;
     layoutEl.classList.toggle('has-selection', !!(id && nodeById.has(id)));
     for (const [, entry] of nodeById) entry.el.classList.remove('selected', 'peer', 'dimmed');
     if (id && nodeById.has(id)) {
       nodeById.get(id).el.classList.add('selected');
-      const peers = new Set();
-      for (const e of (state.edgesFromIdx.get(id) || [])) peers.add(e.to);
-      for (const e of (state.edgesToIdx.get(id) || [])) peers.add(e.from);
+      const peerSet = peers || new Set();
       for (const [nid, entry] of nodeById) {
         if (nid === id) continue;
-        entry.el.classList.add(peers.has(nid) ? 'peer' : 'dimmed');
+        entry.el.classList.add(peerSet.has(nid) ? 'peer' : 'dimmed');
       }
     }
   }
 
-  return { clear, setViewBox, add, getSvg, applyZoom, updateZoomLabel, goHome, applyVisualState };
+  // Set-highlight (commit sidebar): light every member as a peer, dim the rest,
+  // and NEVER open the right panel (no single "selected"). idSet falsy/empty
+  // clears all visual state (resting view — used when a commit touches no
+  // mapped class, so we don't dim the whole map). Mirrors applyVisualState's
+  // class bookkeeping but keyed on a set instead of state.selected.
+  /** @param {Map<string, any>} nodeById @param {HTMLElement} layoutEl @param {Set<string>|null} [idSet] */
+  function applySetHighlight(nodeById, layoutEl, idSet) {
+    layoutEl.classList.remove('has-selection');
+    for (const [, entry] of nodeById) entry.el.classList.remove('selected', 'peer', 'dimmed');
+    if (!idSet || !idSet.size) return;
+    for (const [nid, entry] of nodeById) entry.el.classList.add(idSet.has(nid) ? 'peer' : 'dimmed');
+  }
+
+  return { clear, setViewBox, add, getSvg, applyZoom, updateZoomLabel, goHome, applyVisualState, applySetHighlight };
 }

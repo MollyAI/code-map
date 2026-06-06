@@ -35,12 +35,16 @@ export function renderScene(backend, view, ctx) {
   view.buildContent(backend, layout, ctx);
   backend.applyZoom();
 
-  // Restore selection if it survived the rebuild, else clear it.
+  // Restore selection if it survived the rebuild; else restore commit
+  // set-highlight if active; else fall to the resting state.
   if (state.selected && state.nodeById.has(state.selected)) {
     ctx.applySelection();
+  } else if (state.highlightedNodeIds && state.highlightedNodeIds.size && ctx.applyHighlight) {
+    state.selected = null;
+    ctx.applyHighlight();
   } else {
     state.selected = null;
-    ctx.drawEdges();          // clears layer #edges; no-op in flow mode
+    ctx.drawEdges();          // layer: clears #edges. flow: resets edges to the calm resting state
     ctx.renderDetail(null);
   }
 }
