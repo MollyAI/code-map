@@ -56,13 +56,18 @@ export function markHubs(declarations, percentile = 0.05) {
   return hubIds;
 }
 
-/** Forward BFS from `seed` over adjacency (from → [to], 'uses' edges). A hub is
- *  included but not expanded (unless it is the seed). Each node placed once at
- *  its shortest depth; back/cross edges omitted. Returns [orderedIds, edgeDicts]. */
-export function traceFlow(seed, adjacency, hubIds, maxDepth = 6) {
+/** Forward BFS from `seed` over uses-adjacency, plus dispatch expansion.
+ *  At a node U, after following resolved uses-edges, scan U's raw ref strings
+ *  (ctx.refsByQname); any ref whose short-name is a dispatch-index key (an
+ *  interface/abstract type with >=2 implementors) fans out to its implementors
+ *  as `dispatch` edges, capped at ctx.maxFanout (overflow recorded in omitted).
+ *  A hub is a leaf (unless it is the seed). visited-set prevents revisits/cycles.
+ *  Returns [orderedIds, edges, omitted]. Pass ctx=null to disable dispatch. */
+export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null) {
   const visited = new Set([seed]);
   const order = [seed];
   const flowEdges = [];
+  const omitted = [];
   const depth = new Map([[seed, 0]]);
   const q = [seed];
   let head = 0;
@@ -70,20 +75,49 @@ export function traceFlow(seed, adjacency, hubIds, maxDepth = 6) {
     const u = q[head++];
     if (u !== seed && hubIds.has(u)) continue; // hub: leaf
     if (depth.get(u) >= maxDepth) continue;
+    // 1. resolved uses-edges
     for (const v of adjacency.get(u) || []) {
       if (visited.has(v)) continue;
       visited.add(v);
       depth.set(v, depth.get(u) + 1);
       order.push(v);
-      flowEdges.push({ from: u, to: v });
+      flowEdges.push({ from: u, to: v, kind: 'uses' });
       q.push(v);
     }
+    // 2. dispatch expansion via unresolved interface refs
+    if (ctx && ctx.dispatchIndex) {
+      const seenVia = new Set();
+      for (const raw of ctx.refsByQname.get(u) || []) {
+        const k = shortName(raw);
+        if (!k || seenVia.has(k)) continue;
+        const impls = ctx.dispatchIndex.get(k);
+        if (!impls) continue;
+        seenVia.add(k);
+        const fresh = impls.filter((d) => !visited.has(qualifiedName(d)));
+        const cap = ctx.maxFanout || 8;
+        const take = fresh.slice(0, cap);
+        for (const d of take) {
+          const v = qualifiedName(d);
+          visited.add(v);
+          depth.set(v, depth.get(u) + 1);
+          order.push(v);
+          flowEdges.push({ from: u, to: v, kind: 'dispatch', via: k });
+          q.push(v);
+        }
+        if (fresh.length > take.length) {
+          omitted.push({ from: u, via: k, count: fresh.length - take.length });
+        }
+      }
+    }
   }
-  return [order, flowEdges];
+  return [order, flowEdges, omitted];
 }
 
-/** One deterministic candidate flow per seed (entry-point qualified_name). */
-export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6) {
+/** Candidate flows: one per seed, traced with dispatch expansion when opts
+ *  carries a dispatchIndex. opts = { dispatchIndex, maxFanout, seedKind }.
+ *  seedKind: Map<seed, 'entry-point'|'public-orchestrator'>; a public-orchestrator
+ *  seed is marked confidence:'candidate' (Phase 2 curates), entry-point stays 'high'. */
+export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opts = {}) {
   const adjacency = new Map();
   for (const e of edges) {
     if (e.kind === 'uses') {
@@ -92,6 +126,15 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6) {
     }
   }
   const byQname = new Map(declarations.map((d) => [qualifiedName(d), d]));
+  const dispatchIndex = opts.dispatchIndex || null;
+  const ctx = dispatchIndex
+    ? {
+        dispatchIndex,
+        maxFanout: opts.maxFanout || 8,
+        refsByQname: new Map(declarations.map((d) => [qualifiedName(d), d.refs || []])),
+      }
+    : null;
+  const seedKind = opts.seedKind || new Map();
   const out = [];
   const seenSeeds = new Set();
   for (const seed of seeds) {
@@ -99,16 +142,20 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6) {
     seenSeeds.add(seed);
     const decl = byQname.get(seed);
     if (decl == null) continue;
-    const [nodes, fedges] = traceFlow(seed, adjacency, hubIds, maxDepth);
-    out.push({
+    const [nodes, fedges, omitted] = traceFlow(seed, adjacency, hubIds, maxDepth, ctx);
+    const kind = seedKind.get(seed) || 'entry-point';
+    const flow = {
       id: 'flow:' + seed,
       name: decl.name,
       description: '',
       seed,
+      seed_kind: kind,
       nodes,
       edges: fedges,
-      confidence: 'high',
-    });
+      confidence: kind === 'public-orchestrator' ? 'candidate' : 'high',
+    };
+    if (omitted.length) flow.dispatch_omitted = omitted;
+    out.push(flow);
   }
   return out;
 }
