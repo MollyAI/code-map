@@ -64,7 +64,7 @@ export function markHubs(declarations, percentile = 0.05) {
  *  as `dispatch` edges, capped at ctx.maxFanout (overflow recorded in omitted).
  *  A hub is a leaf (unless it is the seed). visited-set prevents revisits/cycles.
  *  Returns [orderedIds, edges, omitted]. Pass ctx=null to disable dispatch. */
-export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null) {
+export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null, maxNodes = Infinity) {
   const visited = new Set([seed]);
   const order = [seed];
   const flowEdges = [];
@@ -73,11 +73,13 @@ export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null) {
   const q = [seed];
   let head = 0;
   while (head < q.length) {
+    if (order.length >= maxNodes) break;
     const u = q[head++];
     if (u !== seed && hubIds.has(u)) continue; // hub: leaf
     if (depth.get(u) >= maxDepth) continue;
     // 1. resolved uses-edges
     for (const v of adjacency.get(u) || []) {
+      if (order.length >= maxNodes) break;
       if (visited.has(v)) continue;
       visited.add(v);
       depth.set(v, depth.get(u) + 1);
@@ -98,6 +100,7 @@ export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null) {
         const cap = ctx.maxFanout || 8;
         const take = fresh.slice(0, cap);
         for (const d of take) {
+          if (order.length >= maxNodes) break;
           const v = qualifiedName(d);
           visited.add(v);
           depth.set(v, depth.get(u) + 1);
@@ -143,7 +146,7 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opt
     seenSeeds.add(seed);
     const decl = byQname.get(seed);
     if (decl == null) continue;
-    const [nodes, fedges, omitted] = traceFlow(seed, adjacency, hubIds, maxDepth, ctx);
+    const [nodes, fedges, omitted] = traceFlow(seed, adjacency, hubIds, maxDepth, ctx, opts.maxNodes ?? Infinity);
     const kind = seedKind.get(seed) || 'entry-point';
     const flow = {
       id: 'flow:' + seed,
@@ -215,4 +218,106 @@ export function suppressSubsets(flows) {
     }
   }
   return flows.filter((_, i) => !drop.has(i));
+}
+
+function betterRoot(d, root) {
+  const od = d._out_degree || 0, or = root._out_degree || 0;
+  if (od !== or) return od > or;
+  const id = d._importance || 0, ir = root._importance || 0;
+  if (id !== ir) return id > ir;
+  return qualifiedName(d) < qualifiedName(root);
+}
+
+/** Focused, deterministic "dispatch flows" — one per significant polymorphic
+ *  dispatch interface (chain-of-responsibility / strategy / observer / middleware).
+ *  Rooted at the interface's canonical dispatcher (a node that references the
+ *  interface, is NOT itself an implementor, and has the highest out-degree —
+ *  okhttp's Interceptor → RealCall, which defines the whole chain), fanning out
+ *  depth-2 to all its implementors (capped) plus each implementor's direct
+ *  non-hub collaborators (<=maxCollabPerImpl). This is the shape forward-BFS
+ *  cannot produce in a densely-connected library where every seed reaches the
+ *  same blob. Ranked by (impl count desc, root out-degree desc, key asc), capped
+ *  at maxFlows. opts = { maxFanout=8, minImpls=2, maxFlows=10, maxCollabPerImpl=3 }. */
+export function buildDispatchFlows(declarations, dispatchIndex, edges, hubIds, opts = {}) {
+  const maxFanout = opts.maxFanout ?? 8;
+  const minImpls = opts.minImpls ?? 2;
+  const maxFlows = opts.maxFlows ?? 10;
+  const maxCollab = opts.maxCollabPerImpl ?? 3;
+
+  const byQname = new Map(declarations.map((d) => [qualifiedName(d), d]));
+  const adj = new Map();
+  for (const e of edges) {
+    if (e.kind === 'uses') {
+      if (!adj.has(e.from)) adj.set(e.from, []);
+      adj.get(e.from).push(e.to);
+    }
+  }
+  const implQ = new Map();
+  for (const [k, impls] of dispatchIndex) implQ.set(k, new Set(impls.map((d) => qualifiedName(d))));
+  const refsBy = new Map(declarations.map((d) => [qualifiedName(d), d.refs || []]));
+
+  const candidates = [];
+  for (const [k, impls] of dispatchIndex) {
+    if (impls.length < minImpls) continue;
+    let root = null;
+    for (const d of declarations) {
+      const q = qualifiedName(d);
+      if (implQ.get(k).has(q)) continue;                 // an implementor can't be the dispatcher
+      if (!(refsBy.get(q) || []).some((r) => shortName(r) === k)) continue;
+      if (root == null || betterRoot(d, root)) root = d;
+    }
+    if (root == null) continue;
+    candidates.push({ k, impls, root });
+  }
+  candidates.sort((a, b) => {
+    if (b.impls.length !== a.impls.length) return b.impls.length - a.impls.length;
+    const oa = a.root._out_degree || 0, ob = b.root._out_degree || 0;
+    if (ob !== oa) return ob - oa;
+    return a.k < b.k ? -1 : a.k > b.k ? 1 : 0;
+  });
+
+  const collabSort = (a, b) => {
+    const ia = a._importance || 0, ib = b._importance || 0;
+    if (ib !== ia) return ib - ia;
+    const qa = qualifiedName(a), qb = qualifiedName(b);
+    return qa < qb ? -1 : qa > qb ? 1 : 0;
+  };
+
+  const out = [];
+  for (const { k, impls, root } of candidates.slice(0, maxFlows)) {
+    const rootQ = qualifiedName(root);
+    const nodes = [rootQ];
+    const fedges = [];
+    const seen = new Set([rootQ]);
+    const take = impls.slice(0, maxFanout);
+    for (const impl of take) {
+      const iq = qualifiedName(impl);
+      if (!seen.has(iq)) { seen.add(iq); nodes.push(iq); }
+      fedges.push({ from: rootQ, to: iq, kind: 'dispatch', via: k });
+      const collabs = (adj.get(iq) || [])
+        .filter((c) => byQname.has(c) && !hubIds.has(c) && c !== rootQ)
+        .map((c) => byQname.get(c))
+        .sort(collabSort)
+        .slice(0, maxCollab)
+        .map((d) => qualifiedName(d));
+      for (const c of collabs) {
+        if (!seen.has(c)) { seen.add(c); nodes.push(c); }
+        fedges.push({ from: iq, to: c, kind: 'uses' });
+      }
+    }
+    const flow = {
+      id: 'flow:dispatch:' + k,
+      name: k,
+      description: '',
+      seed: rootQ,
+      seed_kind: 'dispatch-site',
+      via: k,
+      nodes,
+      edges: fedges,
+      confidence: 'candidate',
+    };
+    if (impls.length > take.length) flow.dispatch_omitted = [{ from: rootQ, via: k, count: impls.length - take.length }];
+    out.push(flow);
+  }
+  return out;
 }

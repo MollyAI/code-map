@@ -51,7 +51,7 @@ export function layoutFlow(flow, classById, LAYOUT) {
   const data = /** @type {Datum[]} */ (
     flow.nodes.map(id => classById.get(id)).filter(Boolean)
   );
-  if (!data.length) return { nodes: [], edges: [], width: 0, height: 0 };
+  if (!data.length) return { nodes: [], edges: [], omitted: [], width: 0, height: 0 };
 
   // depth via BFS over flow.edges from the seed
   /** @type {Map<string, string[]>} */

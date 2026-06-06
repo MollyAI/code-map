@@ -105,3 +105,48 @@ test('suppressSubsets: node 集是另一条子集的 flow 被丢，留大者；�
   ];
   assert.deepEqual(suppressSubsets(flows).map((f) => f.id), ['a', 'c']);
 });
+
+import { buildDispatchFlows } from '../scripts/lib/flows.mjs';
+
+test('traceFlow: maxNodes 预算封顶节点数', () => {
+  const adjacency = new Map([['s', ['a', 'b', 'c', 'd']]]);
+  const [order] = traceFlow('s', adjacency, new Set(), 6, null, 2);
+  assert.equal(order.length, 2); // s + 1
+});
+
+test('buildDispatchFlows: 以规范分发者为根，深度2扇出到实现+协作者', () => {
+  const mk = (name, { out = 0, imp = 0.5, supers = [], refs = [] } = {}) => {
+    const d = Declaration({ name, namespace: 'p', kind: 'class', path: 'p/' + name + '.kt', line: 1, supertypes: supers, refs });
+    d._out_degree = out; d._importance = imp; return d;
+  };
+  const A = mk('A', { supers: ['I'] });            // impl of I
+  const B = mk('B', { supers: ['I'] });            // impl of I
+  const Coll = mk('Coll', { });                    // A 的协作者
+  const Runner = mk('Runner', { out: 9, refs: ['p.I'] });   // 引用 I、非实现、out 最高 → 根
+  const AlsoRef = mk('AlsoRef', { out: 3, refs: ['I'] });   // 也引用 I 但 out 低
+  const ImplRef = mk('ImplRef', { out: 99, supers: ['I'], refs: ['I'] }); // 引用 I 但本身是 impl → 不能当根
+  const decls = [A, B, Coll, Runner, AlsoRef, ImplRef];
+  const edges = [{ from: 'p.A', to: 'p.Coll', kind: 'uses' }];
+  const dispatchIndex = buildDispatchIndex(decls); // I -> [A,B,ImplRef]（3 个实现）
+  const flows = buildDispatchFlows(decls, dispatchIndex, edges, new Set(), { maxFanout: 8, minImpls: 2 });
+  const f = flows.find((x) => x.via === 'I');
+  assert.ok(f, '应为接口 I 生成一条 dispatch flow');
+  assert.equal(f.seed, 'p.Runner');               // 规范分发者，非 impl、out 最高
+  assert.equal(f.seed_kind, 'dispatch-site');
+  assert.equal(f.confidence, 'candidate');
+  // 根 -> 每个实现 的 dispatch 边
+  const disp = f.edges.filter((e) => e.kind === 'dispatch');
+  assert.ok(disp.every((e) => e.from === 'p.Runner' && e.via === 'I'));
+  assert.deepEqual(disp.map((e) => e.to).sort(), ['p.A', 'p.B', 'p.ImplRef']);
+  // A 的协作者 Coll 以 uses 边出现
+  assert.ok(f.edges.some((e) => e.from === 'p.A' && e.to === 'p.Coll' && e.kind === 'uses'));
+  assert.ok(f.nodes.includes('p.Coll'));
+});
+
+test('buildDispatchFlows: minImpls 过滤、无非-impl 引用者则跳过', () => {
+  const mk = (name, supers = [], refs = []) => Declaration({ name, namespace: 'p', kind: 'class', path: 'p/' + name + '.kt', line: 1, supertypes: supers, refs });
+  // J 只有 1 个实现 → 被 minImpls 过滤；K 有 2 实现但无人引用 → 跳过
+  const decls = [mk('X', ['J']), mk('Y', ['K']), mk('Z', ['K'])];
+  const idx = buildDispatchIndex(decls);
+  assert.deepEqual(buildDispatchFlows(decls, idx, [], new Set(), { minImpls: 2 }), []);
+});

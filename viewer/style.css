@@ -778,4 +778,4 @@ body.light .theme-toggle .icon-moon { display: none; }
 
 /* dispatch (interface → implementor) flow edges: dashed, slightly muted */
 .edge.flow.dispatch { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
-.dispatch-more { font: 500 11px var(--mono, 'JetBrains Mono', monospace); fill: var(--muted, #9aa0a6); }
+.dispatch-more { font: 500 11px var(--font-mono); fill: var(--text-2); }
