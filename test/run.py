@@ -26,6 +26,7 @@ OUT = TEST_DIR / "out"
 GOLDEN = TEST_DIR / "golden"
 SCRIPTS = PLUGIN_ROOT / "scripts"
 VIEWER = PLUGIN_ROOT / "viewer"
+LAUNCHER = PLUGIN_ROOT / "bin" / "code-map"  # the Node pipeline entry point
 CONFIG = TEST_DIR / "config.yml"
 
 
@@ -68,8 +69,8 @@ def cmd_fetch(args):
     (OUT / name).mkdir(parents=True, exist_ok=True)
     (OUT / name / "source.json").write_text(
         harness.dumps_stable({"name": name, "url": url, "commit": sha}))
-    # install only the grammars this repo needs
-    _run([sys.executable, SCRIPTS / "bootstrap.py", "--root", dest])
+    # No grammar install step: the Node pipeline ships bundled WASM grammars and
+    # fetches the few large ones on first use.
     print(f"[fetch] {name} @ {sha}")
     return name
 
@@ -91,7 +92,7 @@ def cmd_prepare(args):
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = (out_dir / "raw_structure.json").resolve()  # MUST be absolute
     params, focus = ([], None) if args.url else _build_params(name)
-    _run([sys.executable, SCRIPTS / "analyze.py",
+    _run([str(LAUNCHER), "analyze",
           "--root", (REPOS / name).resolve(),
           "--out", out_file, *params])
     cm_path = out_dir / "code-map.json"
@@ -133,7 +134,7 @@ def _phase1_raw(name):
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = (out_dir / "raw_structure.json").resolve()
     params, _ = _build_params(name)
-    _run([sys.executable, SCRIPTS / "analyze.py",
+    _run([str(LAUNCHER), "analyze",
           "--root", (REPOS / name).resolve(), "--out", out_file, *params])
     return _read_json(out_file)
 
@@ -180,43 +181,6 @@ def cmd_check(args):
         sys.exit(f"check FAILED: {failed}")
 
 
-def cmd_compare(args):
-    """Run BOTH pipelines (Python analyze.py + Node bin/code-map analyze) on the
-    same repo and assert their Phase-1 output is value-equal. The porting oracle:
-    a faithful Node port produces identical raw_structure.json (modulo int/float
-    formatting). Used during the Python→Node migration."""
-    import os
-    names = ([r["name"] for r in _load_config().get("repos", [])]
-             if args.all else [args.name])
-    launcher = PLUGIN_ROOT / "bin" / "code-map"
-    env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT)}
-    failed = []
-    for name in names:
-        cmd_fetch(argparse.Namespace(name=name, url=None))
-        out_dir = OUT / name
-        out_dir.mkdir(parents=True, exist_ok=True)
-        py_file = (out_dir / "raw_python.json").resolve()
-        js_file = (out_dir / "raw_js.json").resolve()
-        params, _ = _build_params(name)
-        root = (REPOS / name).resolve()
-        subprocess.run([sys.executable, str(SCRIPTS / "analyze.py"),
-                        "--root", str(root), "--out", str(py_file), *params],
-                       check=True, env=env)
-        subprocess.run([str(launcher), "analyze",
-                        "--root", str(root), "--out", str(js_file), *params],
-                       check=True, env=env)
-        ok, diff = harness.compare_pipelines(_read_json(js_file), _read_json(py_file))
-        if ok:
-            print(f"[compare] {name}: ✅ JS ≡ Python (Phase-1 parity)")
-        else:
-            print(f"[compare] {name}: ❌ DIFFER")
-            for line in diff[:120]:
-                print(line)
-            failed.append(name)
-    if failed:
-        sys.exit(f"compare FAILED: {failed}")
-
-
 def _state_path(name):
     return (TEST_DIR / f".server-{name}.json").resolve()
 
@@ -225,14 +189,14 @@ def cmd_serve(args):
     data = (OUT / args.name / "code-map.json").resolve()
     if not data.exists():
         sys.exit(f"error: {data} missing; run prepare + Phase 2 first")
-    _run([sys.executable, SCRIPTS / "mapctl.py", "run",
+    _run([str(LAUNCHER), "run",
           "--plugin-root", PLUGIN_ROOT,
           "--data", data, "--viewer", VIEWER,
           "--state", _state_path(args.name)])
 
 
 def cmd_stop(args):
-    _run([sys.executable, SCRIPTS / "mapctl.py", "stop",
+    _run([str(LAUNCHER), "stop",
           "--state", _state_path(args.name)], check=False)
 
 
@@ -265,11 +229,6 @@ def build_parser():
     sp.add_argument("name", nargs="?")
     sp.add_argument("--all", action="store_true", help="check every repo in config")
     sp.set_defaults(func=cmd_check)
-
-    sp = sub.add_parser("compare", help="diff Node vs Python Phase-1 output (migration oracle)")
-    sp.add_argument("name", nargs="?")
-    sp.add_argument("--all", action="store_true", help="compare every repo in config")
-    sp.set_defaults(func=cmd_compare)
 
     sp = sub.add_parser("serve", help="serve a built map in the browser (isolated state)")
     sp.add_argument("name")
