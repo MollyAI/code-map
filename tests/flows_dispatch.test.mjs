@@ -72,3 +72,36 @@ test('buildFlows: public-orchestrator 种子标 confidence=candidate + seed_kind
   assert.deepEqual(flows[0].nodes.sort(), ['p.A', 'p.B', 'p.U']);
   assert.ok(flows[0].edges.every((e) => e.kind === 'dispatch'));
 });
+
+import { selectFlowSeeds, suppressSubsets } from '../scripts/lib/flows.mjs';
+
+test('selectFlowSeeds: 入口点 ∪ Top-K 公共编排者；排除 hub/private/低 out', () => {
+  const mk = (name, { out = 0, vis = 'public', hub = false, imp = 0.5, path = 'p/' + name + '.kt' } = {}) => {
+    const d = Declaration({ name, namespace: 'p', kind: 'class', path, line: 1 });
+    d._out_degree = out; d.visibility = vis; d._hub = hub; d._importance = imp; return d;
+  };
+  const decls = [
+    mk('Main', { out: 3 }),                       // 入口点（名字命中 isEntryPoint）
+    mk('RealConnection', { out: 21 }),            // 编排者（最高 out）
+    mk('RealCall', { out: 17 }),                  // 编排者
+    mk('SharedSink', { out: 9, hub: true }),      // hub → 排除
+    mk('Secret', { out: 8, vis: 'private' }),     // private → 排除
+    mk('Leaf', { out: 1 }),                       // out<2 → 排除
+  ];
+  const { seeds, seedKind } = selectFlowSeeds(decls, { maxSeeds: 2 });
+  assert.ok(seeds.includes('p.Main'));
+  assert.equal(seedKind.get('p.Main'), 'entry-point');
+  // 编排者按 out 降序取前 2：RealConnection、RealCall
+  assert.deepEqual(seeds.filter((s) => seedKind.get(s) === 'public-orchestrator'), ['p.RealConnection', 'p.RealCall']);
+  assert.ok(!seeds.includes('p.SharedSink') && !seeds.includes('p.Secret') && !seeds.includes('p.Leaf'));
+});
+
+test('suppressSubsets: node 集是另一条子集的 flow 被丢，留大者；相等留靠前', () => {
+  const flows = [
+    { id: 'a', nodes: ['X', 'Y', 'Z'] },
+    { id: 'b', nodes: ['X', 'Y'] },        // ⊂ a → 丢
+    { id: 'c', nodes: ['M', 'N'] },        // 独立 → 留
+    { id: 'd', nodes: ['M', 'N'] },        // 等于 c 且靠后 → 丢
+  ];
+  assert.deepEqual(suppressSubsets(flows).map((f) => f.id), ['a', 'c']);
+});

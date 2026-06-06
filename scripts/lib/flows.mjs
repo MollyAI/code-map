@@ -1,6 +1,7 @@
 // scripts/lib/flows.mjs — flow construction (forward call/dependency chains per
 // entry point, with high-in-degree hubs as non-expandable leaves). Port of flows.py.
 import { qualifiedName } from './extractors/base.mjs';
+import { isEntryPoint } from './core.mjs';
 
 /** 把 supertype / ref 字符串归一化为短名，镜像 core.resolve 的规则：
  *  先剥泛型 <...> 与调用括号 (...)，再取 . :: / 的末段。 */
@@ -158,4 +159,60 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opt
     out.push(flow);
   }
   return out;
+}
+
+/** 候选 flow 种子 = 入口点 ∪ Top-maxSeeds 公共编排者。
+ *  公共编排者池 = visibility != private && _out_degree >= 2 && !_hub，
+ *  按 (_out_degree desc, _importance desc, qname asc) 排序取前 maxSeeds。
+ *  接口（out_degree 0）天然不入选；库的引擎类（Kotlin internal 被标 public）入选。
+ *  返回 { seeds:string[], seedKind:Map<seed,'entry-point'|'public-orchestrator'> }。 */
+export function selectFlowSeeds(declarations, { maxSeeds = 12 } = {}) {
+  const seedKind = new Map();
+  const seeds = [];
+  for (const d of declarations) {
+    if (isEntryPoint(d)) {
+      const q = qualifiedName(d);
+      if (!seedKind.has(q)) { seeds.push(q); seedKind.set(q, 'entry-point'); }
+    }
+  }
+  const pool = declarations.filter((d) =>
+    (d.visibility ?? 'public') !== 'private' &&
+    (d._out_degree || 0) >= 2 &&
+    !d._hub);
+  pool.sort((a, b) => {
+    const oa = a._out_degree || 0, ob = b._out_degree || 0;
+    if (ob !== oa) return ob - oa;
+    const ia = a._importance || 0, ib = b._importance || 0;
+    if (ib !== ia) return ib - ia;
+    const qa = qualifiedName(a), qb = qualifiedName(b);
+    return qa < qb ? -1 : qa > qb ? 1 : 0;
+  });
+  let taken = 0;
+  for (const d of pool) {
+    if (taken >= maxSeeds) break;
+    const q = qualifiedName(d);
+    if (seedKind.has(q)) continue; // already an entry-point seed
+    seeds.push(q);
+    seedKind.set(q, 'public-orchestrator');
+    taken++;
+  }
+  return { seeds, seedKind };
+}
+
+/** 丢掉 node 集是另一条 flow 子集的候选（留更大的）；node 集相等时留靠前的。
+ *  确定性：按数组给定顺序裁决。 */
+export function suppressSubsets(flows) {
+  const sets = flows.map((f) => new Set(f.nodes));
+  const drop = new Set();
+  for (let i = 0; i < flows.length; i++) {
+    for (let j = 0; j < flows.length; j++) {
+      if (i === j || drop.has(i) || drop.has(j)) continue;
+      if (sets[i].size > sets[j].size) continue;
+      let subset = true;
+      for (const n of sets[i]) if (!sets[j].has(n)) { subset = false; break; }
+      if (!subset) continue;
+      if (sets[i].size < sets[j].size || (sets[i].size === sets[j].size && j < i)) { drop.add(i); break; }
+    }
+  }
+  return flows.filter((_, i) => !drop.has(i));
 }
