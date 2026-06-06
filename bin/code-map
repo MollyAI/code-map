@@ -1,0 +1,36 @@
+#!/bin/sh
+# code-map launcher — pick a JS runtime and exec the Node pipeline CLI.
+#
+# Claude Code runs plugin `!`-commands through a POSIX shell (git-bash on
+# Windows), so this sh script is portable across macOS / Linux / Windows. If
+# that ever stops being true, add a bin/code-map.cmd batch shim doing the same
+# detection.
+#
+# This replaces the old `python3 scripts/*.py` invocations: no Python, no pip,
+# no tree-sitter wheels. Grammars are WASM, loaded by web-tree-sitter, and the
+# only prerequisite is a JS runtime (Node >=18 or Bun).
+set -e
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PLUGIN_ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)
+CLI="$PLUGIN_ROOT/scripts/cli.mjs"
+
+# Prefer node (validate >=18), then bun.
+if command -v node >/dev/null 2>&1; then
+  MAJOR=$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))' 2>/dev/null || echo 0)
+  if [ "$MAJOR" -ge 18 ] 2>/dev/null; then
+    exec node "$CLI" "$@"
+  fi
+  echo "code-map: found Node $(node --version 2>/dev/null) but needs >=18." >&2
+fi
+
+if command -v bun >/dev/null 2>&1; then
+  exec bun "$CLI" "$@"
+fi
+
+echo "code-map needs a JS runtime (Node >=18 or Bun)." >&2
+echo "Install Node from https://nodejs.org, or:" >&2
+echo "  macOS:   brew install node" >&2
+echo "  Windows: winget install OpenJS.NodeJS" >&2
+echo "  Linux:   use your package manager, or https://nodejs.org" >&2
+exit 1
