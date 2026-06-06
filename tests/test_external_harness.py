@@ -117,6 +117,71 @@ class TestExpectations(unittest.TestCase):
         self.assertEqual(fails, [])
 
 
+class TestInvariants(unittest.TestCase):
+    def _good(self):
+        raw = _map(layers=[
+            {"id": "a", "classes": [
+                {"name": "Main", "core": True, "tags": ["entry-point"],
+                 "description": ""},
+            ]},
+        ])
+        cm = _map(layers=[
+            {"id": "a", "classes": [
+                {"name": "Main", "id": "a.Main", "core": True,
+                 "tags": ["entry-point"], "description": "app entry",
+                 "confidence": "high"},
+            ]},
+        ])
+        cm["flows"] = [{"id": "f1", "name": "Startup", "description": "boots app",
+                        "seed": "a.Main", "nodes": ["a.Main"]}]
+        return raw, cm
+
+    def test_all_pass(self):
+        raw, cm = self._good()
+        rep = harness.check_invariants(raw, cm, {"skipped": []})
+        self.assertEqual(rep["hard"], [])
+
+    def test_core_without_description_is_hard(self):
+        raw, cm = self._good()
+        cm["layers"][0]["classes"][0]["description"] = "   "
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("empty description" in m for m in rep["hard"]))
+
+    def test_duplicate_layer_ids_hard(self):
+        raw, cm = self._good()
+        cm["layers"].append({"id": "a", "classes": []})
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("duplicate layer ids" in m for m in rep["hard"]))
+
+    def test_entry_point_lost_is_hard(self):
+        raw, cm = self._good()
+        cm["layers"][0]["classes"][0]["tags"] = []  # dropped the tag
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("entry-point" in m for m in rep["hard"]))
+
+    def test_empty_flow_fields_hard(self):
+        raw, cm = self._good()
+        cm["flows"][0]["nodes"] = []
+        cm["flows"][0]["description"] = ""
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("empty nodes" in m for m in rep["hard"]))
+        self.assertTrue(any("empty description" in m for m in rep["hard"]))
+
+    def test_seed_name_not_humanized_is_soft(self):
+        raw, cm = self._good()
+        cm["flows"][0]["name"] = "Main"  # == seed short name
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertEqual(rep["hard"], [])
+        self.assertTrue(any("seed short name" in m for m in rep["soft"]))
+
+    def test_skipped_triage_soft(self):
+        raw, cm = self._good()
+        # 'Main' recovered but without ai-inferred confidence
+        rep = harness.check_invariants(raw, cm, {"skipped": [{"name": "Main"}]})
+        self.assertTrue(any("skipped triage" in m for m in rep["soft"]))
+        self.assertTrue(any("ai-inferred" in m for m in rep["soft"]))
+
+
 class TestConfig(unittest.TestCase):
     @unittest.skipUnless(_HAS_YAML, "PyYAML not installed")
     def test_load_and_find(self):

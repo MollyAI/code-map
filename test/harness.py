@@ -132,3 +132,68 @@ def check_expectations(map_dict, expect):
             failures.append(f"entry_point {sym!r}: not tagged entry-point")
 
     return failures
+
+
+def check_invariants(raw, code_map, unresolved):
+    """Deterministic Phase-2 structural checks. Returns
+    {"hard": [...], "soft": [...]}. hard != [] means a regression (exit≠0)."""
+    hard, soft = [], []
+
+    # 1. core decls must carry a non-empty description
+    for _lid, d in _iter_decls(code_map):
+        if d.get("core") and not (d.get("description") or "").strip():
+            hard.append(
+                f"core decl {d.get('id') or d.get('name')!r} has empty description")
+
+    # 2. layer ids unique
+    ids = [l.get("id") for l in code_map.get("layers", [])]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if dups:
+        hard.append(f"duplicate layer ids: {dups}")
+
+    # 3. entry-points from Phase 1 must survive Phase 2 with core + tag
+    raw_ep = _entry_point_names(raw)
+    cm_index = {d.get("name"): d for _lid, d in _iter_decls(code_map)}
+    for name in sorted(raw_ep):
+        d = cm_index.get(name)
+        if not d:
+            hard.append(f"entry-point {name!r} dropped from map")
+        elif not d.get("core") or "entry-point" not in (d.get("tags") or []):
+            hard.append(f"entry-point {name!r} lost core/tag in Phase 2")
+
+    # 4. flows well-formed: nodes + name + description all non-empty
+    for f in code_map.get("flows", []):
+        fid = f.get("id")
+        if not f.get("nodes"):
+            hard.append(f"flow {fid!r} has empty nodes")
+        if not (f.get("name") or "").strip():
+            hard.append(f"flow {fid!r} has empty name")
+        if not (f.get("description") or "").strip():
+            hard.append(f"flow {fid!r} has empty description")
+
+    # 5. soft: flow name still equal to seed's short name (maybe not humanized)
+    for f in code_map.get("flows", []):
+        seed_short = (f.get("seed") or "").split(".")[-1]
+        if seed_short and f.get("name") == seed_short:
+            soft.append(
+                f"flow {f.get('id')!r} name still equals seed short name "
+                f"{seed_short!r} (maybe not humanized)")
+
+    # 6. soft: skipped triage accounting
+    skipped = (unresolved or {}).get("skipped", []) or []
+    if skipped:
+        recovered, missing_conf = [], []
+        for s in skipped:
+            sname = s.get("name") if isinstance(s, dict) else s
+            d = cm_index.get(sname)
+            if d:
+                recovered.append(sname)
+                if d.get("confidence") != "ai-inferred":
+                    missing_conf.append(sname)
+        soft.append(
+            f"skipped triage: {len(skipped)} skipped, {len(recovered)} recovered, "
+            f"{len(skipped) - len(recovered)} excluded")
+        for n in missing_conf:
+            soft.append(f"recovered {n!r} missing confidence=ai-inferred")
+
+    return {"hard": hard, "soft": soft}
