@@ -11,6 +11,14 @@ export const DEFAULT_SKIP_DIRS = new Set([
   '.idea', '.vscode',
   '__pycache__', '.venv', 'venv', '.env', '.pytest_cache', '.mypy_cache',
   'test', 'tests', 'testsuites', 'androidTest', '__tests__',
+  // Kotlin Multiplatform / Gradle test source-sets (laid out as src/<sourceSet>/);
+  // these are not named plain "test", so without them KMP projects leak test code
+  // into the map (okhttp leaked ~31% of decls). Names are reserved source-set ids,
+  // never production package dirs, so bare-name pruning is safe here.
+  'commonTest', 'jvmTest', 'jsTest', 'nativeTest', 'jvmAndroidTest', 'desktopTest',
+  'androidHostTest', 'androidUnitTest', 'androidInstrumentedTest', 'androidDeviceTest',
+  'appleTest', 'iosTest', 'macosTest', 'tvosTest', 'watchosTest',
+  'linuxTest', 'mingwTest', 'wasmJsTest', 'wasmWasiTest',
   '.code-map',
 ]);
 

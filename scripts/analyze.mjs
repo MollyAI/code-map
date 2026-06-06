@@ -123,6 +123,7 @@ export async function main(argv) {
 
   const [decls, edges] = core.buildGraph(allDecls);
   layers.applyTo(decls, layerConfig);
+  detection.fit = layers.templateFit(decls, layerConfig);
   core.markCore(decls, args.core_percentile, args.core_max_per_layer);
 
   const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
@@ -202,6 +203,9 @@ export async function main(argv) {
     console.log(`[analyze] template: ${detection.chosen} (top: ${ranked})`);
   }
   console.log(`[analyze] files scanned: ${files.length}  declarations: ${decls.length}  edges: ${edges.length}`);
+  if (detection.fit && !detection.fit.fits) {
+    console.log(`[analyze] advisory: ${detection.fit.warning} (Phase 2 should swap/derive layers)`);
+  }
   console.log(`[analyze] flows: ${flowList.length} (entry-point seeds)`);
   console.log(`[analyze] skipped/low-confidence: ${allSkipped.length} entries`);
   console.log(`[analyze] wrote ${outPath}`);

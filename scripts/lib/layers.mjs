@@ -110,3 +110,47 @@ export function assignLayer(decl, layers) {
 export function applyTo(declarations, layers) {
   for (const d of declarations) d._layer = assignLayer(d, layers);
 }
+
+const round3 = (x) => Math.round(x * 1000) / 1000;
+
+/** Deterministic, advisory measure of how well the chosen template's layers
+ *  actually absorbed the code (call AFTER applyTo). A poor fit is the reliable
+ *  tell that the template is wrong for this project — e.g. an app template
+ *  forced onto a library, which dumps most decls into `uncategorized` or piles
+ *  them into one catch-all layer. Phase 2 (build.md step 0) treats `fits:false`
+ *  as a hard trigger to re-architect. Never changes extraction. */
+export function templateFit(declarations, layers) {
+  const total = declarations.length;
+  const counts = new Map(layers.map((l) => [l.id, 0]));
+  for (const d of declarations) counts.set(d._layer, (counts.get(d._layer) || 0) + 1);
+
+  const uncategorized = counts.get('uncategorized') || 0;
+  const nonUncat = layers.filter((l) => l.id !== 'uncategorized');
+  const empty = nonUncat.filter((l) => (counts.get(l.id) || 0) === 0).map((l) => l.id);
+  const populated = nonUncat.length - empty.length;
+  const largest = nonUncat.reduce((m, l) => Math.max(m, counts.get(l.id) || 0), 0);
+
+  const uncategorized_pct = total ? round3(uncategorized / total) : 0;
+  const largest_layer_pct = total ? round3(largest / total) : 0;
+
+  // Only judge fit on a non-trivial corpus; tiny projects are too noisy.
+  const reasons = [];
+  if (total >= 20) {
+    if (uncategorized_pct >= 0.25) {
+      reasons.push(`${Math.round(uncategorized_pct * 100)}% of declarations are uncategorized`);
+    }
+    if (empty.length >= 2 && largest_layer_pct >= 0.6) {
+      reasons.push(`${empty.length}/${nonUncat.length} layers are empty while one holds ${Math.round(largest_layer_pct * 100)}%`);
+    }
+  }
+  const fits = reasons.length === 0;
+  return {
+    fits,
+    uncategorized_pct,
+    largest_layer_pct,
+    empty_layers: empty,
+    populated_layers: populated,
+    total_layers: nonUncat.length,
+    ...(fits ? {} : { warning: `chosen template fits poorly: ${reasons.join('; ')} — re-architect from the package structure` }),
+  };
+}
