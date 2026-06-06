@@ -10,8 +10,11 @@
 //   - `state.flowMaxDepth`  (depth cap, default 6).
 // Here they are passed in through an explicit `ctx` parameter instead.
 //
-// Mirrors scripts/lib/flows.py:trace_flow / build_flows — keep the
-// pruning rules in sync. Forward BFS over 'uses' edges; a hub node is
+// Mirrors scripts/lib/flows.mjs:traceFlow / buildFlows for the uses-only
+// CLIENT-SIDE FALLBACK (old JSON without flows[]). Dispatch expansion is
+// Phase-1-only — it needs declaration `refs`, which are not serialized — so
+// this fallback never synthesizes dispatch edges; new builds carry them from
+// Phase 1 and the renderer just draws kind:"dispatch" dashed. Forward BFS over 'uses' edges; a hub node is
 // included but not expanded (leaf) unless it is the seed; each node is
 // placed once at its shortest depth; the traversal stops past maxDepth.
 // Flow `edges` carry ONLY `{ from, to }` (no `kind`) — that field lives
