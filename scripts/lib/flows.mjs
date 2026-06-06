@@ -26,14 +26,26 @@ export function buildDispatchIndex(declarations) {
   }
   const index = new Map();
   for (const [k, impls] of byShort) {
-    if (impls.length < 2) continue;
-    impls.sort((a, b) => {
+    // Dedup by qualified_name: one decl may name two supertypes that collapse to
+    // the same short-name (e.g. okhttp's RealEventSource implements both
+    // `ServerSentEventReader.Callback` and `Callback`) — it must count once, or
+    // it doubles in project.dispatch and produces duplicate dispatch edges.
+    const seen = new Set();
+    const uniq = [];
+    for (const d of impls) {
+      const q = qualifiedName(d);
+      if (seen.has(q)) continue;
+      seen.add(q);
+      uniq.push(d);
+    }
+    if (uniq.length < 2) continue;
+    uniq.sort((a, b) => {
       const ia = a._importance || 0, ib = b._importance || 0;
       if (ib !== ia) return ib - ia;
       const qa = qualifiedName(a), qb = qualifiedName(b);
       return qa < qb ? -1 : qa > qb ? 1 : 0;
     });
-    index.set(k, impls);
+    index.set(k, uniq);
   }
   return index;
 }

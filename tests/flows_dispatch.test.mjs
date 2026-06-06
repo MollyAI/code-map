@@ -150,3 +150,19 @@ test('buildDispatchFlows: minImpls 过滤、无非-impl 引用者则跳过', () 
   const idx = buildDispatchIndex(decls);
   assert.deepEqual(buildDispatchFlows(decls, idx, [], new Set(), { minImpls: 2 }), []);
 });
+
+test('buildDispatchIndex: 同名短名 supertype 在桶内按 qname 去重', () => {
+  const mk = (name, supers) => Declaration({ name, namespace: 'p', kind: 'class', path: 'p/' + name + '.kt', line: 1, supertypes: supers });
+  // RealEventSource-shaped: one decl names two supertypes that both shortName to
+  // "Callback" (e.g. "Foo.Callback" + "Callback") — it must count ONCE in the bucket.
+  const decls = [mk('Dual', ['Foo.Callback', 'Callback']), mk('Other', ['Callback'])];
+  const idx = buildDispatchIndex(decls);
+  assert.equal(idx.get('Callback').filter((d) => d.name === 'Dual').length, 1);
+  assert.deepEqual(idx.get('Callback').map((d) => d.name).sort(), ['Dual', 'Other']);
+});
+
+test('buildDispatchIndex: 单 decl 自我重复不足以成桶（<2 唯一实现）', () => {
+  const mk = (name, supers) => Declaration({ name, namespace: 'p', kind: 'class', path: 'p/' + name + '.kt', line: 1, supertypes: supers });
+  const decls = [mk('Solo', ['Bar.Thing', 'Thing'])]; // 2 supertypes, same shortName, 1 unique impl
+  assert.equal(buildDispatchIndex(decls).has('Thing'), false);
+});
