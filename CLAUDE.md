@@ -92,7 +92,7 @@ python3 scripts/analyze.py --root . --out .code-map/raw_structure.json --skip ge
 
 `bootstrap.py` installs grammars into `${CLAUDE_PLUGIN_DATA}/wheels` (falls back to `~/.cache/code-map/wheels`) and is the only thing that ever runs `pip install`. `analyze.py` adds that wheels dir to `sys.path` so the grammars import. `PyYAML` is in bootstrap's `ALWAYS` set (so template detection / the Phase 0 `architecture.yml` are reliably available), and whenever any grammar is (re)installed the `tree-sitter` core is re-resolved in the same `pip --upgrade` transaction — that keeps the core's ABI compatible with a freshly added grammar (the classic "Incompatible Language version" crash is a stale cached core + a new grammar).
 
-There is no test suite, no linter config, and no build step — it's a stdlib Python script + a single HTML file.
+There is no linter config and no build step. Tests are lightweight, run directly off the stdlib / native test runners (no extra deps): Python via `unittest` in `tests/` — `python3 -m unittest discover -s tests -p 'test_*.py'` (use `discover`; `tests/` is not a package) — and the viewer's DOM-free modules via `node --test viewer/src/test/*.test.js`. Pure logic lives in `scripts/lib/` and `viewer/src/` and is unit-tested; CLIs (`scripts/*.py`) and DOM wiring (`viewer/src/main.js`) are exercised end-to-end.
 
 ## Architectural invariants
 
