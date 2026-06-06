@@ -21,6 +21,7 @@ import { createTooltip } from './ui/tooltip.js';
 import { createDetail } from './ui/detail.js';
 import { renderLangStats } from './ui/langstats.js';
 import { initControls, populateFlowSelect } from './ui/controls.js';
+import { formatBuildInfo } from './ui/buildinfo.js';
 import { initExport } from './export/png.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './util.js';
@@ -42,6 +43,7 @@ const els = {
   fontToggle: $('font-size-toggle'),
   canvasWrap: $('canvas-wrap'),
   projectName: $('project-name'),
+  buildInfo: $('build-info'),
   langStats: $('lang-stats'),
   layout: /** @type {any} */ (document.querySelector('.layout')),
 };
@@ -98,6 +100,10 @@ function onModel(json) {
   state.model = model;
   els.projectName.textContent = model.project?.name || '—';
   document.title = model.project?.name || 'code map';
+  const bi = formatBuildInfo(model.project, state.lang);
+  els.buildInfo.textContent = bi.text;
+  els.buildInfo.title = bi.title;
+  els.buildInfo.hidden = bi.hidden;
   renderLangStats(model, els.langStats);
 
   const { edgesFromIdx, edgesToIdx } = buildEdgeIndex(model.edges || []);

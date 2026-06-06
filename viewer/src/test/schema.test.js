@@ -20,3 +20,13 @@ test('loadModel 标注 schemaVersion', () => {
   const m = loadModel({ project: { name: 'p' }, layers: [], edges: [], flows: [] });
   assert.ok(typeof m.schemaVersion === 'number');
 });
+test('loadModel 原样透传 project.git', () => {
+  const m = loadModel({
+    project: { name: 'p', generated_at: '2026-06-06T14:30:09',
+               git: { branch: 'main', commit: 'abc1234def', short: 'abc1234', dirty: true } },
+    layers: [], edges: [],
+  });
+  assert.equal(m.project.git.branch, 'main');
+  assert.equal(m.project.git.commit, 'abc1234def');
+  assert.equal(m.project.git.dirty, true);
+});
