@@ -9,7 +9,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 You are running the `code-map` build pipeline. This command produces `.code-map/code-map.json` from scratch. The pipeline:
 
 - **Phase 0 (architecture, this is you)** — read `README.md` + the directory tree + the detector's advisory scores, then pick & tweak one of the bundled templates and write `.code-map/architecture.yml`.
-- **Phase 1 (mechanical)** — Python walks the project, tree-sitter parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
+- **Phase 1 (mechanical)** — the Node extractor (`web-tree-sitter`, WASM grammars) walks the project, parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
 - **Phase 2 (semantic, this is you)** — review Phase 1's `raw_structure.json` and `unresolved.json`, confirm/correct the architecture against the real code, then write the final `code-map.json` with bilingual descriptions (core declarations only), layer overrides, and entry-point markers.
 - **Incremental builds** — if a prior `code-map.json` exists and git shows only a few changed files, the build auto-skips Phase 0 and re-describes only changed / newly-core declarations (Path B). Delete `.code-map/code-map.json` to force a full rebuild.
 
@@ -21,13 +21,11 @@ If `$1` is non-empty, treat the whole argument string as a **focus hint** for Ph
 
 ## Pre-flight: choose build mode
 
-Ensure tree-sitter grammars + PyYAML are installed (detection needs PyYAML; the script only installs what's missing, caching into `${CLAUDE_PLUGIN_DATA}/wheels`):
-
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/bootstrap.py" --root .
+The pipeline runs on a JS runtime (Node ≥18 or Bun) — no Python, no `pip`, no tree-sitter install. Grammars are bundled WASM (the 6 large ones are fetched once on first use and cached). If `bin/code-map` reports no JS runtime, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
 
 Decide incremental vs full from the git diff since the last build (this writes `.code-map/incremental.json`; it is always safe to run and reports `mode=full` whenever anything is uncertain):
 
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/incremental.py" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
+!"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
 
 `Read` `.code-map/incremental.json`. If `mode` is `"full"`, follow **Path A**. If `mode` is `"incremental"`, follow **Path B**. The printed `reason` explains a full fall-back (e.g. `no-prior-build`, `base-unreachable`, `too-many-changes`).
 
@@ -44,7 +42,7 @@ rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detectio
 **A2.** Get the deterministic detector's advisory scores:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --detect-only
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --detect-only
 ```
 
 **A3. Phase 0 — propose the architecture (your job):**
@@ -58,10 +56,10 @@ python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --detect-only
 **A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/raw_structure.json
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
 ```
 
-Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). If a script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/...` (project-local install).
+Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). If the launcher is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./bin/code-map` (project-local install).
 
 **A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `raw_structure.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A4** so the heavy vendored subtree is excluded before you spend Phase 2 effort. Leave it in only if the flagged dir is actually first-party.
 
@@ -82,13 +80,13 @@ rm -f .code-map/raw_structure.json .code-map/detection.json
 **B3. Phase 1 — extract** (picks up the existing `architecture.yml`):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/raw_structure.json
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
 ```
 
 **B4. Merge prior Phase 2 work** onto the fresh structure:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/incremental.py" merge --raw .code-map/raw_structure.json --prev .code-map/code-map.json --incremental .code-map/incremental.json --out .code-map/code-map.draft.json
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" merge --raw .code-map/raw_structure.json --prev .code-map/code-map.json --incremental .code-map/incremental.json --out .code-map/code-map.draft.json
 ```
 
 This produces `code-map.draft.json` — the fresh structure with unchanged declarations' descriptions / tags / layer placement already filled in. Two helper flags tell you exactly what is left to do:

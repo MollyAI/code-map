@@ -2,9 +2,14 @@
 // merge prior Phase 2 annotations onto a fresh Phase 1 structure (merge).
 // Ports scripts/incremental.py (CLI) + scripts/lib/incremental.py (logic).
 // Phase 1 always re-runs full; only Phase 2 reuse is incremental.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve as resolvePath, dirname } from 'node:path';
 import * as gitmeta from './lib/gitmeta.mjs';
+
+function writeJson(path, obj) {
+  mkdirSync(dirname(resolvePath(path)), { recursive: true });
+  writeFileSync(path, JSON.stringify(obj, null, 2));
+}
 
 const DEFAULT_MAX_CHANGE_RATIO = 0.4;
 
@@ -106,7 +111,7 @@ export function planMain(argv) {
   const arch = flag(argv, '--arch', '.code-map/architecture.yml');
   const out = flag(argv, '--out', '.code-map/incremental.json');
   const result = plan(root, prev, existsSync(arch) || existsSync(arch.replace(/\.yml$/, '.json')));
-  writeFileSync(out, JSON.stringify(result, null, 2));
+  writeJson(out, result);
   console.log(`[incremental] mode=${result.mode} reason=${result.reason} changed=${result.changed_files.length}`);
   return 0;
 }
@@ -121,7 +126,7 @@ export function mergeMain(argv) {
     return 1;
   }
   const draft = merge(raw, prev, inc.changed_files || []);
-  writeFileSync(out, JSON.stringify(draft, null, 2));
+  writeJson(out, draft);
   const stale = draft.layers.reduce((n, L) => n + L.classes.filter((c) => c.stale).length, 0);
   const review = draft.flows.filter((f) => f.needs_review).length;
   console.log(`[incremental] merge: ${stale} declarations need descriptions, ${review} flows need review -> ${out}`);

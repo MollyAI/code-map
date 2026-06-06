@@ -7,9 +7,9 @@ allowed-tools: Bash
 
 Launches (or reuses) the local HTTP server that serves the interactive code-map visualization, and opens the browser. The server runs detached in the background; stop it later with `/code-map:stop`.
 
-All of the logic — verifying a build exists, detecting an already-running server, launching detached, and opening the browser — lives in `scripts/mapctl.py`. It is deterministic and self-contained, so this command is a single one-shot call. **Do not** add polling, log parsing, or troubleshooting steps; just run the command below and relay its output.
+All of the logic — verifying a build exists, detecting an already-running server, launching detached, and opening the browser — lives in `scripts/mapctl.mjs` (driven by the `bin/code-map` launcher). It is deterministic and self-contained, so this command is a single one-shot call. **Do not** add polling, log parsing, or troubleshooting steps; just run the command below and relay its output.
 
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/mapctl.py" run --plugin-root "${CLAUDE_PLUGIN_ROOT:-.}" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer" --state .code-map/server.json
+!"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" run --plugin-root "${CLAUDE_PLUGIN_ROOT:-.}" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer" --state .code-map/server.json
 
 ## Final user-facing summary
 
