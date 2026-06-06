@@ -68,6 +68,41 @@ def dumps_stable(obj):
     return json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False)
 
 
+def _floatify(obj):
+    """Coerce every non-bool int to float (recursively). Used only for rendering
+    a clean diff: JS has no int/float distinction so it emits 0 where Python emits
+    0.0; floatifying both sides keeps that purely-cosmetic gap out of the diff."""
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, int):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _floatify(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_floatify(v) for v in obj]
+    return obj
+
+
+def compare_pipelines(js_raw, python_raw):
+    """Compare two pipelines' raw_structure.json by VALUE (not byte form).
+
+    Returns (identical: bool, diff_lines: list[str]). Normalizes both via
+    normalize_raw, then compares with Python `==` so 0 and 0.0 (JS vs Python
+    float formatting) are equal. Only genuine value/structure differences fail.
+    """
+    jn = normalize_raw(js_raw)
+    pn = normalize_raw(python_raw)
+    if jn == pn:
+        return True, []
+    import difflib
+    js_str = dumps_stable(_floatify(jn))
+    py_str = dumps_stable(_floatify(pn))
+    diff = list(difflib.unified_diff(
+        py_str.splitlines(), js_str.splitlines(),
+        fromfile="python", tofile="javascript", lineterm=""))
+    return False, diff
+
+
 def repo_name_from_url(url):
     """owner/repo URL → filesystem-safe 'owner__repo'."""
     s = url.rstrip("/")

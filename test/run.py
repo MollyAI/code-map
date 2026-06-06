@@ -180,6 +180,43 @@ def cmd_check(args):
         sys.exit(f"check FAILED: {failed}")
 
 
+def cmd_compare(args):
+    """Run BOTH pipelines (Python analyze.py + Node bin/code-map analyze) on the
+    same repo and assert their Phase-1 output is value-equal. The porting oracle:
+    a faithful Node port produces identical raw_structure.json (modulo int/float
+    formatting). Used during the Python→Node migration."""
+    import os
+    names = ([r["name"] for r in _load_config().get("repos", [])]
+             if args.all else [args.name])
+    launcher = PLUGIN_ROOT / "bin" / "code-map"
+    env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT)}
+    failed = []
+    for name in names:
+        cmd_fetch(argparse.Namespace(name=name, url=None))
+        out_dir = OUT / name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        py_file = (out_dir / "raw_python.json").resolve()
+        js_file = (out_dir / "raw_js.json").resolve()
+        params, _ = _build_params(name)
+        root = (REPOS / name).resolve()
+        subprocess.run([sys.executable, str(SCRIPTS / "analyze.py"),
+                        "--root", str(root), "--out", str(py_file), *params],
+                       check=True, env=env)
+        subprocess.run([str(launcher), "analyze",
+                        "--root", str(root), "--out", str(js_file), *params],
+                       check=True, env=env)
+        ok, diff = harness.compare_pipelines(_read_json(js_file), _read_json(py_file))
+        if ok:
+            print(f"[compare] {name}: ✅ JS ≡ Python (Phase-1 parity)")
+        else:
+            print(f"[compare] {name}: ❌ DIFFER")
+            for line in diff[:120]:
+                print(line)
+            failed.append(name)
+    if failed:
+        sys.exit(f"compare FAILED: {failed}")
+
+
 def _state_path(name):
     return (TEST_DIR / f".server-{name}.json").resolve()
 
@@ -228,6 +265,11 @@ def build_parser():
     sp.add_argument("name", nargs="?")
     sp.add_argument("--all", action="store_true", help="check every repo in config")
     sp.set_defaults(func=cmd_check)
+
+    sp = sub.add_parser("compare", help="diff Node vs Python Phase-1 output (migration oracle)")
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--all", action="store_true", help="compare every repo in config")
+    sp.set_defaults(func=cmd_compare)
 
     sp = sub.add_parser("serve", help="serve a built map in the browser (isolated state)")
     sp.add_argument("name")

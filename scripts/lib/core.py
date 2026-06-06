@@ -158,7 +158,9 @@ def mark_core(declarations: list[Declaration], percentile: float = 0.25,
     for d in declarations:
         by_layer[getattr(d, "_layer", "uncategorized")].append(d)
     for layer, items in by_layer.items():
-        items.sort(key=lambda d: d._importance, reverse=True)  # type: ignore[attr-defined]
+        # Deterministic: importance desc, then qualified_name asc to break ties so
+        # core selection at the percentile boundary doesn't depend on walk order.
+        items.sort(key=lambda d: (-d._importance, d.qualified_name))  # type: ignore[attr-defined]
         k = max(1, int(len(items) * percentile))
         if max_per_layer:
             k = min(k, max_per_layer)
