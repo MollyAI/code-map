@@ -60,6 +60,10 @@ export const I18N = {
     copied: "copied",
     failed: "failed",
     uses: "uses",
+    built: "Built",
+    branch: "Branch",
+    commit: "Commit",
+    dirty_note: "Built with uncommitted changes",
   },
   zh: {
     core: "核心",
@@ -104,6 +108,10 @@ export const I18N = {
     copied: "已复制",
     failed: "失败",
     uses: "使用",
+    built: "构建于",
+    branch: "分支",
+    commit: "提交",
+    dirty_note: "构建时工作区有未提交改动",
   },
 };
 
