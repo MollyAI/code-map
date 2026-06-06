@@ -79,7 +79,7 @@ def main():
 
     # Imports must come after the sys.path setup above.
     from scripts.lib.extractors import extractor_for
-    from scripts.lib import core, layers, flows as flowmod
+    from scripts.lib import core, layers, flows as flowmod, gitmeta
     from scripts.lib.skipdirs import load_skip_dirs
 
     # plugin_root resolves to this script's grandparent (the code-map repo).
@@ -155,6 +155,9 @@ def main():
     # fallback paths it carries a `reason` and empty scores/evidence instead
     # of detection signals — see layers.load_config.
     project_meta["template_detection"] = detection
+    git = gitmeta.git_info(root)
+    if git:
+        project_meta["git"] = git          # omitted entirely when not a git repo
 
     data = core.to_json_shape(
         declarations=decls,
