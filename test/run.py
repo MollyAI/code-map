@@ -180,6 +180,25 @@ def cmd_check(args):
         sys.exit(f"check FAILED: {failed}")
 
 
+def _state_path(name):
+    return (TEST_DIR / f".server-{name}.json").resolve()
+
+
+def cmd_serve(args):
+    data = (OUT / args.name / "code-map.json").resolve()
+    if not data.exists():
+        sys.exit(f"error: {data} missing; run prepare + Phase 2 first")
+    _run([sys.executable, SCRIPTS / "mapctl.py", "run",
+          "--plugin-root", PLUGIN_ROOT,
+          "--data", data, "--viewer", VIEWER,
+          "--state", _state_path(args.name)])
+
+
+def cmd_stop(args):
+    _run([sys.executable, SCRIPTS / "mapctl.py", "stop",
+          "--state", _state_path(args.name)], check=False)
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="run.py", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -209,6 +228,14 @@ def build_parser():
     sp.add_argument("name", nargs="?")
     sp.add_argument("--all", action="store_true", help="check every repo in config")
     sp.set_defaults(func=cmd_check)
+
+    sp = sub.add_parser("serve", help="serve a built map in the browser (isolated state)")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_serve)
+
+    sp = sub.add_parser("stop", help="stop a test server")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_stop)
 
     return p
 
