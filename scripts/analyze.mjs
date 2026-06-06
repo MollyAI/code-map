@@ -22,7 +22,7 @@ function parseArgs(argv) {
   const a = {
     root: '.', out: '.code-map/raw_structure.json',
     core_percentile: 0.25, core_max_per_layer: 40,
-    flow_hub_percentile: 0.05, flow_max_depth: 6,
+    flow_hub_percentile: 0.05, flow_max_depth: 6, flow_seed_max: 12, flow_max_nodes: 25,
     skip: [], name: null, detect_only: false,
     git_history_limit: 200, git_history: true,
   };
@@ -35,6 +35,8 @@ function parseArgs(argv) {
     else if (k === '--core-max-per-layer') a.core_max_per_layer = parseInt(next(), 10);
     else if (k === '--flow-hub-percentile') a.flow_hub_percentile = parseFloat(next());
     else if (k === '--flow-max-depth') a.flow_max_depth = parseInt(next(), 10);
+    else if (k === '--flow-seed-max') a.flow_seed_max = parseInt(next(), 10);
+    else if (k === '--flow-max-nodes') a.flow_max_nodes = parseInt(next(), 10);
     else if (k === '--skip') a.skip.push(next());
     else if (k === '--name') a.name = next();
     else if (k === '--detect-only') a.detect_only = true;
@@ -123,11 +125,17 @@ export async function main(argv) {
 
   const [decls, edges] = core.buildGraph(allDecls);
   layers.applyTo(decls, layerConfig);
+  detection.fit = layers.templateFit(decls, layerConfig);
   core.markCore(decls, args.core_percentile, args.core_max_per_layer);
 
   const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
-  const entrySeeds = decls.filter((d) => core.isEntryPoint(d)).map((d) => qualifiedName(d));
-  const flowList = flowmod.buildFlows(entrySeeds, decls, edges, hubIds, args.flow_max_depth);
+  const dispatchIndex = flowmod.buildDispatchIndex(decls);
+  const { seeds, seedKind } = flowmod.selectFlowSeeds(decls, { maxSeeds: args.flow_seed_max });
+  let bfsFlows = flowmod.buildFlows(seeds, decls, edges, hubIds, args.flow_max_depth,
+    { dispatchIndex, maxFanout: 8, seedKind, maxNodes: args.flow_max_nodes });
+  bfsFlows = flowmod.suppressSubsets(bfsFlows);
+  const dispatchFlows = flowmod.buildDispatchFlows(decls, dispatchIndex, edges, hubIds, { maxFanout: 8 });
+  const flowList = [...dispatchFlows, ...bfsFlows];
 
   // Vendored-flooding advisory.
   const manifestNames = ['build.gradle', 'build.gradle.kts', 'pom.xml'];
@@ -162,6 +170,12 @@ export async function main(argv) {
     generated_at: new Date().toISOString().slice(0, 19),
   };
   projectMeta.template_detection = detection;
+  if (dispatchIndex.size) {
+    projectMeta.dispatch = Object.fromEntries(
+      [...dispatchIndex.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+        .map(([k, impls]) => [k, impls.map((d) => qualifiedName(d))]));
+  }
   if (advisories.length) projectMeta.advisories = advisories;
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
@@ -202,7 +216,10 @@ export async function main(argv) {
     console.log(`[analyze] template: ${detection.chosen} (top: ${ranked})`);
   }
   console.log(`[analyze] files scanned: ${files.length}  declarations: ${decls.length}  edges: ${edges.length}`);
-  console.log(`[analyze] flows: ${flowList.length} (entry-point seeds)`);
+  if (detection.fit && !detection.fit.fits) {
+    console.log(`[analyze] advisory: ${detection.fit.warning} (Phase 2 should swap/derive layers)`);
+  }
+  console.log(`[analyze] flows: ${flowList.length} (${dispatchFlows.length} dispatch, ${bfsFlows.length} bfs)`);
   console.log(`[analyze] skipped/low-confidence: ${allSkipped.length} entries`);
   console.log(`[analyze] wrote ${outPath}`);
   console.log(`[analyze] wrote ${unresolvedPath}`);

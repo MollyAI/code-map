@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""External-repo test harness CLI.
+"""External-repo evaluation harness CLI.
 
 Drives real GitHub repos through the code-map pipeline for local evaluation
 (path B, primary) and deterministic Phase-1 golden regression (path A).
 
-All artifacts live under the plugin repo's gitignored test/ subdirs; clones and
+All artifacts live under the plugin repo's gitignored eval/ subdirs; clones and
 analyze output never pollute the cloned repo, the plugin's .code-map/, or a live
 /code-map:run server (isolated --out + --state).
 
@@ -19,15 +19,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-TEST_DIR = PLUGIN_ROOT / "test"
-REPOS = TEST_DIR / "repos"
-OUT = TEST_DIR / "out"
-GOLDEN = TEST_DIR / "golden"
-SCRIPTS = PLUGIN_ROOT / "scripts"
+EVAL_DIR = Path(__file__).resolve().parent
+PLUGIN_ROOT = EVAL_DIR.parent
+REPOS = EVAL_DIR / "repos"
+OUT = EVAL_DIR / "out"
+GOLDEN = EVAL_DIR / "golden"
 VIEWER = PLUGIN_ROOT / "viewer"
 LAUNCHER = PLUGIN_ROOT / "bin" / "code-map"  # the Node pipeline entry point
-CONFIG = TEST_DIR / "config.yml"
+CONFIG = EVAL_DIR / "config.yml"
 
 
 def _run(cmd, cwd=None, check=True):
@@ -76,8 +75,8 @@ def cmd_fetch(args):
 
 
 def _build_params(name):
-    """analyze.py params from config's repo.build (skip → --skip; focus is a
-    Phase-2 hint for Claude, not an analyze flag)."""
+    """`bin/code-map analyze` params from config's repo.build (skip → --skip;
+    focus is a Phase-2 hint for Claude, not an analyze flag)."""
     r = harness.find_repo(_load_config(), name) or {}
     build = r.get("build") or {}
     params = []
@@ -100,8 +99,8 @@ def cmd_prepare(args):
     print(f"[prepare] Phase 1 done → {out_file}")
     print(f"[prepare] NEXT (Claude): read {out_file}, do Phase 0 + Phase 2,")
     print(f"          write {cm_path}" + (f"  (focus hint: {focus})" if focus else ""))
-    print(f"[prepare] then: python3 test/run.py invariants {name}")
-    print(f"          and:  python3 test/run.py serve {name}")
+    print(f"[prepare] then: python3 eval/run.py invariants {name}")
+    print(f"          and:  python3 eval/run.py serve {name}")
     print("=" * 70)
 
 
@@ -182,7 +181,7 @@ def cmd_check(args):
 
 
 def _state_path(name):
-    return (TEST_DIR / f".server-{name}.json").resolve()
+    return (EVAL_DIR / f".server-{name}.json").resolve()
 
 
 def cmd_serve(args):
@@ -209,11 +208,11 @@ def build_parser():
         if allow_url:
             sp.add_argument("--url", help="ad-hoc GitHub URL (not in config)")
 
-    sp = sub.add_parser("fetch", help="clone + checkout pinned SHA + bootstrap")
+    sp = sub.add_parser("fetch", help="clone + checkout pinned SHA")
     add_target(sp, allow_url=True)
     sp.set_defaults(func=cmd_fetch)
 
-    sp = sub.add_parser("prepare", help="fetch + run Phase 1 → test/out/<name>/")
+    sp = sub.add_parser("prepare", help="fetch + run Phase 1 → eval/out/<name>/")
     add_target(sp, allow_url=True)
     sp.set_defaults(func=cmd_prepare)
 
@@ -234,7 +233,7 @@ def build_parser():
     sp.add_argument("name")
     sp.set_defaults(func=cmd_serve)
 
-    sp = sub.add_parser("stop", help="stop a test server")
+    sp = sub.add_parser("stop", help="stop an eval server")
     sp.add_argument("name")
     sp.set_defaults(func=cmd_stop)
 

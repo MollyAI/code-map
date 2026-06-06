@@ -775,3 +775,7 @@ body.light .theme-toggle .icon-moon { display: none; }
   .detail { width: 100%; }
   .flow-sidebar { width: 100%; }
 }
+
+/* dispatch (interface → implementor) flow edges: dashed, slightly muted */
+.edge.flow.dispatch { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
+.dispatch-more { font: 500 11px var(--font-mono); fill: var(--text-2); }

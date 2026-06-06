@@ -11,7 +11,7 @@ import { t } from '../i18n.js';
 import { layoutLayers } from '../layout/layers.js';
 import { layoutFlow } from '../layout/flow.js';
 import { makeNodeEl } from './node.js';
-import { buildFlowEdgePath } from './edges.js';
+import { buildFlowEdgePath, flowEdgeClass } from './edges.js';
 import { renderScene } from './scene.js';
 import { NS } from './backend.js';
 
@@ -158,15 +158,27 @@ const flowView = {
         const path = document.createElementNS(NS, 'path');
         // resting flow edge; selection re-styles it active/dimmed by endpoint
         // (interact/selection drawEdges) via the data-from/data-to ids.
-        path.setAttribute('class', 'edge flow');
+        path.setAttribute('class', flowEdgeClass(e.kind));
         path.setAttribute('data-from', e.from);
         path.setAttribute('data-to', e.to);
+        path.setAttribute('data-kind', e.kind || 'uses');
+        if (e.via) path.setAttribute('data-via', e.via);
         path.setAttribute('d', buildFlowEdgePath(a, b));
         gEdges.appendChild(path);
       }
     }
     const gNodes = document.createElementNS(NS, 'g');
     for (const node of lay.nodes) appendNode(st, gNodes, node, ctx, flowDecorate);
+    for (const o of lay.omitted || []) {
+      const n = pos.get(o.from);
+      if (!n) continue;
+      const more = document.createElementNS(NS, 'text');
+      more.setAttribute('class', 'dispatch-more');
+      more.setAttribute('x', String(n.x + n.w + 6));
+      more.setAttribute('y', String(n.y + n.h - 2));
+      more.textContent = '+' + o.count + ' more';
+      gNodes.appendChild(more);
+    }
     backend.add(gEdges);   // edges under nodes (flow)
     backend.add(gNodes);
   },

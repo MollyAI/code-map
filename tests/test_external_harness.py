@@ -1,13 +1,14 @@
-"""Unit tests for test/harness.py (the external-repo test harness's pure logic).
+"""Unit tests for eval/harness.py (the external-repo eval harness's pure logic).
 
-test/ and tests/ are deliberately distinct dirs; inject test/ onto sys.path so we
-can `import harness`. harness.py must have zero import-time side effects."""
+eval/ (external-repo eval harness) and tests/ (this unit-test suite) are distinct
+dirs; inject eval/ onto sys.path so we can `import harness`. harness.py must have
+zero import-time side effects."""
 import pathlib
 import sys
 import unittest
 
-_TEST_DIR = pathlib.Path(__file__).resolve().parent.parent / "test"
-sys.path.insert(0, str(_TEST_DIR))
+_EVAL_DIR = pathlib.Path(__file__).resolve().parent.parent / "eval"
+sys.path.insert(0, str(_EVAL_DIR))
 import harness  # noqa: E402
 
 try:

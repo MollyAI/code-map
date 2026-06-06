@@ -7,7 +7,7 @@
 // --------------------------------------------------------------------
 
 import { state } from '../store.js';
-import { buildEdgePath } from '../render/edges.js';
+import { buildEdgePath, flowEdgeClass } from '../render/edges.js';
 import { NS } from '../render/backend.js';
 
 /**
@@ -73,9 +73,9 @@ export function createSelection({ backend, renderDetail, layoutEl }) {
       for (const path of layer.querySelectorAll('path.edge')) {
         const from = path.getAttribute('data-from') || '';
         const to = path.getAttribute('data-to') || '';
-        let cls = 'edge flow';
-        if (hl) cls += (hl.has(from) && hl.has(to)) ? ' active' : ' dimmed';
-        path.setAttribute('class', cls);
+        const kind = path.getAttribute('data-kind') || 'uses';
+        const lit = !!(hl && hl.has(from) && hl.has(to));
+        path.setAttribute('class', flowEdgeClass(kind, { active: lit, dimmed: !!hl && !lit }));
       }
       return;
     }
@@ -123,7 +123,9 @@ export function createSelection({ backend, renderDetail, layoutEl }) {
       for (const path of layer.querySelectorAll('path.edge')) {
         const from = path.getAttribute('data-from') || '';
         const to = path.getAttribute('data-to') || '';
-        path.setAttribute('class', 'edge flow' + ((idSet.has(from) && idSet.has(to)) ? ' active' : ' dimmed'));
+        const kind = path.getAttribute('data-kind') || 'uses';
+        const lit = idSet.has(from) && idSet.has(to);
+        path.setAttribute('class', flowEdgeClass(kind, { active: lit, dimmed: !lit }));
       }
       return;
     }
