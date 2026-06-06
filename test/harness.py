@@ -24,17 +24,43 @@ def _round_floats(obj):
     return obj
 
 
+def _canonicalize_order(d):
+    """Sort logically-unordered lists so golden diffs are stable across runs.
+    analyze.py emits edges (and per-layer classes) in graph-traversal/set order,
+    which is not byte-stable run-to-run; membership is what matters, not order."""
+    edges = d.get("edges")
+    if isinstance(edges, list):
+        edges.sort(key=lambda e: (e.get("from", ""), e.get("kind", ""), e.get("to", "")))
+    for layer in d.get("layers", []):
+        classes = layer.get("classes")
+        if isinstance(classes, list):
+            classes.sort(key=lambda c: (c.get("id") or c.get("name") or ""))
+            for c in classes:
+                for k in ("tags", "supertypes"):
+                    if isinstance(c.get(k), list):
+                        c[k] = sorted(c[k])
+    flows = d.get("flows")
+    if isinstance(flows, list):
+        flows.sort(key=lambda f: f.get("id", ""))
+        for f in flows:
+            if isinstance(f.get("nodes"), list):
+                f["nodes"] = sorted(f["nodes"])
+            if isinstance(f.get("edges"), list):
+                f["edges"].sort(key=lambda e: (e.get("from", ""), e.get("to", "")))
+    return d
+
+
 def normalize_raw(raw):
     """Deterministic projection of a raw_structure.json dict for stable golden
-    diffing: strip volatile project fields, neutralize root, round floats.
-    Does not mutate the input."""
+    diffing: strip volatile project fields, neutralize root, round floats,
+    canonicalize unordered-list order. Does not mutate the input."""
     d = copy.deepcopy(raw)
     proj = d.get("project", {})
     for k in _VOLATILE_PROJECT_KEYS:
         proj.pop(k, None)
     if "root" in proj:
         proj["root"] = "<ROOT>"
-    return _round_floats(d)
+    return _canonicalize_order(_round_floats(d))
 
 
 def dumps_stable(obj):

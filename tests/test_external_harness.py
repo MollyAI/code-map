@@ -49,6 +49,21 @@ class TestNormalize(unittest.TestCase):
             '{\n  "a": 2,\n  "b": 1\n}',
         )
 
+    def test_canonicalizes_edge_and_class_order(self):
+        def m(edges, classes):
+            return {"project": {"root": "/x"},
+                    "layers": [{"id": "a", "classes": classes}],
+                    "edges": edges, "flows": []}
+        m1 = m([{"from": "a", "kind": "uses", "to": "b"},
+                {"from": "a", "kind": "uses", "to": "c"}],
+               [{"id": "a.Y", "name": "Y"}, {"id": "a.X", "name": "X"}])
+        m2 = m([{"from": "a", "kind": "uses", "to": "c"},
+                {"from": "a", "kind": "uses", "to": "b"}],
+               [{"id": "a.X", "name": "X"}, {"id": "a.Y", "name": "Y"}])
+        self.assertEqual(
+            harness.dumps_stable(harness.normalize_raw(m1)),
+            harness.dumps_stable(harness.normalize_raw(m2)))
+
 
 class TestRepoName(unittest.TestCase):
     def test_owner_repo(self):
