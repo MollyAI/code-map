@@ -98,7 +98,7 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - `Read` `.code-map/code-map.draft.json` and `.code-map/unresolved.json`.
 - **Describe only `stale` declarations.** For each class with `"stale": true`, `Read` its file and write `description_zh` + `description_en` (one architecture-level sentence each). Leave every other class untouched (its reused description stays).
 - **Re-route only changed classes.** A class is "changed" iff its `path` is in `incremental.json.changed_files`; only those may need a different layer — move them between `classes` arrays. Leave unchanged classes where the merge placed them (their prior override is intentional).
-- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise.
+- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise. Preserve each edge's `kind`/`via`; when recomputing, branch interface-referencing nodes to `project.dispatch` implementors as `kind:"dispatch"` edges (same rule as full build 6b).
 - **Triage only new unresolved** — apply the unresolved rules (Phase 2 step 3) only to entries whose `path` is in `changed_files`.
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
@@ -147,12 +147,15 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 6. Mark entry points: any class with `MainActivity`, `*Application`, `App`, `main`, or path containing `/cmd/` should have `core: true` and `tags` include `"entry-point"`.
 
-6b. **Name and curate flows.** Phase 1 wrote `flows[]` — one candidate flow per entry point, each `{id, name, description, seed, nodes, edges, confidence:"high"}` where `name` is just the seed's function name. For each flow worth surfacing:
-   - Rewrite `name` to a human flow name ("启动流程" / "Startup", "渲染流程" / "Render").
-   - Write a one-sentence `description` (shown as the flow's subtitle in the left sidebar).
-   - Optionally change `seed` or add a new flow whose seed is not an entry point (e.g. a render loop) — recompute `nodes`/`edges` by walking `uses`-edges forward from the seed, treating any class with `hub:true` as a leaf, capped at ~6 hops.
-   - Mark any flow you changed `confidence: "ai-inferred"`.
-   Drop flows that are noise (e.g. a trivial entry point with a one-node flow) by omitting them from `flows[]`.
+6b. **Discover & name core business flows.** Phase 1 now writes *candidate* `flows[]` seeded at entry points **and** public orchestrators (high-out-degree public classes), each `{id, name, description, seed, seed_kind, nodes, edges, confidence}`; flow `edges` carry `kind` (`"uses"` | `"dispatch"`) and dispatch edges carry `via` (the interface short-name). A `confidence:"candidate"` flow came from a public-orchestrator seed and needs your judgement. Phase 1 also writes `project.dispatch` — a map of `interface short-name → [implementor ids]` for every interface with ≥2 implementors — which tells you exactly where polymorphic dispatch (chain-of-responsibility / strategy / observer / middleware) lives.
+
+   Your job is to turn the candidates into named **business capabilities**:
+   - **Use `project.dispatch` to find the framework's signature chains** (e.g. okhttp's `Interceptor` → the interceptor chain) and make sure a flow surfaces each important one — the dispatch edges already wire the interface's using-node to its implementors.
+   - For each flow worth surfacing: rewrite `name` to a business capability name ("拦截器链" / "Interceptor Chain", "建立连接" / "Establish Connection", "请求执行" / "Request Execution", "缓存读写" / "Cache Read/Write"), write a one-sentence `description` (left-sidebar subtitle), and mark `confidence: "ai-inferred"`. **Keep each edge's `kind`/`via`** (do not flatten dispatch edges to uses).
+   - **Prune** noise candidates (omit from `flows[]`): a trivial one-node flow, or a generic utility that orchestrates nothing meaningful.
+   - **Merge** near-duplicate candidates and **split** an over-broad one.
+   - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves, cap ~6 hops, cap fan-out ~8).
+   Aim for a handful of high-signal business flows, not one per seed.
 
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied.
 
