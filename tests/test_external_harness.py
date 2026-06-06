@@ -62,6 +62,61 @@ class TestRepoName(unittest.TestCase):
             "square__okhttp")
 
 
+def _map(layers, project=None):
+    return {"project": project or {}, "layers": layers, "edges": [], "flows": []}
+
+
+class TestExpectations(unittest.TestCase):
+    def _fixture(self):
+        return _map(
+            layers=[
+                {"id": "data", "name": "Data", "classes": [
+                    {"name": "RealCall", "tags": []},
+                    {"name": "OkHttpClient", "tags": ["entry-point"]},
+                ]},
+                {"id": "domain", "name": "Domain", "classes": [
+                    {"name": "Interceptor", "tags": []},
+                ]},
+            ],
+            project={"files_scanned": 250,
+                     "template_detection": {"chosen": "clean-architecture"}},
+        )
+
+    def test_all_pass(self):
+        expect = {
+            "template": "clean-architecture", "files_min": 200,
+            "sentinels": [{"symbol": "RealCall", "layer": "data"}],
+            "entry_points": ["OkHttpClient"],
+        }
+        self.assertEqual(harness.check_expectations(self._fixture(), expect), [])
+
+    def test_empty_expect_passes(self):
+        self.assertEqual(harness.check_expectations(self._fixture(), {}), [])
+        self.assertEqual(harness.check_expectations(self._fixture(), None), [])
+
+    def test_failures(self):
+        expect = {
+            "template": "mvc", "files_min": 1000,
+            "sentinels": [{"symbol": "RealCall", "layer": "domain"},
+                          {"symbol": "Ghost", "layer": "data"}],
+            "entry_points": ["Interceptor"],
+        }
+        fails = harness.check_expectations(self._fixture(), expect)
+        joined = "\n".join(fails)
+        self.assertIn("template", joined)
+        self.assertIn("files_min", joined)
+        self.assertIn("RealCall", joined)   # wrong layer
+        self.assertIn("Ghost", joined)      # not found
+        self.assertIn("Interceptor", joined)  # not entry-point
+        self.assertEqual(len(fails), 5)
+
+    def test_template_prefers_architecture(self):
+        m = self._fixture()
+        m["project"]["architecture"] = {"template": "hexagonal"}
+        fails = harness.check_expectations(m, {"template": "hexagonal"})
+        self.assertEqual(fails, [])
+
+
 class TestConfig(unittest.TestCase):
     @unittest.skipUnless(_HAS_YAML, "PyYAML not installed")
     def test_load_and_find(self):
