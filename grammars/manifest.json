@@ -1,0 +1,23 @@
+{
+  "webTreeSitter": "0.25.10",
+  "grammarPack": "@sourcegraph/tree-sitter-wasms@0.1.9",
+  "runtime": { "js": "tree-sitter.js", "wasm": "tree-sitter.wasm" },
+  "urlTemplate": "https://unpkg.com/@sourcegraph/tree-sitter-wasms@0.1.9/out/tree-sitter-{lang}.wasm",
+  "languages": {
+    "python":     { "mode": "bundled", "file": "tree-sitter-python.wasm",     "sha256": "f8f4a2ee6294815aa1e46f7f3db84c5b05103406ee7cfd9f8466b70074120b03", "bytes": 475554 },
+    "javascript": { "mode": "bundled", "file": "tree-sitter-javascript.wasm", "sha256": "5fbc49ebb6ec349f76c9ac94f94946f0d07ed00fbf6c86b434f21e5f21bf4fe7", "bytes": 646695 },
+    "typescript": { "mode": "bundled", "file": "tree-sitter-typescript.wasm", "sha256": "f6bc2c0449b8c7d2d186ea0644bf6abd16e9a686374431c5fe014bad688d99cf", "bytes": 2342051 },
+    "tsx":        { "mode": "bundled", "file": "tree-sitter-tsx.wasm",        "sha256": "12e4a73c9a90cd88cae2fa435b20f54e4ce1f081c167475d6cf192ae5673a3da", "bytes": 2410710 },
+    "go":         { "mode": "bundled", "file": "tree-sitter-go.wasm",         "sha256": "bc03621dae417f002473ae1b015822ae7b6e854979599098e94a509d5f189c26", "bytes": 235901 },
+    "java":       { "mode": "bundled", "file": "tree-sitter-java.wasm",       "sha256": "b20554d0aa6170a1f35801c93a0bab0f5aca7aefea075cbd084b0aea77f0481b", "bytes": 430183 },
+    "rust":       { "mode": "bundled", "file": "tree-sitter-rust.wasm",       "sha256": "b9b1cc93dd2959b30ebf477b5fb823a54c81b03e993fc69e18875ad8ff62ff97", "bytes": 818183 },
+    "c":          { "mode": "bundled", "file": "tree-sitter-c.wasm",          "sha256": "462b12f9b0c097171781d9127a4bf7e595730c9e61a79629e1a4b4cd0b69c400", "bytes": 822775 },
+    "lua":        { "mode": "bundled", "file": "tree-sitter-lua.wasm",        "sha256": "810cf3b88453b2f0e0d6e83402cf63214a9e117ba2a066e8eda9571d7126eda4", "bytes": 42945 },
+    "cpp":        { "mode": "remote", "lang": "cpp",     "sha256": "aa7fc0143b2817d26592e65a708985e0ab4e01aeeff8016cfda19b093ee5e2ea", "bytes": 4662441 },
+    "c_sharp":    { "mode": "remote", "lang": "c_sharp", "sha256": "8e92f73b4999adef36cbb380af400332ea60b1baad245202fb1cb8db7b4f737b", "bytes": 3977987 },
+    "kotlin":     { "mode": "remote", "lang": "kotlin",  "sha256": "2d8b2e1085062fb21f64c248ccaaba848ad54772ac0e530bd7a451f1d50522f4", "bytes": 4117095 },
+    "swift":      { "mode": "remote", "lang": "swift",   "sha256": "c853fc57e7733767e7b644fcce6a7840d898a61008ae7a954e458768fcf1b749", "bytes": 3146912 },
+    "objc":       { "mode": "remote", "lang": "objc",    "sha256": "97ef899dbb388206a2af1c297b3c7e37c9089b41bd4ca682dbba48e35d873317", "bytes": 7708208 },
+    "dart":       { "mode": "remote", "lang": "dart",    "sha256": "2dff0d08e5c81b1d16f2916b074b6fe818158ea1ccf7d4308c75d8e9364e9f5e", "bytes": 762675 }
+  }
+}

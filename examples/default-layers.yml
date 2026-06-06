@@ -1,12 +1,8 @@
-# code-map — user override example.
+# code-map — architecture schema example.
 #
-# Copy this to `<project>/.code-map/layers.yml` to fully override
-# template detection. When this file is present, code-map skips
-# the detector and uses these layers verbatim.
-#
-# This is also the exact shape Phase 0 emits as `.code-map/architecture.yml`
-# (the AI-proposed architecture). The only difference: a user `layers.yml`
-# wins outright, while `architecture.yml` is regenerated on every build.
+# This is the exact shape Phase 0 emits as `.code-map/architecture.yml`
+# (the AI-proposed architecture, regenerated on every build). It is shown
+# here as a reference for the layer schema.
 #
 # This is the same shape as the bundled templates in `templates/`,
 # minus the `signals` block (which only the detector consumes). You

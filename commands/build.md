@@ -9,8 +9,9 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 You are running the `code-map` build pipeline. This command produces `.code-map/code-map.json` from scratch. The pipeline:
 
 - **Phase 0 (architecture, this is you)** — read `README.md` + the directory tree + the detector's advisory scores, then pick & tweak one of the bundled templates and write `.code-map/architecture.yml`.
-- **Phase 1 (mechanical)** — Python walks the project, tree-sitter parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
+- **Phase 1 (mechanical)** — the Node extractor (`web-tree-sitter`, WASM grammars) walks the project, parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
 - **Phase 2 (semantic, this is you)** — review Phase 1's `raw_structure.json` and `unresolved.json`, confirm/correct the architecture against the real code, then write the final `code-map.json` with bilingual descriptions (core declarations only), layer overrides, and entry-point markers.
+- **Incremental builds** — if a prior `code-map.json` exists and git shows only a few changed files, the build auto-skips Phase 0 and re-describes only changed / newly-core declarations (Path B). Delete `.code-map/code-map.json` to force a full rebuild.
 
 To view the resulting map in a browser, run `/code-map:run` after this completes.
 
@@ -18,23 +19,33 @@ If `$1` is non-empty, treat the whole argument string as a **focus hint** for Ph
 
 ---
 
-## Phase 0: propose the architecture (your job)
+## Pre-flight: choose build mode
 
-First, wipe any previous build output for a clean rebuild:
+The pipeline runs on a JS runtime (Node ≥18 or Bun) — no Python, no `pip`, no tree-sitter install. Grammars are bundled WASM (the 6 large ones are fetched once on first use and cached). If `bin/code-map` reports no JS runtime, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
 
-!rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detection.json
+Decide incremental vs full from the git diff since the last build (this writes `.code-map/incremental.json`; it is always safe to run and reports `mode=full` whenever anything is uncertain):
 
-Ensure tree-sitter grammars + PyYAML are installed (Phase 0's detection needs PyYAML; the script only installs what's missing, caching into `${CLAUDE_PLUGIN_DATA}/wheels`):
+!"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
 
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/bootstrap.py" --root .
+`Read` `.code-map/incremental.json`. If `mode` is `"full"`, follow **Path A**. If `mode` is `"incremental"`, follow **Path B**. The printed `reason` explains a full fall-back (e.g. `no-prior-build`, `base-unreachable`, `too-many-changes`).
 
-**Guard:** if `.code-map/layers.yml` exists, the user has hand-authored a layer override — **skip the rest of Phase 0** (do not write `architecture.yml`) and go straight to Phase 1.
+---
 
-Otherwise, get the deterministic detector's signal scores as advisory input:
+## Path A — full build (`mode == "full"`)
 
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --detect-only
+**A1.** Wipe previous output for a clean rebuild (run via the Bash tool):
 
-Then propose the architecture:
+```bash
+rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detection.json
+```
+
+**A2.** Get the deterministic detector's advisory scores:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --detect-only
+```
+
+**A3. Phase 0 — propose the architecture (your job):**
 
 1. `Read` `README.md` (and any other obvious top-level docs — `ARCHITECTURE.md`, `docs/`).
 2. List the top-level directories (`Glob` `*/` or `ls`).
@@ -42,27 +53,64 @@ Then propose the architecture:
 4. Pick the best-fitting template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml`, weighing the README's stated intent + the directory shape + the detector scores. The menu is the 13 bundled shapes (`ls ${CLAUDE_PLUGIN_ROOT}/templates`). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
 
-Phase 1 will pick this file up automatically (it wins over detection but loses to a user `layers.yml`).
+**A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
+```
+
+Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). If the launcher is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./bin/code-map` (project-local install).
+
+**A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `raw_structure.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A4** so the heavy vendored subtree is excluded before you spend Phase 2 effort. Leave it in only if the flagged dir is actually first-party.
+
+**A5. Phase 2 — full semantic refinement.** Do the full **Phase 2** routine below over **all** of `raw_structure.json` (describe every `core` declaration), then `Write` `.code-map/code-map.json`.
 
 ---
 
-## Phase 1: run analyzer
+## Path B — incremental build (`mode == "incremental"`)
 
-Run the analyzer (it reads `.code-map/architecture.yml` from Phase 0, else falls back to detection):
+**B1.** Wipe only the regenerated intermediates — **keep** `architecture.yml` and `code-map.json` (run via the Bash tool):
 
-!python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/raw_structure.json
+```bash
+rm -f .code-map/raw_structure.json .code-map/detection.json
+```
 
-The analyzer writes two files:
-- `.code-map/raw_structure.json` — full extracted structure
-- `.code-map/unresolved.json` — files/declarations the extractor couldn't confidently parse; you'll review these
+**B2.** **Skip Phase 0** entirely — the existing `.code-map/architecture.yml` is reused.
 
-If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/...` (project-local install).
+**B3. Phase 1 — extract** (picks up the existing `architecture.yml`):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
+```
+
+**B4. Merge prior Phase 2 work** onto the fresh structure:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" merge --raw .code-map/raw_structure.json --prev .code-map/code-map.json --incremental .code-map/incremental.json --out .code-map/code-map.draft.json
+```
+
+This produces `code-map.draft.json` — the fresh structure with unchanged declarations' descriptions / tags / layer placement already filled in. Two helper flags tell you exactly what is left to do:
+- a class with `"stale": true` is a `core` declaration that needs a fresh description;
+- a flow with `"needs_review": true` touches a changed declaration.
+
+**B5. Slim Phase 2** — operate on `code-map.draft.json`, doing **only**:
+
+- `Read` `.code-map/code-map.draft.json` and `.code-map/unresolved.json`.
+- **Describe only `stale` declarations.** For each class with `"stale": true`, `Read` its file and write `description_zh` + `description_en` (one architecture-level sentence each). Leave every other class untouched (its reused description stays).
+- **Re-route only changed classes.** A class is "changed" iff its `path` is in `incremental.json.changed_files`; only those may need a different layer — move them between `classes` arrays. Leave unchanged classes where the merge placed them (their prior override is intentional).
+- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise.
+- **Triage only new unresolved** — apply the unresolved rules (Phase 2 step 3) only to entries whose `path` is in `changed_files`.
+- **Entry points / focus hint** apply only to changed files.
+- **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
+- `project.git` (fresh HEAD) and `project.architecture` (carried) are already correct in the draft — do not overwrite them.
 
 ---
 
 ## Phase 2: semantic refinement (your job)
 
-0. **Confirm the architecture.** Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"user-override"` means a hand-authored `layers.yml` is in force — accept it. `"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
+This is the **full** routine that **Path A (A5)** runs over all of `raw_structure.json`. **Path B** runs the slim variant in **B5** instead — reuse already-filled annotations from the merge draft and apply only steps 3–6 to changed files (skip step 0; the architecture is reused).
+
+0. **Confirm the architecture.** *(Path A only — Path B reuses the existing `architecture.yml` and skips this.)* Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call. Pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
    - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
@@ -99,7 +147,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 
 6b. **Name and curate flows.** Phase 1 wrote `flows[]` — one candidate flow per entry point, each `{id, name, description, seed, nodes, edges, confidence:"high"}` where `name` is just the seed's function name. For each flow worth surfacing:
    - Rewrite `name` to a human flow name ("启动流程" / "Startup", "渲染流程" / "Render").
-   - Write a one-sentence `description` (shown as the dropdown subtitle).
+   - Write a one-sentence `description` (shown as the flow's subtitle in the left sidebar).
    - Optionally change `seed` or add a new flow whose seed is not an entry point (e.g. a render loop) — recompute `nodes`/`edges` by walking `uses`-edges forward from the seed, treating any class with `hub:true` as a leaf, capped at ~6 hops.
    - Mark any flow you changed `confidence: "ai-inferred"`.
    Drop flows that are noise (e.g. a trivial entry point with a one-node flow) by omitting them from `flows[]`.
@@ -115,7 +163,7 @@ If either script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/..
 After the build completes, print a brief summary:
 
 ```
-[/code-map:build] <project-name>
+[/code-map:build] <project-name>  (mode: full | incremental — N files changed)
   Languages: kotlin (7), go (9), typescript (4), rust (3)
   Layers:    Presentation (8) · Domain (5) · Data (8) · Infrastructure (2)
   Edges:     14
@@ -124,4 +172,4 @@ After the build completes, print a brief summary:
 Next: run /code-map:run to open the visualization in your browser.
 ```
 
-If any unresolved entries remain after Phase 2, list them so the user knows what's missing.
+Pull the `mode` and changed-file count from `.code-map/incremental.json` (on an incremental build, name the changed files Phase 2 re-described). If any unresolved entries remain after Phase 2, list them so the user knows what's missing.

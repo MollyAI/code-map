@@ -1,0 +1,12 @@
+# 外部仓库测试清单。每个 repo 钉死 commit SHA 保证可复现。
+# 用法见 test/README.md。
+repos:
+  - name: click
+    url: https://github.com/pallets/click
+    commit: c48021040a50c659b74e24ac2b11c9c9c6620a21
+    build:
+      skip: []
+      focus: null
+    expect:
+      files_min: 30
+      # template / sentinels / entry_points 可按实际跑出结果逐步补充

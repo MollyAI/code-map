@@ -8,11 +8,11 @@ A Claude Code plugin that builds an interactive architectural map of any project
 
 ## Features / 功能简介
 
-Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the dropdown or double-click any node to trace from it.
+Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the collapsible left sidebar.
 
 **Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
 
-扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从下拉菜单选择流程，或双击任意节点从该点开始追踪。
+扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从左侧可收起的侧边栏选择流程。
 
 **支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
 
@@ -48,16 +48,14 @@ Scans your project, picks a fitting architectural template (Clean Architecture, 
 
 Everything works with zero config — these are optional, project-local overrides (all under `.code-map/`):
 
-- **`layers.yml`** — define your own layers and bypass automatic template detection entirely.
-- **`architecture.yml`** — written automatically by Phase 0 (the AI-proposed architecture); regenerated on every build. A hand-authored `layers.yml` overrides it.
+- **`architecture.yml`** — written automatically by Phase 0 (the AI-proposed architecture); regenerated on every build. Inspect it to see the layer layout the map uses.
 - **`skip-dirs.txt`** — one directory name per line to skip during analysis; `#` for comments, and a leading `-` *un-skips* a default (e.g. `-testsuites` to include a project whose real source lives under `testsuites/`). The defaults already skip the usual `node_modules`, `build`, `test`/`tests`/`testsuites`, etc.
 
 Template auto-detection covers the 13 shapes above, including **C / RTOS kernels** (recognizes `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` and the like). Phase 2 always verifies the pick against the real code.
 
 零配置即可运行——以下均为可选的、项目级覆盖项（都放在 `.code-map/` 下）：
 
-- **`layers.yml`** —— 自定义分层，完全跳过自动模板检测。
-- **`architecture.yml`** —— 由 Phase 0 自动写入（AI 提议的架构），每次构建都会重新生成。手写的 `layers.yml` 会覆盖它。
+- **`architecture.yml`** —— 由 Phase 0 自动写入（AI 提议的架构），每次构建都会重新生成。可查看它以了解地图所用的分层结构。
 - **`skip-dirs.txt`** —— 每行一个要在分析时跳过的目录名；`#` 为注释，行首 `-` 表示*取消*某个默认跳过项（例如 `-testsuites`，用于真实源码就放在 `testsuites/` 下的项目）。默认已跳过 `node_modules`、`build`、`test`/`tests`/`testsuites` 等常见目录。
 
 模板自动检测覆盖上述 13 种形态，包括 **C / RTOS 内核**（可识别 `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` 等信号）。第 2 阶段始终会对照真实代码校验所选模板。
@@ -66,9 +64,9 @@ Template auto-detection covers the 13 shapes above, including **C / RTOS kernels
 
 ## Install / 安装
 
-**Prerequisites:** Claude Code ≥ 2.x and Python 3.10+. The first `/code-map:build` lazily installs the tree-sitter grammars it needs — no manual `pip install`.
+**Prerequisites:** Claude Code ≥ 2.x and a JS runtime — **Node ≥ 18** (or Bun). No Python, no `pip`. Grammars are bundled WebAssembly: 8 common languages ship inside the plugin; the 6 larger ones (C++, C#, Kotlin, Swift, Objective-C, Dart) are fetched once on first use and cached. If no JS runtime is found, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
 
-**前置条件：** Claude Code ≥ 2.x 与 Python 3.10+。首次执行 `/code-map:build` 时会按需自动安装所需的 tree-sitter 语法包，无需手动 `pip install`。
+**前置条件：** Claude Code ≥ 2.x 与一个 JS 运行时——**Node ≥ 18**（或 Bun）。不再需要 Python 或 `pip`。语法以 WebAssembly 形式内置：8 种常用语言随插件打包，6 种较大的（C++、C#、Kotlin、Swift、Objective-C、Dart）首次使用时拉取一次并缓存。若未找到 JS 运行时，请从 https://nodejs.org 安装 Node（`brew install node` / `winget install OpenJS.NodeJS`）。
 
 ```text
 /plugin marketplace add MollyAI/code-map
@@ -85,19 +83,19 @@ To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall 
 
 The work splits into a Phase 0 plus three phases, each playing to its strengths:
 
-0. **Propose architecture** (Claude) — reads the README, the directory tree, and the detector's advisory scores, then picks and tweaks one of the bundled templates and writes `.code-map/architecture.yml`. Skipped if you hand-authored `.code-map/layers.yml`.
-1. **Extract** (Python + tree-sitter) — walks the project, parses each file with its language grammar, builds the dependency graph, scores importance, and assigns layers using Phase 0's architecture (or filesystem signals if Phase 0 didn't run). Deterministic and auditable.
+0. **Propose architecture** (Claude) — reads the README, the directory tree, and the detector's advisory scores, then picks and tweaks one of the bundled templates and writes `.code-map/architecture.yml`.
+1. **Extract** (Node + web-tree-sitter / WASM) — walks the project, parses each file with its language grammar, builds the dependency graph, scores importance, and assigns layers using Phase 0's architecture (or filesystem signals if Phase 0 didn't run). Deterministic and auditable.
 2. **Refine** (Claude) — confirms the architecture against the real code, writes one-line descriptions, fixes layer assignments, and recovers anything the parser missed. Spends tokens only where AI judgment helps.
-3. **Serve** (Python stdlib HTTP) — re-reads the data on every request and serves the interactive visualization.
+3. **Serve** (Node http) — re-reads the data on every request and serves the interactive visualization.
 
 Design principle: **miss rather than misidentify.** Tree-sitter produces a real CST with error recovery, so anything it can't parse cleanly is deferred to Phase 2 instead of being silently guessed.
 
 整体分为 Phase 0 与三个阶段，各司其职：
 
-0. **提议架构**（Claude）——阅读 README、目录树以及检测器给出的参考评分，从内置模板中挑选并微调一个，写入 `.code-map/architecture.yml`。若你已手写 `.code-map/layers.yml`，则跳过。
-1. **提取**（Python + tree-sitter）——遍历项目，用对应语言的语法解析每个文件，构建依赖图、计算重要度，并按 Phase 0 的架构分层（若 Phase 0 未运行则依据文件系统信号）。确定性强、可审计。
+0. **提议架构**（Claude）——阅读 README、目录树以及检测器给出的参考评分，从内置模板中挑选并微调一个，写入 `.code-map/architecture.yml`。
+1. **提取**（Node + web-tree-sitter / WASM）——遍历项目，用对应语言的语法解析每个文件，构建依赖图、计算重要度，并按 Phase 0 的架构分层（若 Phase 0 未运行则依据文件系统信号）。确定性强、可审计。
 2. **精炼**（Claude）——对照真实代码确认架构，为每个声明撰写一句话说明，修正分层，并补全解析器遗漏的内容。仅在 AI 判断真正有用之处消耗 token。
-3. **服务**（Python 标准库 HTTP）——每次请求都重新读取数据并提供交互式可视化。
+3. **服务**（Node http）——每次请求都重新读取数据并提供交互式可视化。
 
 设计原则：**宁可漏掉，不可误判。** tree-sitter 提供带错误恢复的真实 CST，凡是无法干净解析的内容都交由第 2 阶段处理，绝不静默猜测。
 

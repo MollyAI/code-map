@@ -37,3 +37,14 @@ scratch/
 
 # Superpowers brainstorming visual-companion scratch files
 .superpowers/
+
+# Local design docs (plans / specs) — kept locally, not shipped or tracked
+/docs/
+
+# 外部仓库测试系统（test/）：忽略重量级产物，只放行哈师与配置
+/test/*
+!/test/run.py
+!/test/harness.py
+!/test/config.yml
+!/test/expectations/
+!/test/README.md
