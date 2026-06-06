@@ -27,24 +27,15 @@ dist/
 # Output of /code-map:build's analyzer
 .code-map/
 
-# tree-sitter grammar wheels — bootstrap.py installs to CLAUDE_PLUGIN_DATA
-# by default, but ignore here in case anyone points it inside the repo
-wheels/
-
-# Legacy dev-mode scratch dir (the /build-code-map-dev command was removed).
-# Still ignored so any leftover files don't pollute git.
-scratch/
-
 # Superpowers brainstorming visual-companion scratch files
 .superpowers/
 
 # Local design docs (plans / specs) — kept locally, not shipped or tracked
 /docs/
 
-# 外部仓库测试系统（test/）：忽略重量级产物，只放行哈师与配置
-/test/*
-!/test/run.py
-!/test/harness.py
-!/test/config.yml
-!/test/expectations/
-!/test/README.md
+# 外部仓库评测系统（eval/）：忽略重量级产物，只放行哈ness 脚本与配置
+/eval/*
+!/eval/run.py
+!/eval/harness.py
+!/eval/config.yml
+!/eval/README.md

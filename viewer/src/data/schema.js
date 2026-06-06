@@ -84,7 +84,7 @@ export function loadModel(json) {
     classes: (L.classes || []).map((c) => ({ ...c })),
   }));
 
-  // Ensure every class has an id. Phase 1 (analyze.py) sets id =
+  // Ensure every class has an id. Phase 1 (analyze.mjs) sets id =
   // qualified_name, but Phase 2 AI-written JSON may omit it. Fall back to
   // path, then namespace.name, then name. (`+` binds tighter than `||`.)
   for (const L of layers) {

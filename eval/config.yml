@@ -1,5 +1,5 @@
-# 外部仓库测试清单。每个 repo 钉死 commit SHA 保证可复现。
-# 用法见 test/README.md。
+# 外部仓库评测清单。每个 repo 钉死 commit SHA 保证可复现。
+# 用法见 eval/README.md。
 repos:
   - name: click
     url: https://github.com/pallets/click

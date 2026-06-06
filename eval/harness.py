@@ -1,4 +1,4 @@
-"""Pure logic for the external-repo test harness.
+"""Pure logic for the external-repo evaluation harness.
 
 ZERO import-time side effects: no subprocess, no network, no FS writes here —
 those live in run.py. Everything here is unit-tested by
@@ -26,8 +26,8 @@ def _round_floats(obj):
 
 def _canonicalize_order(d):
     """Sort logically-unordered lists so golden diffs are stable across runs.
-    analyze.py emits edges (and per-layer classes) in graph-traversal/set order,
-    which is not byte-stable run-to-run; membership is what matters, not order."""
+    `bin/code-map analyze` emits edges (and per-layer classes) in graph-traversal/
+    set order, which is not byte-stable run-to-run; membership matters, not order."""
     edges = d.get("edges")
     if isinstance(edges, list):
         edges.sort(key=lambda e: (e.get("from", ""), e.get("kind", ""), e.get("to", "")))

@@ -20,7 +20,7 @@ Three slash commands, all thin wrappers over the `bin/code-map` launcher:
 
 **Before every push to `main`, bump `.claude-plugin/plugin.json`'s `version` if the push changes installed-plugin behavior.** Installed copies are keyed on this version; `/plugin` reports "already at the latest version" when it is unchanged, so users keep running the old cached code until the number changes — source fixes without a bump are silently inert.
 
-Bump for changes to `commands/*.md`, `bin/**`, `scripts/**`, `grammars/**`, `viewer/**`, `templates/**`, `examples/**`, or `plugin.json`/`marketplace.json` metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for things that never alter an installed plugin's behavior: `README*.md`, `CLAUDE.md`, `LICENSE`, `docs/**`, `tests/**`, `test/**`, `tools/**`, `.gitignore`. `marketplace.json` has no version field today; keep it in sync if that changes.
+Bump for changes to `commands/*.md`, `bin/**`, `scripts/**`, `grammars/**`, `viewer/**`, `templates/**`, `examples/**`, or `plugin.json`/`marketplace.json` metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for things that never alter an installed plugin's behavior: `README*.md`, `CLAUDE.md`, `LICENSE`, `docs/**`, `tests/**`, `eval/**`, `tools/**`, `.gitignore`. `marketplace.json` has no version field today; keep it in sync if that changes.
 
 ## Repo layout
 
@@ -38,7 +38,7 @@ tools/            fetch-grammars.sh   # dev-only: refetch vendored wasm + print 
 scripts/
   cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs
   lib/      core.mjs  layers.mjs  templates.mjs  skipdirs.mjs  flows.mjs
-            gitmeta.mjs  incremental.mjs  vendoring.mjs
+            gitmeta.mjs  vendoring.mjs
             ts.mjs       # web-tree-sitter wrapper (init/loadLanguage/makeQuery)
             grammars.mjs # bundled resolver + sha256-verified lazy remote fetch
             yaml.mjs     # minimal YAML reader for templates/ + architecture.yml
@@ -46,7 +46,7 @@ scripts/
                 kotlin java python go rust typescript c cpp csharp swift objc dart lua (.mjs)
 viewer/           index.html  src/...
 tests/            # node --test (*.test.mjs) for pure logic; test_external_harness.py (harness only)
-test/             # local external-repo test harness (Python, dev-only) — see Testing (NOT tests/)
+eval/             # local external-repo eval harness (Python, dev-only) — see Testing (NOT tests/)
 ```
 
 ESM modules use relative imports (`./lib/...`, `../ts.mjs`). The pipeline is a single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → the subcommand module. No package.json / npm install — `web-tree-sitter` is vendored under `grammars/`. The launcher passes `--liftoff-only` to node (the tree-sitter-swift WASM makes V8's optimizing tier OOM; baseline-only is stable and faster).
@@ -91,12 +91,12 @@ There is **no install step** (no `bootstrap.py`, no `pip`). Grammars are WASM: `
 
 No linter, no build step; tests use only stdlib / native runners.
 
-- **Unit tests (`tests/`)** — pure logic in `scripts/lib/` and `viewer/src/`. Run with `node --liftoff-only --test tests/*.test.mjs` (the `--liftoff-only` flag avoids a V8 OOM on the swift grammar). Viewer DOM-free modules: `node --test viewer/src/test/*.test.js`. The CLIs (`scripts/*.mjs`) and DOM wiring (`viewer/src/main.js`) are covered end-to-end instead. The one remaining Python test, `tests/test_external_harness.py`, covers the dev-only test harness (`python3 -m unittest discover -s tests -p 'test_*.py'`).
+- **Unit tests (`tests/`)** — pure logic in `scripts/lib/` and `viewer/src/`. Run with `node --liftoff-only --test tests/*.test.mjs` (the `--liftoff-only` flag avoids a V8 OOM on the swift grammar). Viewer DOM-free modules: `node --test viewer/src/test/*.test.js`. The CLIs (`scripts/*.mjs`) and DOM wiring (`viewer/src/main.js`) are covered end-to-end instead. The one remaining Python test, `tests/test_external_harness.py`, covers the dev-only eval harness (`python3 -m unittest discover -s tests -p 'test_*.py'`).
 
-- **External-repo harness (`test/`, singular — distinct from `tests/`)** — a **local-only** dev tool that runs the pipeline against real GitHub repos, for evaluating map quality and catching regressions. `.gitignore` allowlists only `run.py`/`harness.py`/`config.yml`/`README.md`; clones (`repos/`), golden snapshots (`golden/`), and output (`out/`) are ignored and never ship. Zero user impact — no command invokes it. `harness.py` is pure logic (unit-tested in `tests/test_external_harness.py`); `run.py` is the CLI. All work stays isolated from the real `.code-map/` via an absolute `--out` and a per-repo `--state`. Repos are pinned by commit SHA in `test/config.yml`. Two paths:
-  - **B — interactive eval (primary):** `run.py prepare <name | --url URL>` (fetch pinned SHA + Phase 1) → Claude does Phase 2 into `test/out/<name>/code-map.json` → `run.py invariants <name>` (structural checks) → `run.py serve <name>` (browser) / `stop`.
+- **External-repo eval harness (`eval/` — distinct from `tests/`)** — a **local-only** dev tool that runs the pipeline against real GitHub repos, for evaluating map quality and catching regressions. It only orchestrates (clone via `git`, then shell out to the Node `bin/code-map`); the actual pipeline stays the shipped Node/WASM one. `.gitignore` allowlists only `run.py`/`harness.py`/`config.yml`/`README.md`; clones (`repos/`), golden snapshots (`golden/`), and output (`out/`) are ignored and never ship. Zero user impact — no command invokes it. `harness.py` is pure logic (unit-tested in `tests/test_external_harness.py`); `run.py` is the CLI. All work stays isolated from the real `.code-map/` via an absolute `--out` and a per-repo `--state`. Repos are pinned by commit SHA in `eval/config.yml`. Two paths:
+  - **B — interactive eval (primary):** `run.py prepare <name | --url URL>` (fetch pinned SHA + Phase 1) → Claude does Phase 2 into `eval/out/<name>/code-map.json` → `run.py invariants <name>` (structural checks) → `run.py serve <name>` (browser) / `stop`.
   - **A — deterministic regression (zero-token):** `run.py bless <name>` snapshots normalized Phase 1; `run.py check <name | --all>` re-runs and golden-diffs. `harness.normalize_raw` strips volatile fields and **canonicalizes unordered lists** — analyze's `edges[]` and per-layer `classes[]` order is not byte-stable run-to-run.
-  - See `test/README.md`.
+  - See `eval/README.md`.
 
 ## Architectural invariants
 
@@ -133,7 +133,7 @@ export async function parse(relPath, src, projectRoot) // -> ParseResult
 
 **Determinism for cross-pipeline equivalence.** Two spots were made order-independent so output doesn't depend on filesystem walk order: `core.buildGraph` builds edges in a deterministic order (extends before uses, dedup by `(from,to)` so extends wins a dual pair), and `core.markCore` breaks importance ties by `qualified_name`. Importance uses banker's rounding (`round3`) to match the pre-1.0 Python `round(x,3)`. These let the official-grammar languages stay byte-identical to the old pipeline.
 
-**Build provenance + incremental builds.** `analyze.mjs` stamps `project.git` (`branch`/`commit`/`short`/`dirty`) via `lib/gitmeta.mjs` (defensive, shells out to `git`; omitted off-git); the viewer shows it as a topbar badge. The build **anchor** is the commit in the previous `code-map.json`'s `project.git.commit`. `build.md` runs `bin/code-map plan` to pick **full** (Path A) vs **incremental** (Path B). **Only Phase 2 is incremental — Phase 1 always runs full** (cheap, and importance/`core`/`hub`/flows are global). Path B: `bin/code-map merge` (pure dict→dict, `lib/incremental.mjs`) reuses prior Phase 2 annotations for unchanged files, flagging `stale` and flow `needs_review`; Phase 0 skipped, `architecture.yml` reused. **Any uncertainty → full** (`plan` reports a `reason`). Delete `code-map.json` to force full.
+**Build provenance + incremental builds.** `analyze.mjs` stamps `project.git` (`branch`/`commit`/`short`/`dirty`) via `lib/gitmeta.mjs` (defensive, shells out to `git`; omitted off-git); the viewer shows it as a topbar badge. The build **anchor** is the commit in the previous `code-map.json`'s `project.git.commit`. `build.md` runs `bin/code-map plan` to pick **full** (Path A) vs **incremental** (Path B). **Only Phase 2 is incremental — Phase 1 always runs full** (cheap, and importance/`core`/`hub`/flows are global). Path B: `bin/code-map merge` (pure dict→dict, `scripts/incremental.mjs`) reuses prior Phase 2 annotations for unchanged files, flagging `stale` and flow `needs_review`; Phase 0 skipped, `architecture.yml` reused. **Any uncertainty → full** (`plan` reports a `reason`). Delete `code-map.json` to force full.
 
 **Phase 3 is intentionally dumb.** `serve.mjs` re-reads `code-map.json` every request (no caching) so a later `/code-map:build` shows without restart. Don't add caching.
 
@@ -144,7 +144,7 @@ export async function parse(relPath, src, projectRoot) // -> ParseResult
 - `README.md` — user-facing overview, pipeline, limitations
 - `commands/build.md` — Phase 1+2 contract (what Claude does in Phase 2)
 - `commands/run.md` / `stop.md` — server lifecycle
-- `test/README.md` — external-repo test harness
+- `eval/README.md` — external-repo eval harness
 - `scripts/lib/extractors/base.mjs` — `Declaration`/`ParseResult` + the extractor protocol
 - `scripts/lib/extractors/index.mjs` — language registry + lazy load; `grammars/manifest.json` — grammar pins
 - `scripts/lib/ts.mjs` / `lib/grammars.mjs` — web-tree-sitter wrapper + WASM grammar resolution
