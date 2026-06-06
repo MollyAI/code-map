@@ -20,7 +20,7 @@ import { initKeyboard } from './interact/keyboard.js';
 import { createTooltip } from './ui/tooltip.js';
 import { createDetail } from './ui/detail.js';
 import { renderLangStats } from './ui/langstats.js';
-import { initControls, populateFlowSelect } from './ui/controls.js';
+import { initControls, populateFlowList } from './ui/controls.js';
 import { formatBuildInfo } from './ui/buildinfo.js';
 import { initExport } from './export/png.js';
 import { t } from './i18n.js';
@@ -36,7 +36,10 @@ const els = {
   tooltip: $('tooltip'),
   toggle: $('view-toggle'),
   groupToggle: $('group-toggle'),
-  flowSelect: $('flow-select'),
+  flowSidebar: $('flow-sidebar'),
+  flowList: $('flow-list'),
+  flowCollapse: $('flow-collapse'),
+  flowExpand: $('flow-expand'),
   themeToggle: $('theme-toggle'),
   exportBtn: $('export-toggle'),
   langToggle: $('lang-toggle'),
@@ -54,23 +57,20 @@ const tooltip = createTooltip(els.tooltip);
 // detail ⇆ selection are mutually referential; break the cycle with a holder
 // filled right after selection is created (the late-bound calls only fire on
 // user interaction, by which point `wiring` is complete).
-/** @type {{ select?: (id: string) => void, traceFromNode?: (id: string) => void }} */
+/** @type {{ select?: (id: string) => void }} */
 const wiring = {};
 const detail = createDetail({
   detailBody: els.detailBody,
   canvasWrap: els.canvasWrap,
   onSelectTarget: (id) => wiring.select?.(id),
-  onTrace: (id) => wiring.traceFromNode?.(id),
 });
 const selection = createSelection({ backend, renderDetail: detail.renderDetail, layoutEl: els.layout });
 wiring.select = selection.select;
-wiring.traceFromNode = selection.traceFromNode;
 
 const ctx = {
   state,
   handlers: {
     onSelect: selection.select,
-    onTrace: selection.traceFromNode,
     /** @param {string} id */
     onHover: (id) => { const e = state.nodeById.get(id); if (e) tooltip.show(e.datum); },
     onHoverEnd: tooltip.hide,
@@ -80,7 +80,7 @@ const ctx = {
   drawEdges: selection.drawEdges,
   renderDetail: detail.renderDetail,
   canvasWidth: () => els.canvasWrap.clientWidth - 2 * CANVAS_PAD_L,
-  populateFlowSelect: () => populateFlowSelect(els),
+  populateFlowList: () => populateFlowList(els),
 };
 
 /** @param {string} msg */
@@ -117,6 +117,10 @@ function onModel(json) {
   state.activeFlow = defaultFlowId;
 
   setState({});   // first render via the renderApp subscription
+  // After the first render sizes the SVG, scroll past the pan gutter so the
+  // diagram's top-left sits at the visible top-left (the gutter is overscroll
+  // room for free dragging, not initial empty space).
+  requestAnimationFrame(() => backend.goHome());
 }
 
 // --- boot, in explicit order ---

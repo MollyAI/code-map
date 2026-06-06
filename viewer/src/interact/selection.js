@@ -6,7 +6,7 @@
 // node's edges. Was selectNode / applySelection / drawEdges in index.html.
 // --------------------------------------------------------------------
 
-import { state, setState } from '../store.js';
+import { state } from '../store.js';
 import { buildEdgePath } from '../render/edges.js';
 import { NS } from '../render/backend.js';
 
@@ -59,12 +59,5 @@ export function createSelection({ backend, renderDetail, layoutEl }) {
     applySelection();
   }
 
-  // Re-root a live trace at `id` (flow mode). Goes through setState → full
-  // re-render so the flow DAG is rebuilt around the new seed.
-  /** @param {string} id */
-  function traceFromNode(id) {
-    setState({ traceSeed: id, selected: id });
-  }
-
-  return { applySelection, select, drawEdges, traceFromNode };
+  return { applySelection, select, drawEdges };
 }

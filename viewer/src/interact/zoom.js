@@ -1,9 +1,11 @@
 // --------------------------------------------------------------------
-// interact/zoom — Cmd/Ctrl+wheel zoom anchored to the cursor, +/-/reset
-// buttons anchored to the viewport center, and a ResizeObserver that
-// re-applies zoom every frame of the panel-open transition. The pixel
-// sizing itself lives in backend.applyZoom (the load-bearing part);
-// this module is the gesture/anchor math. Was the zoom IIFE block.
+// interact/zoom — wheel zoom anchored to the cursor (bare wheel / two-finger
+// scroll / trackpad pinch all zoom; native page scroll is given up — panning
+// is left-drag), +/-/reset buttons anchored to the viewport center, and a
+// ResizeObserver that re-applies zoom every frame of the panel-open
+// transition. The pixel sizing itself lives in backend.applyZoom (the
+// load-bearing part); this module is the gesture/anchor math. Was the zoom
+// IIFE block.
 // --------------------------------------------------------------------
 
 import { state } from '../store.js';
@@ -32,12 +34,35 @@ export function initZoom(backend, canvasWrap) {
     canvasWrap.scrollTop += (nr.top + fxY * nr.height) - anchorClientY;
   }
 
+  // Wheel zoom, rAF-coalesced for smoothness. Multiple wheel events landing in
+  // one frame (a fast scroll burst, or a stream of tiny trackpad deltas) are
+  // accumulated and applied as ONE exponential zoom step per frame — no lag, no
+  // jitter, and the factor stays continuous (exp(sum) == composing exp steps)
+  // instead of stepped. Only one getBoundingClientRect pair runs per frame.
+  let pendingDelta = 0;
+  let anchorX = 0, anchorY = 0;
+  let wheelRaf = 0;
+  const WHEEL_SENS = 0.0015;   // zoom exponent per px of normalized wheel travel
+
+  function flushWheel() {
+    wheelRaf = 0;
+    if (pendingDelta === 0) return;
+    const factor = Math.exp(-pendingDelta * WHEEL_SENS);
+    pendingDelta = 0;
+    zoomTo(state.zoom * factor, anchorX, anchorY);
+  }
+
   /** @param {WheelEvent} ev */
   function onWheelZoom(ev) {
-    if (!(ev.ctrlKey || ev.metaKey)) return;   // bare wheel = native scroll
-    ev.preventDefault();
-    const factor = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
-    zoomTo(state.zoom * factor, ev.clientX, ev.clientY);
+    ev.preventDefault();   // no native scroll — wheel always zooms now
+    // Normalize delta units to pixels (line/page modes vary by browser/OS).
+    let dy = ev.deltaY;
+    if (ev.deltaMode === 1) dy *= 16;                            // lines → px
+    else if (ev.deltaMode === 2) dy *= canvasWrap.clientHeight;  // pages → px
+    pendingDelta += dy;
+    anchorX = ev.clientX;
+    anchorY = ev.clientY;
+    if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
   }
 
   /** @param {string} direction */

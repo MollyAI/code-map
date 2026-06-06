@@ -8,7 +8,8 @@
 /** @typedef {Object} AppState */
 export const state = /** @type {any} */ ({
   raw: null, model: null, view: 'core', activeView: 'layer',
-  activeFlow: null, traceSeed: null, selected: null,
+  activeFlow: null, selected: null,
+  flowSidebarCollapsed: false,  // left flow sidebar collapsed state (flow mode)
   zoom: 1, fontScale: 1, fontSize: 'medium', lang: 'en',
   flowMaxDepth: 6,             // mirror of Python --flow-max-depth for client-side trace
   LAYOUT: null,                // current layout metrics (makeLayout(fontScale)); set in controls

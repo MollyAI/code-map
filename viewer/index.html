@@ -27,7 +27,6 @@
       <button data-group="layer" class="active" data-i18n="group_layers">layers</button>
       <button data-group="flow" data-i18n="group_flows">flows</button>
     </div>
-    <select class="flow-select" id="flow-select" aria-label="flow" hidden></select>
     <div class="toggle" id="font-size-toggle" role="group" aria-label="font size">
       <button data-size="small" data-i18n-title="font_small">S</button>
       <button data-size="medium" class="active" data-i18n-title="font_medium">M</button>
@@ -54,6 +53,22 @@
 </header>
 
 <div class="layout">
+  <aside class="flow-sidebar" id="flow-sidebar">
+    <div class="flow-sidebar-head">
+      <span class="flow-sidebar-title" data-i18n="group_flows">flows</span>
+      <button class="flow-collapse" id="flow-collapse" type="button" aria-label="collapse flow list" data-i18n-title="collapse_flows">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 3.5 5.5 8 10 12.5"/>
+        </svg>
+      </button>
+    </div>
+    <div class="flow-list" id="flow-list"></div>
+  </aside>
+  <button class="flow-expand" id="flow-expand" type="button" aria-label="show flow list" data-i18n-title="expand_flows">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 3.5 10.5 8 6 12.5"/>
+    </svg>
+  </button>
   <div class="canvas-wrap" id="canvas-wrap">
     <svg id="map" xmlns="http://www.w3.org/2000/svg"></svg>
   </div>

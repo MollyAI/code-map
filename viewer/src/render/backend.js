@@ -25,6 +25,7 @@ export const CANVAS_PAD_L = 28;
  * @property {() => SVGSVGElement} getSvg
  * @property {() => void} applyZoom
  * @property {() => void} updateZoomLabel
+ * @property {() => void} goHome
  * @property {(nodeById: Map<string, any>, layoutEl: HTMLElement) => void} applyVisualState
  */
 
@@ -34,6 +35,19 @@ export const CANVAS_PAD_L = 28;
  * @returns {RenderBackend}
  */
 export function createSvgBackend(svg, canvasWrap) {
+  // Pan gutter — extra scrollable space around the SVG so the canvas can be
+  // dragged freely even at 100% zoom (where the SVG exactly fits the content
+  // width and would otherwise have no horizontal scroll room). Half a viewport
+  // on each side: generous but bounded. Computed once from the initial viewport
+  // as fixed px (not vw/vh) so a mid-session window resize can't shift the
+  // content under the user. Applied as a margin on the SVG, which enlarges
+  // canvas-wrap's scrollable area WITHOUT touching applyZoom's width contract
+  // (that reads clientWidth, never scrollWidth) and WITHOUT affecting export
+  // (png.js sizes its clone from viewBox, ignoring this margin).
+  const gutterX = Math.round((window.innerWidth || 1200) * 0.5);
+  const gutterY = Math.round((window.innerHeight || 800) * 0.5);
+  svg.style.margin = gutterY + 'px ' + gutterX + 'px';
+
   function clear() { while (svg.firstChild) svg.removeChild(svg.firstChild); }
 
   /** @param {number} w @param {number} h */
@@ -66,6 +80,14 @@ export function createSvgBackend(svg, canvasWrap) {
     updateZoomLabel();
   }
 
+  // Scroll past the pan gutter so the SVG's top-left sits at the visible
+  // top-left — the gutter is overscroll room for dragging, not initial empty
+  // space. Called once after the first render (main.onModel).
+  function goHome() {
+    canvasWrap.scrollLeft = gutterX;
+    canvasWrap.scrollTop = gutterY;
+  }
+
   // Toggle selected/peer/dimmed classes on the rendered node elements, and the
   // layout's has-selection class. Peers come from the edge indices on state.
   /** @param {Map<string, any>} nodeById @param {HTMLElement} layoutEl */
@@ -85,5 +107,5 @@ export function createSvgBackend(svg, canvasWrap) {
     }
   }
 
-  return { clear, setViewBox, add, getSvg, applyZoom, updateZoomLabel, applyVisualState };
+  return { clear, setViewBox, add, getSvg, applyZoom, updateZoomLabel, goHome, applyVisualState };
 }

@@ -93,6 +93,12 @@ body.theme-switching *::after {
   body.theme-switching *::before, body.theme-switching *::after { transition: none !important; }
 }
 body {
+  /* full-height flex column: topbar (auto) + .layout (fills the rest). This
+     replaces the old `.layout { height: calc(100vh - 57px) }` magic number, so
+     the topbar can grow/shrink without re-deriving a hardcoded offset. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   /* blueprint grid background */
   background-image:
     linear-gradient(var(--line-faint) 1px, transparent 1px),
@@ -107,46 +113,48 @@ button { font-family: inherit; }
 /* ---------- header ---------- */
 header.topbar {
   position: sticky; top: 0; z-index: 50;
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 24px;
-  padding: 14px 28px;
+  gap: 28px;
+  padding: 17px 34px;
   border-bottom: 1px solid var(--line);
   background: var(--header-bg);
   backdrop-filter: blur(8px);
 }
 
 .brand {
-  display: flex; align-items: baseline; gap: 12px;
+  display: flex; align-items: baseline; gap: 14px;
 }
 .brand .project {
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 500;
-  font-size: 22px;
+  font-size: 26px;
   letter-spacing: -0.01em;
   color: var(--text-0);
 }
 .brand .build-info {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--text-2);
   white-space: nowrap;
   letter-spacing: 0.02em;
 }
 
-.controls { display: flex; gap: 10px; align-items: center; }
+.controls { display: flex; gap: 12px; align-items: center; }
 
 .toggle {
-  display: flex; gap: 1px; border: 1px solid var(--line); border-radius: 4px; padding: 1px;
+  display: flex; gap: 1px; border: 1px solid var(--line); border-radius: 5px; padding: 2px;
   background: var(--bg-1);
 }
+.toggle[hidden] { display: none; }   /* core/all toggle is hidden in flow mode */
 .toggle button {
   background: transparent; border: 0; color: var(--text-2);
-  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em;
-  padding: 5px 10px; cursor: pointer; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em;
+  padding: 6px 13px; cursor: pointer; border-radius: 3px;
   text-transform: uppercase;
 }
 .toggle button.active { background: var(--bg-3); color: var(--text-0); }
@@ -155,8 +163,8 @@ header.topbar {
 .theme-toggle, .lang-toggle, .export-toggle {
   background: var(--bg-1);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  width: 32px; height: 30px;
+  border-radius: 5px;
+  width: 38px; height: 36px;
   padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--text-2);
@@ -164,7 +172,7 @@ header.topbar {
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .theme-toggle:hover, .lang-toggle:hover, .export-toggle:hover { color: var(--text-0); border-color: var(--line-strong); }
-.theme-toggle svg, .lang-toggle svg, .export-toggle svg { width: 14px; height: 14px; display: block; }
+.theme-toggle svg, .lang-toggle svg, .export-toggle svg { width: 17px; height: 17px; display: block; }
 .export-toggle[aria-busy="true"] { opacity: 0.5; pointer-events: none; }
 .theme-toggle .icon-sun  { display: none; }
 .theme-toggle .icon-moon { display: block; }
@@ -172,19 +180,20 @@ body.light .theme-toggle .icon-sun  { display: block; }
 body.light .theme-toggle .icon-moon { display: none; }
 .lang-toggle {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
   width: auto;
-  padding: 0 8px;
+  padding: 0 11px;
 }
 
 /* ---------- main layout ---------- */
 .layout {
   position: relative;
   display: flex;
-  height: calc(100vh - 57px);
-  overflow: hidden;       /* clip the panel during the slide-out so its shadow doesn't leak */
+  flex: 1 1 auto;
+  min-height: 0;          /* let the flex child own its height and scroll internally */
+  overflow: hidden;       /* clip the panels during the slide-out so their shadows don't leak */
 }
 
 .canvas-wrap {
@@ -198,11 +207,13 @@ body.light .theme-toggle .icon-moon { display: none; }
   scrollbar-gutter: stable;
   padding: 32px 28px 80px;
   cursor: grab;
-  transition: margin-right 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* margin-right ← right detail panel; margin-left ← left flow sidebar. */
+  transition: margin 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .canvas-wrap.panning { cursor: grabbing; }
 .canvas-wrap.panning * { cursor: grabbing !important; }   /* keep cursor consistent over nodes during a pan */
 .layout.has-selection .canvas-wrap { margin-right: calc(380px * var(--fs-scale)); }
+.layout.flow-active.flow-open .canvas-wrap { margin-left: calc(240px * var(--fs-scale)); }
 
 .canvas-wrap::before {
   /* registration mark, top-left corner */
@@ -480,20 +491,102 @@ body.light .theme-toggle .icon-moon { display: none; }
   text-anchor: end;
 }
 
-.flow-select {
-  background: var(--bg-1); color: var(--text-0); border: 1px solid var(--line);
-  border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 0.78rem;
-  max-width: 240px;
-}
-.flow-select[hidden] { display: none; }
 .node.flow-hub rect { stroke-dasharray: 4 3; opacity: 0.55; }
 .node.flow-core rect { stroke: var(--accent); stroke-width: 1.8; }
-.trace-btn {
-  margin-top: 8px; padding: 4px 10px; font: inherit; font-size: 0.78rem;
-  background: var(--bg-1); color: var(--text-0);
-  border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+
+/* ---------- left flow sidebar (slides in from the left, mirrors .detail) ---------- */
+.flow-sidebar {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: calc(240px * var(--fs-scale));
+  background: var(--bg-1);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--line);
+  box-shadow: 16px 0 32px var(--shadow-panel);
+  transform: translateX(-100%);
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 5;
 }
-.trace-btn:hover { border-color: var(--accent); }
+.layout.flow-active.flow-open .flow-sidebar { transform: translateX(0); }
+
+.flow-sidebar-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 18px 14px 14px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.flow-sidebar-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: calc(18px * var(--fs-scale));
+  color: var(--text-1);
+}
+.flow-collapse, .flow-expand {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  width: 28px; height: 28px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-2); cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.flow-collapse:hover, .flow-expand:hover { color: var(--text-0); border-color: var(--line-strong); }
+.flow-collapse svg, .flow-expand svg { width: 15px; height: 15px; display: block; }
+
+.flow-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 12px 20px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.flow-item {
+  display: flex; flex-direction: column; gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 9px 12px;
+  cursor: pointer;
+  color: var(--text-1);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.flow-item:hover { background: var(--bg-2); color: var(--text-0); }
+.flow-item.active { background: var(--accent-dim); border-color: var(--accent-dim); }
+.flow-item.active .flow-item-name { color: var(--accent); font-weight: 600; }
+.flow-item-name {
+  font-family: var(--font-mono);
+  font-size: calc(12.5px * var(--fs-scale));
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.flow-item-desc {
+  font-family: var(--font-ui);
+  font-size: calc(11px * var(--fs-scale));
+  color: var(--text-3);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.flow-item.active .flow-item-desc { color: var(--text-2); }
+
+/* collapsed-state expand handle — a thin tab on the left edge, flow mode only */
+.flow-expand {
+  position: absolute;
+  top: 50%; left: 0;
+  transform: translateY(-50%);
+  width: 22px; height: 64px;
+  border-left: 0;
+  border-top-left-radius: 0; border-bottom-left-radius: 0;
+  box-shadow: 6px 0 16px var(--shadow-zoom);
+  z-index: 4;
+  display: none;
+}
+.layout.flow-active:not(.flow-open) .flow-expand { display: inline-flex; }
 
 .node { cursor: pointer; }
 .node rect {
@@ -600,7 +693,10 @@ body.light .theme-toggle .icon-moon { display: none; }
   font-family: var(--font-mono);
   box-shadow: 0 4px 16px var(--shadow-zoom);
   user-select: none;
+  /* slide clear of the flow sidebar when it opens (matches the panel transition) */
+  transition: left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+.layout.flow-active.flow-open .zoom-controls { left: calc(240px * var(--fs-scale) + 24px); }
 .zoom-controls button {
   background: transparent;
   border: 0;
@@ -648,7 +744,8 @@ body.light .theme-toggle .icon-moon { display: none; }
 ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 5px; border: 2px solid var(--bg-0); }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
 
-/* responsive: panel takes the full viewport width on narrow screens */
+/* responsive: side panels take the full viewport width on narrow screens */
 @media (max-width: 900px) {
   .detail { width: 100%; }
+  .flow-sidebar { width: 100%; }
 }

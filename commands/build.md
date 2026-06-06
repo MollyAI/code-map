@@ -147,7 +147,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 6b. **Name and curate flows.** Phase 1 wrote `flows[]` — one candidate flow per entry point, each `{id, name, description, seed, nodes, edges, confidence:"high"}` where `name` is just the seed's function name. For each flow worth surfacing:
    - Rewrite `name` to a human flow name ("启动流程" / "Startup", "渲染流程" / "Render").
-   - Write a one-sentence `description` (shown as the dropdown subtitle).
+   - Write a one-sentence `description` (shown as the flow's subtitle in the left sidebar).
    - Optionally change `seed` or add a new flow whose seed is not an entry point (e.g. a render loop) — recompute `nodes`/`edges` by walking `uses`-edges forward from the seed, treating any class with `hub:true` as a leaf, capped at ~6 hops.
    - Mark any flow you changed `confidence: "ai-inferred"`.
    Drop flows that are noise (e.g. a trivial entry point with a one-node flow) by omitting them from `flows[]`.

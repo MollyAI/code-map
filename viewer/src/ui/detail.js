@@ -1,14 +1,14 @@
 // --------------------------------------------------------------------
 // ui/detail — the right-hand detail panel. Renders a declaration's kicker,
 // title (full signature for methods), tag chips, the @path:line deep-link
-// copy row, an optional flow "trace from here" button, a bilingual
-// description, a method-vs-class meta grid, and depends-on / depended-on-by
-// edge lists. Was renderDetail / edgeRow / pickDescription / simpleNameOf /
-// packageOf / scrollNodeIntoView in index.html.
+// copy row, a bilingual description, a method-vs-class meta grid, and
+// depends-on / depended-on-by edge lists. Was renderDetail / edgeRow /
+// pickDescription / simpleNameOf / packageOf / scrollNodeIntoView in
+// index.html.
 //
-// Cross-cutting actions (selecting an edge-row target, tracing) are passed
-// in via deps to avoid importing interact/* (no cycles). i18n is now
-// explicit per call: t(key, state.lang).
+// Cross-cutting actions (selecting an edge-row target) are passed in via
+// deps to avoid importing interact/* (no cycles). i18n is now explicit per
+// call: t(key, state.lang).
 // --------------------------------------------------------------------
 
 import { state } from '../store.js';
@@ -37,9 +37,8 @@ function packageOf(fqn) { const i = fqn.lastIndexOf('.'); return i < 0 ? '' : fq
  * @param {HTMLElement} deps.detailBody
  * @param {HTMLElement} deps.canvasWrap
  * @param {(id: string) => void} deps.onSelectTarget  select + scroll a clicked edge-row target
- * @param {(id: string) => void} deps.onTrace         the flow "trace from here" action
  */
-export function createDetail({ detailBody, canvasWrap, onSelectTarget, onTrace }) {
+export function createDetail({ detailBody, canvasWrap, onSelectTarget }) {
   /** @param {string} k */
   const tr = (k) => t(k, state.lang);
 
@@ -105,7 +104,6 @@ export function createDetail({ detailBody, canvasWrap, onSelectTarget, onTrace }
         <div class="path-text" title="${escapeHtml(c.path + lineSuffix)}">${escapeHtml(c.path + lineSuffix)}</div>
         <button class="copy" data-copy="${escapeAttr('@' + c.path + lineSuffix)}">${escapeHtml(tr('copy'))}</button>
       </div>
-      ${state.activeView === 'flow' ? `<button class="trace-btn" data-trace="${escapeAttr(c.id)}">${escapeHtml(tr('trace_from_here'))}</button>` : ''}
 
       ${desc
         ? `<p class="description">${escapeHtml(desc)}</p>`
@@ -158,12 +156,6 @@ export function createDetail({ detailBody, canvasWrap, onSelectTarget, onTrace }
         btn.textContent = tr('failed');
         setTimeout(() => { btn.textContent = tr('copy'); }, 1400);
       });
-    });
-
-    const traceBtn = detailBody.querySelector('.trace-btn');
-    if (traceBtn) traceBtn.addEventListener('click', (ev) => {
-      const id = /** @type {HTMLElement} */ (ev.currentTarget).getAttribute('data-trace');
-      if (id) onTrace(id);
     });
 
     detailBody.querySelectorAll('.edge-row[data-target]').forEach((row) => {

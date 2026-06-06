@@ -8,11 +8,11 @@ A Claude Code plugin that builds an interactive architectural map of any project
 
 ## Features / 功能简介
 
-Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the dropdown or double-click any node to trace from it.
+Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the collapsible left sidebar.
 
 **Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
 
-扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从下拉菜单选择流程，或双击任意节点从该点开始追踪。
+扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从左侧可收起的侧边栏选择流程。
 
 **支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
 

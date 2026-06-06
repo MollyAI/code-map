@@ -10,7 +10,6 @@ import { state } from '../store.js';
 import { t } from '../i18n.js';
 import { layoutLayers } from '../layout/layers.js';
 import { layoutFlow } from '../layout/flow.js';
-import { traceFlow } from '../data/flows.js';
 import { makeNodeEl } from './node.js';
 import { buildFlowEdgePath } from './edges.js';
 import { renderScene } from './scene.js';
@@ -37,29 +36,19 @@ function visibleLayers(st) {
   return layers;
 }
 
-// The flow shown right now: a live trace (when traceSeed is set) or the
-// selected stored flow (was resolveActiveFlow).
+// The flow shown right now: the selected stored flow (was resolveActiveFlow).
 /** @param {any} st */
 export function resolveActiveFlow(st) {
-  if (st.traceSeed) {
-    const c = st.classById.get(st.traceSeed);
-    const { nodes, edges } = traceFlow(st.traceSeed, {
-      edgesFromIdx: st.edgesFromIdx, hubIds: st.hubIds,
-      classById: st.classById, maxDepth: st.flowMaxDepth,
-    });
-    return { id: 'trace:' + st.traceSeed, name: c ? c.name : st.traceSeed,
-             description: '', seed: st.traceSeed, nodes, edges };
-  }
   return st.flowsById.get(st.activeFlow) || null;
 }
 
 // Build one node element and register the full nodeById entry (with the
 // geometry the layout produced — registerNode only sees id+el, so we build
 // the entry here where `n` is in scope).
-/** @param {any} st @param {Element} group @param {any} n @param {any} ctx @param {(d:any)=>string[]} decorateNode @param {boolean} allowTrace */
-function appendNode(st, group, n, ctx, decorateNode, allowTrace) {
+/** @param {any} st @param {Element} group @param {any} n @param {any} ctx @param {(d:any)=>string[]} decorateNode */
+function appendNode(st, group, n, ctx, decorateNode) {
   const el = makeNodeEl(n, {
-    LAYOUT: st.LAYOUT, handlers: ctx.handlers, decorateNode, allowTrace,
+    LAYOUT: st.LAYOUT, handlers: ctx.handlers, decorateNode,
     registerNode: () => {},
   });
   group.appendChild(el);
@@ -128,7 +117,7 @@ const layerView = {
       count.textContent = `${n} ${n === 1 ? t('class_one', st.lang) : t('class_other', st.lang)}`;
       gBand.appendChild(count);
 
-      for (const node of b.nodes) appendNode(st, gBand, node, ctx, NO_DECOR, false);
+      for (const node of b.nodes) appendNode(st, gBand, node, ctx, NO_DECOR);
       backend.add(gBand);
     }
     backend.add(gEdges);   // edges last → on top of bands/nodes
@@ -140,7 +129,7 @@ const flowView = {
   id: 'flow',
   labelKey: 'group_flows',
   computeLayout(st, ctx) {
-    ctx.populateFlowSelect();   // original renderFlow populates the dropdown first
+    ctx.populateFlowList();   // refresh the left flow sidebar before laying out
     const canvasWidth = ctx.canvasWidth();
     const flow = resolveActiveFlow(st);
     if (!flow) return { width: Math.max(canvasWidth, 200), height: 200, kind: 'empty' };
@@ -173,7 +162,7 @@ const flowView = {
       }
     }
     const gNodes = document.createElementNS(NS, 'g');
-    for (const node of lay.nodes) appendNode(st, gNodes, node, ctx, flowDecorate, true);
+    for (const node of lay.nodes) appendNode(st, gNodes, node, ctx, flowDecorate);
     backend.add(gEdges);   // edges under nodes (flow)
     backend.add(gNodes);
   },

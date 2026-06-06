@@ -4,13 +4,11 @@
 // both renderers (layer bands + flow) call per positioned node.
 //
 // The original read/wrote globals: `state.grouping` (to add flow-hub/
-// flow-core classes and to decide whether to bind the dblclick "trace"
-// gesture), `state.nodeById` (to register the built element), the module
-// `LAYOUT`, and called `selectNode` / `showTooltip` / `hideTooltip` /
-// `positionTooltip` / `traceFromNode` inline. Here all of that is passed
-// in via `ctx`, so this module is side-effect-free w.r.t. globals:
+// flow-core classes), `state.nodeById` (to register the built element), the
+// module `LAYOUT`, and called `selectNode` / `showTooltip` / `hideTooltip` /
+// `positionTooltip` inline. Here all of that is passed in via `ctx`, so this
+// module is side-effect-free w.r.t. globals:
 //   - the flow class branch        -> ctx.decorateNode(datum)
-//   - the dblclick-trace decision  -> ctx.allowTrace
 //   - state.nodeById.set(...)      -> ctx.registerNode(id, el)
 //   - the inline handlers          -> ctx.handlers.*
 //   - LAYOUT                       -> ctx.LAYOUT
@@ -64,7 +62,6 @@ export function langColor(lang) {
  * original's inline global calls; see the module header for the mapping.
  * @typedef {object} NodeHandlers
  * @property {(id: string) => void} onSelect     click (was `selectNode`)
- * @property {(id: string) => void} onTrace      dblclick when allowed (was `traceFromNode`)
  * @property {(id: string, evt: MouseEvent) => void} onHover  mouseenter (was `showTooltip`)
  * @property {() => void} onHoverEnd             mouseleave (was `hideTooltip`)
  * @property {(evt: MouseEvent) => void} [onHoverMove]  mousemove (was `positionTooltip`)
@@ -79,9 +76,6 @@ export function langColor(lang) {
  *   === 'flow'` flow-hub/flow-core branch).
  * @property {(id: string, el: SVGGElement) => void} registerNode
  *   record the built element (replaces `state.nodeById.set`).
- * @property {boolean} allowTrace
- *   whether to bind the dblclick "trace from here" gesture (replaces the
- *   `state.grouping !== 'flow'` early-return inside the dblclick handler).
  * @property {Layout} LAYOUT
  */
 
@@ -94,7 +88,7 @@ export function langColor(lang) {
  * @returns {SVGGElement}
  */
 export function makeNodeEl(n, ctx) {
-  const { handlers, decorateNode, registerNode, allowTrace, LAYOUT } = ctx;
+  const { handlers, decorateNode, registerNode, LAYOUT } = ctx;
 
   const gNode = /** @type {SVGGElement} */ (document.createElementNS(NS, 'g'));
   let cls = 'node';
@@ -127,11 +121,6 @@ export function makeNodeEl(n, ctx) {
   gNode.appendChild(txt);
 
   gNode.addEventListener('click', (ev) => { ev.stopPropagation(); handlers.onSelect(n.datum.id); });
-  gNode.addEventListener('dblclick', (ev) => {
-    if (!allowTrace) return;
-    ev.stopPropagation();
-    handlers.onTrace(n.datum.id);
-  });
   gNode.addEventListener('mouseenter', (ev) => handlers.onHover(n.datum.id, ev));
   gNode.addEventListener('mouseleave', () => handlers.onHoverEnd());
   if (handlers.onHoverMove) {

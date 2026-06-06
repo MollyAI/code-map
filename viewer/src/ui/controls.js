@@ -1,11 +1,12 @@
 // --------------------------------------------------------------------
 // ui/controls — wires the topbar controls (core/all view, layer/flow
-// grouping + flow dropdown, theme, font size, language) and the window
-// resize re-layout. Settings persist via createSettings with the verbatim
-// keys (view/grouping/theme/font-size/lang) — red line #7. Structural
-// changes go through setState (→ the renderApp subscription); the initial
-// apply() runs before load() and mutates state directly (no render yet).
-// Was the initView/initGrouping/initTheme/initFontSize/initLang IIFEs.
+// grouping, theme, font size, language), the left flow sidebar (a vertical
+// flow list + collapse/expand), and the window resize re-layout. Settings
+// persist via createSettings with the verbatim keys (view/grouping/theme/
+// font-size/lang, + flow-collapsed) — red line #7. Structural changes go
+// through setState (→ the renderApp subscription); the initial apply() runs
+// before load() and mutates state directly (no render yet). Was the
+// initView/initGrouping/initTheme/initFontSize/initLang IIFEs.
 // --------------------------------------------------------------------
 
 import { state, setState } from '../store.js';
@@ -15,26 +16,29 @@ import { applyI18nStatic } from '../i18n.js';
 
 const settings = createSettings();
 
-/** Fill the flow dropdown from state.flowsById (+ a synthetic trace entry). */
-/** @param {any} els */
-export function populateFlowSelect(els) {
-  const sel = els.flowSelect;
-  sel.innerHTML = '';
+/** Fill the left flow sidebar list from state.flowsById; highlight the active
+ *  flow. Each item shows the flow name + (when present) its description.
+ * @param {any} els */
+export function populateFlowList(els) {
+  const list = els.flowList;
+  if (!list) return;
+  list.innerHTML = '';
   for (const f of state.flowsById.values()) {
-    const opt = document.createElement('option');
-    opt.value = f.id;
-    opt.textContent = f.description ? `${f.name} — ${f.description}` : f.name;
-    sel.appendChild(opt);
-  }
-  if (state.traceSeed) {
-    const opt = document.createElement('option');
-    opt.value = '__trace__';
-    const c = state.classById.get(state.traceSeed);
-    opt.textContent = `⌖ ${c ? c.name : state.traceSeed}`;
-    sel.appendChild(opt);
-    sel.value = '__trace__';
-  } else if (state.activeFlow) {
-    sel.value = state.activeFlow;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'flow-item' + (f.id === state.activeFlow ? ' active' : '');
+    item.dataset.flow = f.id;
+    const name = document.createElement('span');
+    name.className = 'flow-item-name';
+    name.textContent = f.name;
+    item.appendChild(name);
+    if (f.description) {
+      const desc = document.createElement('span');
+      desc.className = 'flow-item-desc';
+      desc.textContent = f.description;
+      item.appendChild(desc);
+    }
+    list.appendChild(item);
   }
 }
 
@@ -61,22 +65,46 @@ export function initControls(els) {
 
   // grouping: layer bands / flow pipeline — persisted, migrates legacy "subsystem".
   (function initGrouping() {
+    // Reflect flow mode onto the layout chrome: hide the core/all toggle (no
+    // such concept in flow mode) and show the left flow sidebar unless the user
+    // collapsed it. The sidebar/expand-handle visibility + canvas margin are
+    // driven by the .flow-active / .flow-open classes in CSS.
+    function applyFlowChrome() {
+      const isFlow = state.activeView === 'flow';
+      els.toggle.hidden = isFlow;
+      els.layout.classList.toggle('flow-active', isFlow);
+      els.layout.classList.toggle('flow-open', isFlow && !state.flowSidebarCollapsed);
+    }
     /** @param {string} mode */
     function apply(mode) {
       state.activeView = migrateGrouping(mode);
       for (const btn of els.groupToggle.querySelectorAll('button')) btn.classList.toggle('active', btn.dataset.group === state.activeView);
-      els.flowSelect.hidden = (state.activeView !== 'flow');
+      applyFlowChrome();
     }
+    state.flowSidebarCollapsed = settings.get('flow-collapsed') === 'true';
     apply(settings.get('grouping', 'layer') || 'layer');
     els.groupToggle.addEventListener('click', (/** @type {Event} */ ev) => {
       const b = closestButton(ev.target); if (!b) return;
       apply(b.dataset.group || 'layer'); settings.set('grouping', state.activeView);
-      state.selected = null; state.traceSeed = null; setState({});
+      state.selected = null; setState({});
     });
-    els.flowSelect.addEventListener('change', (/** @type {Event} */ ev) => {
-      const value = /** @type {HTMLSelectElement} */ (ev.target).value;
-      if (value === '__trace__') return;  // the synthetic current-trace entry
-      state.traceSeed = null; state.activeFlow = value; state.selected = null; setState({});
+    // pick a flow from the left sidebar list
+    els.flowList.addEventListener('click', (/** @type {Event} */ ev) => {
+      const item = ev.target instanceof Element ? ev.target.closest('.flow-item') : null;
+      if (!item) return;
+      const id = /** @type {HTMLElement} */ (item).dataset.flow;
+      if (!id || id === state.activeFlow) return;
+      state.activeFlow = id; state.selected = null; setState({});
+    });
+    // collapse / expand the sidebar (slide mirrors the right detail panel); a
+    // setState re-layouts the canvas for its new width.
+    els.flowCollapse.addEventListener('click', () => {
+      state.flowSidebarCollapsed = true; settings.set('flow-collapsed', 'true');
+      applyFlowChrome(); setState({});
+    });
+    els.flowExpand.addEventListener('click', () => {
+      state.flowSidebarCollapsed = false; settings.set('flow-collapsed', 'false');
+      applyFlowChrome(); setState({});
     });
   })();
 
