@@ -2,6 +2,41 @@
 // entry point, with high-in-degree hubs as non-expandable leaves). Port of flows.py.
 import { qualifiedName } from './extractors/base.mjs';
 
+/** 把 supertype / ref 字符串归一化为短名，镜像 core.resolve 的规则：
+ *  先剥泛型 <...> 与调用括号 (...)，再取 . :: / 的末段。 */
+export function shortName(raw) {
+  const base = String(raw || '').split('<')[0].split('(')[0];
+  return base.split('.').pop().split('::').pop().split('/').pop();
+}
+
+/** Map<短名, 实现声明[]>：仅保留 >=2 个实现的接口/抽象类型，桶内按
+ *  (_importance desc, qualified_name asc) 排序。从声明的 supertypes 字符串
+ *  构建，而非图的 extends 边——后者在目标节点未被抽取时已被 core.resolve
+ *  丢弃（okhttp 的 fun interface Interceptor 即如此）。语言无关。 */
+export function buildDispatchIndex(declarations) {
+  const byShort = new Map();
+  for (const d of declarations) {
+    for (const s of d.supertypes || []) {
+      const k = shortName(s);
+      if (!k) continue;
+      if (!byShort.has(k)) byShort.set(k, []);
+      byShort.get(k).push(d);
+    }
+  }
+  const index = new Map();
+  for (const [k, impls] of byShort) {
+    if (impls.length < 2) continue;
+    impls.sort((a, b) => {
+      const ia = a._importance || 0, ib = b._importance || 0;
+      if (ib !== ia) return ib - ia;
+      const qa = qualifiedName(a), qb = qualifiedName(b);
+      return qa < qb ? -1 : qa > qb ? 1 : 0;
+    });
+    index.set(k, impls);
+  }
+  return index;
+}
+
 /** Mark the top `percentile` of declarations by in-degree as hubs. Sets _hub on
  *  every declaration; returns the set of hub qualified_names. */
 export function markHubs(declarations, percentile = 0.05) {
