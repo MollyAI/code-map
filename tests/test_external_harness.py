@@ -128,8 +128,8 @@ class TestInvariants(unittest.TestCase):
         cm = _map(layers=[
             {"id": "a", "classes": [
                 {"name": "Main", "id": "a.Main", "core": True,
-                 "tags": ["entry-point"], "description": "app entry",
-                 "confidence": "high"},
+                 "tags": ["entry-point"], "description_zh": "应用入口",
+                 "description_en": "app entry", "confidence": "high"},
             ]},
         ])
         cm["flows"] = [{"id": "f1", "name": "Startup", "description": "boots app",
@@ -143,9 +143,27 @@ class TestInvariants(unittest.TestCase):
 
     def test_core_without_description_is_hard(self):
         raw, cm = self._good()
-        cm["layers"][0]["classes"][0]["description"] = "   "
+        d = cm["layers"][0]["classes"][0]
+        d.pop("description_zh", None)
+        d.pop("description_en", None)
+        d["description"] = "   "
         rep = harness.check_invariants(raw, cm, {})
-        self.assertTrue(any("empty description" in m for m in rep["hard"]))
+        self.assertTrue(any("no description" in m for m in rep["hard"]))
+
+    def test_legacy_single_description_accepted(self):
+        raw, cm = self._good()
+        d = cm["layers"][0]["classes"][0]
+        d.pop("description_zh", None)
+        d.pop("description_en", None)
+        d["description"] = "legacy one-liner"
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertEqual(rep["hard"], [])
+
+    def test_only_one_bilingual_field_is_hard(self):
+        raw, cm = self._good()
+        cm["layers"][0]["classes"][0].pop("description_en", None)  # only zh
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("no description" in m for m in rep["hard"]))
 
     def test_duplicate_layer_ids_hard(self):
         raw, cm = self._good()

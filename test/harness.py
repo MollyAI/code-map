@@ -139,11 +139,19 @@ def check_invariants(raw, code_map, unresolved):
     {"hard": [...], "soft": [...]}. hard != [] means a regression (exit≠0)."""
     hard, soft = [], []
 
-    # 1. core decls must carry a non-empty description
+    # 1. core decls must carry a description. build.md's Phase 2 contract writes
+    #    bilingual description_zh + description_en (the legacy single `description`
+    #    is no longer required); accept either the bilingual pair or legacy.
     for _lid, d in _iter_decls(code_map):
-        if d.get("core") and not (d.get("description") or "").strip():
+        if not d.get("core"):
+            continue
+        bilingual = ((d.get("description_zh") or "").strip()
+                     and (d.get("description_en") or "").strip())
+        legacy = (d.get("description") or "").strip()
+        if not (bilingual or legacy):
             hard.append(
-                f"core decl {d.get('id') or d.get('name')!r} has empty description")
+                f"core decl {d.get('id') or d.get('name')!r} has no description "
+                f"(need description_zh+description_en)")
 
     # 2. layer ids unique
     ids = [l.get("id") for l in code_map.get("layers", [])]
