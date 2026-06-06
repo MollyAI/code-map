@@ -104,6 +104,82 @@ def cmd_prepare(args):
     print("=" * 70)
 
 
+def _read_json(path, default=None):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
+def cmd_invariants(args):
+    out_dir = OUT / args.name
+    raw = _read_json(out_dir / "raw_structure.json")
+    cm = _read_json(out_dir / "code-map.json")
+    if raw is None or cm is None:
+        sys.exit(f"error: run prepare + Phase 2 first; missing files under {out_dir}")
+    unr = _read_json(out_dir / "unresolved.json", {})
+    rep = harness.check_invariants(raw, cm, unr)
+    for m in rep["soft"]:
+        print(f"  [soft] {m}")
+    for m in rep["hard"]:
+        print(f"  [HARD] {m}")
+    if rep["hard"]:
+        sys.exit(f"invariants FAILED: {len(rep['hard'])} hard issue(s)")
+    print(f"[invariants] {args.name}: OK ({len(rep['soft'])} soft note(s))")
+
+
+def _phase1_raw(name):
+    """Run Phase 1 fresh and return the parsed raw_structure dict (path A: no
+    Phase 2, no Claude, no tokens)."""
+    cmd_fetch(argparse.Namespace(name=name, url=None))
+    out_dir = OUT / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = (out_dir / "raw_structure.json").resolve()
+    params, _ = _build_params(name)
+    _run([sys.executable, SCRIPTS / "analyze.py",
+          "--root", (REPOS / name).resolve(), "--out", out_file, *params])
+    return _read_json(out_file)
+
+
+def cmd_bless(args):
+    raw = _phase1_raw(args.name)
+    GOLDEN.mkdir(parents=True, exist_ok=True)
+    golden = GOLDEN / f"{args.name}.json"
+    golden.write_text(harness.dumps_stable(harness.normalize_raw(raw)))
+    print(f"[bless] wrote {golden}")
+
+
+def cmd_check(args):
+    names = ([r["name"] for r in _load_config().get("repos", [])]
+             if args.all else [args.name])
+    import difflib
+    failed = []
+    for name in names:
+        raw = _phase1_raw(name)
+        actual = harness.dumps_stable(harness.normalize_raw(raw))
+        golden = GOLDEN / f"{name}.json"
+        if not golden.exists():
+            print(f"[check] {name}: NO GOLDEN (run bless first)")
+            failed.append(name)
+            continue
+        if actual != golden.read_text():
+            print(f"[check] {name}: GOLDEN MISMATCH")
+            for line in difflib.unified_diff(
+                    golden.read_text().splitlines(), actual.splitlines(),
+                    fromfile="golden", tofile="actual", lineterm=""):
+                print(line)
+            failed.append(name)
+            continue
+        expect = (harness.find_repo(_load_config(), name) or {}).get("expect")
+        efails = harness.check_expectations(raw, expect)
+        if efails:
+            print(f"[check] {name}: EXPECT FAILED")
+            for m in efails:
+                print(f"  {m}")
+            failed.append(name)
+            continue
+        print(f"[check] {name}: OK")
+    if failed:
+        sys.exit(f"check FAILED: {failed}")
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="run.py", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -120,6 +196,19 @@ def build_parser():
     sp = sub.add_parser("prepare", help="fetch + run Phase 1 → test/out/<name>/")
     add_target(sp, allow_url=True)
     sp.set_defaults(func=cmd_prepare)
+
+    sp = sub.add_parser("invariants", help="Phase-2 structural checks on code-map.json")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_invariants)
+
+    sp = sub.add_parser("bless", help="(re)generate Phase-1 golden snapshot")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_bless)
+
+    sp = sub.add_parser("check", help="Phase-1 golden diff + expect assertions")
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--all", action="store_true", help="check every repo in config")
+    sp.set_defaults(func=cmd_check)
 
     return p
 
