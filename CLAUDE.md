@@ -34,9 +34,10 @@ templates/                # 13 architectural shapes
   frontend-spa.yml  cli-tool.yml  pipeline.yml
   ecs.yml  microkernel.yml
 scripts/
-  bootstrap.py  analyze.py  serve.py  mapctl.py
+  bootstrap.py  analyze.py  serve.py  mapctl.py  incremental.py
   lib/
-    core.py  layers.py  templates.py  skipdirs.py
+    core.py  layers.py  templates.py  skipdirs.py  flows.py
+    gitmeta.py  incremental.py
     extractors/
       __init__.py  base.py  _common.py  _generic.py
       kotlin.py  java.py  python.py  go.py  rust.py  typescript.py
@@ -129,6 +130,8 @@ The frontend reads only `layer.name`, `layer.summary`, and `layer.classes` — `
 **Two grouping modes, two renderers.** `viewer/index.html` has a topbar toggle (`#group-toggle`) between *layer* grouping (the `layers[]` band renderer — `groupedLayers`/`layoutLayers`/`render`) and *flow* mode (a left→right layered-DAG renderer — `renderFlow`/`layoutFlow`/`buildFlowEdgePath`). Flow mode renders one `flows[]` entry at a time, chosen via the `#flow-select` dropdown; double-clicking a node (or the detail-panel "trace from here" button) re-roots a live client-side trace (`traceFlow`, which mirrors `scripts/lib/flows.py`). A flow is a forward `uses`-edge traversal from an entry point, with `hub:true` nodes shown as non-expandable leaves and a depth cap. `flows[]` is written deterministically by Phase 1 (one per entry point) and named/curated by Phase 2; the viewer synthesizes flows client-side if the JSON has none. The choice persists via `Settings` ("grouping"); the core/all filter does not apply in flow mode (core is a visual emphasis there, not a filter).
 
 **Entry points are auto-promoted.** `core.is_entry_point` (matches `MainActivity`, `*Application`, `/cmd/`, etc.) forces `core: true` regardless of in-degree, and adds the `"entry-point"` tag. Both Phase 1 and the Phase 2 contract enforce this — keep them in sync if you edit either.
+
+**Build provenance + incremental builds.** `analyze.py` stamps `project.git` (`branch`/`commit`/`short`/`dirty`) via `lib/gitmeta.py` (defensive — never raises; field omitted when not a git repo); the viewer renders it as a topbar badge (`viewer/src/ui/buildinfo.js`, a pure formatter). The build's **anchor** is the commit stored in the previous `code-map.json`'s `project.git.commit` — no separate state file. `commands/build.md` runs `incremental.py plan` first to choose **full** (Path A, today's behavior) vs **incremental** (Path B) from the git diff `base..HEAD` ∪ working tree. **Only Phase 2 is made incremental — Phase 1 always runs in full** (it's cheap, and importance/`core`/`hub`/flows are global computations that must be recomputed correctly). On Path B, `incremental.py merge` (a pure dict→dict transform in `lib/incremental.py`) reuses the prior Phase 2 annotations (descriptions, layer overrides, flow curation, tags) for declarations whose file didn't change, flagging `stale` (a `core` decl needing a fresh description) and flow `needs_review`; Phase 0 is skipped and `architecture.yml` reused. **Any uncertainty falls back to full** — no prior build, not a git repo, `--root` ≠ git toplevel, base unreachable (rebase/force-push), or >40% of files changed (`plan` reports a `reason`). Delete `.code-map/code-map.json` to force a full rebuild.
 
 **Phase 3 is intentionally dumb.** `serve.py` re-reads `code-map.json` on every request (no caching) so a subsequent `/code-map:build` is picked up without restarting the server. Don't add caching.
 
