@@ -44,6 +44,7 @@ scratch/
 # 外部仓库测试系统（test/）：忽略重量级产物，只放行哈师与配置
 /test/*
 !/test/run.py
+!/test/harness.py
 !/test/config.yml
 !/test/expectations/
 !/test/README.md
