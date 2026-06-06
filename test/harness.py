@@ -52,3 +52,17 @@ def repo_name_from_url(url):
     if len(parts) >= 2:
         return f"{parts[-2]}__{parts[-1]}"
     return parts[-1] if parts else "repo"
+
+
+def load_config(text):
+    """Parse config.yml text → dict (requires PyYAML). Empty text → {}."""
+    import yaml
+    return yaml.safe_load(text) or {}
+
+
+def find_repo(config, name):
+    """Return the repo entry with matching name, or None."""
+    for r in (config or {}).get("repos", []):
+        if r.get("name") == name:
+            return r
+    return None

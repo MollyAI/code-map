@@ -62,5 +62,25 @@ class TestRepoName(unittest.TestCase):
             "square__okhttp")
 
 
+class TestConfig(unittest.TestCase):
+    @unittest.skipUnless(_HAS_YAML, "PyYAML not installed")
+    def test_load_and_find(self):
+        text = (
+            "repos:\n"
+            "  - name: okhttp\n"
+            "    url: https://github.com/square/okhttp\n"
+            "    commit: abc123\n"
+        )
+        cfg = harness.load_config(text)
+        self.assertEqual(len(cfg["repos"]), 1)
+        r = harness.find_repo(cfg, "okhttp")
+        self.assertEqual(r["commit"], "abc123")
+        self.assertIsNone(harness.find_repo(cfg, "nope"))
+
+    @unittest.skipUnless(_HAS_YAML, "PyYAML not installed")
+    def test_empty_text(self):
+        self.assertEqual(harness.load_config(""), {})
+
+
 if __name__ == "__main__":
     unittest.main()
