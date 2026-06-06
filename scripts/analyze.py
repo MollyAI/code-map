@@ -40,9 +40,10 @@ def walk_project(root: Path, skip_dirs: set[str]):
     would still enumerate and stat() everything inside those dirs.
     """
     from scripts.lib.extractors import all_extensions
+    from scripts.lib.skipdirs import prune_dirnames
     exts = all_extensions()
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        dirnames[:] = prune_dirnames(dirnames, skip_dirs, filenames)
         for fn in filenames:
             if Path(fn).suffix in exts:
                 yield Path(dirpath) / fn
@@ -79,7 +80,7 @@ def main():
 
     # Imports must come after the sys.path setup above.
     from scripts.lib.extractors import extractor_for
-    from scripts.lib import core, layers, flows as flowmod, gitmeta
+    from scripts.lib import core, layers, flows as flowmod, gitmeta, vendoring
     from scripts.lib.skipdirs import load_skip_dirs
 
     # plugin_root resolves to this script's grandparent (the code-map repo).
@@ -141,6 +142,34 @@ def main():
     flow_list = flowmod.build_flows(entry_seeds, decls, edges, hub_ids,
                                     max_depth=args.flow_max_depth)
 
+    # Vendored-flooding advisory: flag top-level dirs dominated by packages
+    # outside the project's own roots (likely vendored toolchains) so Phase 2 /
+    # the user can skip them. Advisory only — never changes extraction. Own roots
+    # come from build manifests (what the project declares as its own); entry
+    # points are an unreliable fallback here because vendored toolchains are full
+    # of Main/*Application classes, so use them only if no manifest declared one.
+    manifest_names = ("build.gradle", "build.gradle.kts", "pom.xml")
+    manifest_dirs = [root] + [p for p in sorted(root.iterdir())
+                              if p.is_dir() and p.name not in skip_dirs]
+    manifest_texts = []
+    for base in manifest_dirs:
+        for mn in manifest_names:
+            mf = base / mn
+            if mf.is_file():
+                try:
+                    manifest_texts.append(mf.read_text(errors="ignore"))
+                except OSError:
+                    pass
+    own_roots = vendoring.extract_own_roots(manifest_texts)
+    if not own_roots:
+        own_roots = {vendoring.package_root(d.namespace)
+                     for d in decls if core.is_entry_point(d)}
+        own_roots.discard("")
+    advisories = vendoring.detect_vendored_dirs(
+        [(d.path.split("/", 1)[0], vendoring.package_root(d.namespace))
+         for d in decls],
+        own_roots)
+
     project_meta = {
         "name": args.name or root.name,
         "root": str(root),
@@ -155,6 +184,8 @@ def main():
     # fallback paths it carries a `reason` and empty scores/evidence instead
     # of detection signals — see layers.load_config.
     project_meta["template_detection"] = detection
+    if advisories:
+        project_meta["advisories"] = advisories  # present only when something flagged
     git = gitmeta.git_info(root)
     if git:
         project_meta["git"] = git          # omitted entirely when not a git repo
@@ -193,6 +224,10 @@ def main():
     print(f"[analyze] files scanned: {len(files)}  declarations: {len(decls)}  edges: {len(edges)}")
     print(f"[analyze] flows: {len(flow_list)} (entry-point seeds)")
     print(f"[analyze] skipped/low-confidence: {len(all_skipped)} entries")
+    for a in advisories:
+        print(f"[analyze] advisory: '{a['dir']}/' has {a['declarations']} decls, "
+              f"{a['foreign_pct']}% outside your code ({a['dominant_foreign']}.*) — "
+              f"likely vendored; add '{a['dir']}' to .code-map/skip-dirs.txt to focus the map")
     print(f"[analyze] wrote {out_path}")
     print(f"[analyze] wrote {unresolved_path}")
 

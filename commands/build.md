@@ -63,6 +63,8 @@ python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/analyze.py" --root . --out .code-map/r
 
 Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). If a script is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./scripts/...` (project-local install).
 
+**A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `raw_structure.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A4** so the heavy vendored subtree is excluded before you spend Phase 2 effort. Leave it in only if the flagged dir is actually first-party.
+
 **A5. Phase 2 — full semantic refinement.** Do the full **Phase 2** routine below over **all** of `raw_structure.json` (describe every `core` declaration), then `Write` `.code-map/code-map.json`.
 
 ---

@@ -15,7 +15,7 @@ import os
 import sys
 from pathlib import Path
 
-from .skipdirs import DEFAULT_SKIP_DIRS, load_skip_dirs
+from .skipdirs import DEFAULT_SKIP_DIRS, load_skip_dirs, prune_dirnames
 
 
 # Manifests we know how to scan for dependency names. We just concatenate
@@ -179,8 +179,8 @@ def _list_project_dirs(root: Path, skip: set[str]) -> list[str]:
     walked everything before filtering.
     """
     out = []
-    for dirpath, dirnames, _ in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in skip]
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = prune_dirnames(dirnames, skip, filenames)
         rel = Path(dirpath).relative_to(root)
         if rel.parts:  # skip root itself (relative path ".")
             out.append("/".join(rel.parts))

@@ -22,14 +22,18 @@ from pathlib import Path
 # Share the one canonical skip list with analyze.py / templates.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
-    from scripts.lib.skipdirs import DEFAULT_SKIP_DIRS
+    from scripts.lib.skipdirs import DEFAULT_SKIP_DIRS, prune_dirnames
 except Exception:  # pragma: no cover — defensive: keep bootstrap self-sufficient
     DEFAULT_SKIP_DIRS = frozenset({
-        ".git", ".hg", ".svn", "node_modules", "vendor", "build", "dist",
-        "out", "target", ".gradle", ".idea", ".vscode", "__pycache__",
-        ".venv", "venv", ".env", ".pytest_cache", ".mypy_cache",
+        ".git", ".hg", ".svn", "node_modules", "vendor",
+        "third_party", "third-party", "Pods", "Carthage", "bower_components",
+        ".cxx", "build", "dist", "out", "target", ".gradle", ".idea", ".vscode",
+        "__pycache__", ".venv", "venv", ".env", ".pytest_cache", ".mypy_cache",
         "test", "tests", "testsuites", "androidTest", "__tests__", ".code-map",
     })
+
+    def prune_dirnames(dirnames, skip_dirs, parent_filenames=()):
+        return [d for d in dirnames if d not in skip_dirs]
 
 # Lowest Python we'll attempt grammar installs on. Below this the modern
 # tree-sitter wheels won't resolve and the failure is a cryptic traceback.
@@ -86,7 +90,7 @@ def scan_extensions(root: Path) -> set[str]:
     """Find all source extensions present in the project."""
     found = set()
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in DEFAULT_SKIP_DIRS]
+        dirnames[:] = prune_dirnames(dirnames, DEFAULT_SKIP_DIRS, filenames)
         for fn in filenames:
             suffix = Path(fn).suffix
             if suffix in EXTENSION_TO_PACKAGE:

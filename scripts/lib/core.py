@@ -87,7 +87,12 @@ def build_graph(declarations: list[Declaration]) -> tuple[list[Declaration], lis
         in_norm = math.log1p(ind) / denom_in if denom_in else 0.0
         out_norm = math.log1p(outd) / denom_out if denom_out else 0.0
         role_boost = 1.0 if is_entry_point(d) else 0.0
-        importance = 0.7 * in_norm + 0.2 * out_norm + 0.1 * role_boost
+        # Blend fan-in (how depended-upon: foundations, value types) with fan-out
+        # (how much it drives: services, orchestrators, pipelines). Fan-in still
+        # leads, but fan-out gets a real share — at 0.7/0.2 a layer's pure data
+        # sinks (high in, zero out) crushed the behavioral classes that actually
+        # do the work (high out, low in) out of `core` entirely.
+        importance = 0.55 * in_norm + 0.35 * out_norm + 0.1 * role_boost
         # Cache as attributes for the serializer
         d.tags = list(d.tags)
         if is_entry_point(d) and "entry-point" not in d.tags:

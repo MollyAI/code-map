@@ -21,12 +21,50 @@ from typing import Iterable, Optional
 DEFAULT_SKIP_DIRS = frozenset({
     ".git", ".hg", ".svn",
     "node_modules", "vendor",
+    # third-party source vendored in-tree (by widely-used convention)
+    "third_party", "third-party", "Pods", "Carthage", "bower_components", ".cxx",
     "build", "dist", "out", "target", ".gradle",
     ".idea", ".vscode",
     "__pycache__", ".venv", "venv", ".env", ".pytest_cache", ".mypy_cache",
     "test", "tests", "testsuites", "androidTest", "__tests__",
     ".code-map",
 })
+
+# A subset of the skip names that double as common package/namespace segments.
+# These are skipped only when they are *real build output* — i.e. they sit beside
+# a build manifest (see _BUILD_MANIFESTS) — so a source package literally named
+# `build`/`out`/`dist`/`target` (e.g. com.vibe.build under src/) is NOT silently
+# pruned. Bare-name matching here once swallowed whole modules.
+OUTPUT_SKIP_DIRS = frozenset({"build", "out", "dist", "target"})
+
+# Files whose presence in a directory marks it as a build root, so a child named
+# build/out/dist/target beside one is generated output rather than a package.
+_BUILD_MANIFESTS = frozenset({
+    "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+    "pom.xml", "build.xml", "ivy.xml", "Cargo.toml", "package.json", "build.sbt",
+    "setup.py", "pyproject.toml", "setup.cfg", "Makefile", "makefile",
+    "CMakeLists.txt", "meson.build", "BUILD", "BUILD.bazel",
+})
+
+
+def prune_dirnames(dirnames, skip_dirs, parent_filenames=()):
+    """Return the subset of `dirnames` to descend into during an os.walk.
+
+    A name in OUTPUT_SKIP_DIRS is dropped only when `parent_filenames` (the files
+    in the directory that contains these subdirs) includes a build manifest —
+    marking the child as real build output rather than a source package that just
+    happens to be named `build`/`out`/`dist`/`target`. Every other skip name is
+    dropped unconditionally. Pass the walk's current `filenames`; omitting it
+    means "no manifest here", so output-named dirs are treated as packages (kept).
+    """
+    is_build_root = any(m in parent_filenames for m in _BUILD_MANIFESTS)
+    kept = []
+    for d in dirnames:
+        if d not in skip_dirs:
+            kept.append(d)
+        elif d in OUTPUT_SKIP_DIRS and not is_build_root:
+            kept.append(d)  # looks like a package dir, not build output
+    return kept
 
 
 def load_skip_dirs(project_root: Optional[Path] = None,
