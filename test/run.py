@@ -74,6 +74,36 @@ def cmd_fetch(args):
     return name
 
 
+def _build_params(name):
+    """analyze.py params from config's repo.build (skip → --skip; focus is a
+    Phase-2 hint for Claude, not an analyze flag)."""
+    r = harness.find_repo(_load_config(), name) or {}
+    build = r.get("build") or {}
+    params = []
+    for d in build.get("skip", []) or []:
+        params += ["--skip", d]
+    return params, build.get("focus")
+
+
+def cmd_prepare(args):
+    name = cmd_fetch(args)  # fetch first (idempotent)
+    out_dir = OUT / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = (out_dir / "raw_structure.json").resolve()  # MUST be absolute
+    params, focus = ([], None) if args.url else _build_params(name)
+    _run([sys.executable, SCRIPTS / "analyze.py",
+          "--root", (REPOS / name).resolve(),
+          "--out", out_file, *params])
+    cm_path = out_dir / "code-map.json"
+    print("\n" + "=" * 70)
+    print(f"[prepare] Phase 1 done → {out_file}")
+    print(f"[prepare] NEXT (Claude): read {out_file}, do Phase 0 + Phase 2,")
+    print(f"          write {cm_path}" + (f"  (focus hint: {focus})" if focus else ""))
+    print(f"[prepare] then: python3 test/run.py invariants {name}")
+    print(f"          and:  python3 test/run.py serve {name}")
+    print("=" * 70)
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="run.py", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -86,6 +116,10 @@ def build_parser():
     sp = sub.add_parser("fetch", help="clone + checkout pinned SHA + bootstrap")
     add_target(sp, allow_url=True)
     sp.set_defaults(func=cmd_fetch)
+
+    sp = sub.add_parser("prepare", help="fetch + run Phase 1 → test/out/<name>/")
+    add_target(sp, allow_url=True)
+    sp.set_defaults(func=cmd_prepare)
 
     return p
 
