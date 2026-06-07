@@ -88,3 +88,29 @@ test('go extractor: type_alias kind + func signature, root-level package namespa
   // signature present for function
   assert.ok(byName.get('main').signature.includes('func main'), `sig=${JSON.stringify(byName.get('main').signature)}`);
 });
+
+test('go: method namespace carries receiver; visibility from case (R1/R2)', async () => {
+  await init();
+  const src = [
+    'package store',
+    '',
+    'type Server struct{}',
+    'type Conn struct{}',
+    '',
+    'func (s *Server) Close() error { return nil }',
+    'func (c *Conn) Close() error { return nil }',
+    'func Helper() {}',
+    'func internalHelper() {}',
+    '',
+  ].join('\n');
+  const res = await go.parse('net/store.go', src, '/proj');
+  const methods = res.declarations.filter((d) => d.kind === 'method' && d.name === 'Close');
+  const ns = methods.map((d) => d.namespace).sort();
+  // receiver folded into namespace → the two Close methods no longer collide
+  assert.deepEqual(ns, ['net.store.Conn', 'net.store.Server']);
+
+  const byName = new Map(res.declarations.map((d) => [d.name, d]));
+  assert.equal(byName.get('Helper').visibility, 'public');          // exported
+  assert.equal(byName.get('internalHelper').visibility, 'private');  // unexported
+  assert.equal(byName.get('Server').visibility, 'public');
+});
