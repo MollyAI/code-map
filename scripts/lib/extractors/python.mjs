@@ -36,6 +36,12 @@ function pathToNamespace(rel) {
   return parts.length ? parts.join('.') : '';
 }
 
+// Single leading underscore (and not a __dunder__) = module-private by Python
+// convention. Lets core.mjs downweight internal helpers out of `core`.
+function pyVisibility(name) {
+  return /^_/.test(name) && !/^__.*__$/.test(name) ? 'private' : 'public';
+}
+
 function inner(declNode) {
   if (declNode.type === 'decorated_definition') {
     for (const c of declNode.children) {
@@ -114,10 +120,12 @@ export async function parse(relPath, src, _projectRoot) {
     const [supers, conf] = supertypesOf(decl, src);
     const inr = inner(decl);
     const kind = kindOf(decl);
+    const dname = textOf(nameNode, src);
     decls.push(Declaration({
-      name: textOf(nameNode, src),
+      name: dname,
       namespace: namespace || null,
       kind,
+      visibility: pyVisibility(dname),
       path: relPath,
       line: decl.startPosition.row + 1,
       supertypes: supers,

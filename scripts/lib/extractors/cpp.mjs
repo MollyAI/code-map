@@ -7,11 +7,24 @@
 // skipping members inside class bodies — those are summarised by method_count.
 import { init, loadLanguage, Parser } from '../ts.mjs';
 import { Declaration, ImportSpec, ParseResult } from './base.mjs';
-import { textOf, hasErrorIn, walk, locOf, signatureOf, tailName } from './_common.mjs';
+import {
+  textOf, hasErrorIn, walk, locOf, signatureOf, tailName, macroFnFromDef, macroFnFromCall,
+} from './_common.mjs';
 
 export const name = 'cpp';
 export const extensions = ['.cpp', '.cc', '.cxx', '.hpp', '.hh', '.hxx', '.c++', '.h++'];
 export const grammar = 'cpp'; // manifest key
+
+// "Transparent" containers descended for file-scope decls (see c.mjs). Beyond
+// the namespace-bearing wrappers C++ already handled, conditional-compilation
+// blocks (`#if … #endif`) and tree-sitter error-recovery `ERROR` nodes hide real
+// declarations as grandchildren. `namespace_definition` is handled separately
+// because it extends the namespace stack.
+const _TRANSPARENT = new Set([
+  'preproc_if', 'preproc_ifdef', 'preproc_else', 'preproc_elif',
+  'preproc_elifdef', 'preproc_elifndef',
+  'linkage_specification', 'template_declaration', 'declaration_list', 'ERROR',
+]);
 
 const _TYPE_NODES = {
   class_specifier: 'class',
@@ -119,9 +132,22 @@ export async function parse(relPath, src, _projectRoot) {
 
   const decls = [];
   const skipped = [];
+  // Dedup by (kind, qualified name, signature) — keyed on the *qualified* name so
+  // a class named the same in two namespaces survives, while a definition repeated
+  // across mutually-exclusive #if/#else branches collapses to one. (See c.mjs.)
+  const seen = new Set();
+  function pushDecl(d) {
+    const key = `${d.kind} ${d.namespace ?? ''}.${d.name} ${d.signature ?? ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    decls.push(d);
+  }
 
   function visit(node, nsStack) {
-    for (const c of node.children) {
+    const ns = () => (nsStack.length ? nsStack.join('.') : (fileNs || null));
+    const kids = node.namedChildren;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
       const kind = _TYPE_NODES[c.type];
       if (kind !== undefined) {
         const nm = c.childForFieldName('name');
@@ -131,9 +157,9 @@ export async function parse(relPath, src, _projectRoot) {
           continue;
         }
         const [supers, conf] = supertypes(c, src);
-        decls.push(Declaration({
+        pushDecl(Declaration({
           name: textOf(nm, src),
-          namespace: nsStack.length ? nsStack.join('.') : (fileNs || null),
+          namespace: ns(),
           kind,
           path: relPath,
           line: c.startPosition.row + 1,
@@ -145,24 +171,66 @@ export async function parse(relPath, src, _projectRoot) {
         }));
       } else if (c.type === 'function_definition') {
         const nm = declaratorName(c, src);
-        if (!nm) continue;
-        decls.push(Declaration({
-          name: nm,
-          namespace: nsStack.length ? nsStack.join('.') : (fileNs || null),
-          kind: 'function',
-          path: relPath,
-          line: c.startPosition.row + 1,
-          refs: bodyRefs(c, src).concat(impRefs),
-          loc: locOf(c),
-          signature: signatureOf(c, src),
-        }));
+        if (nm) {
+          pushDecl(Declaration({
+            name: nm,
+            namespace: ns(),
+            kind: 'function',
+            path: relPath,
+            line: c.startPosition.row + 1,
+            refs: bodyRefs(c, src).concat(impRefs),
+            loc: locOf(c),
+            signature: signatureOf(c, src),
+          }));
+          continue;
+        }
+        // No resolvable name — try a function-style-macro definition (variant A).
+        const m = macroFnFromDef(c);
+        if (m) {
+          pushDecl(Declaration({
+            name: m.name,
+            namespace: ns(),
+            kind: 'function',
+            path: relPath,
+            line: c.startPosition.row + 1,
+            refs: bodyRefs(m.body, src).concat(impRefs),
+            loc: locOf(c),
+            signature: signatureOf(c, src),
+            confidence: 'low',
+            tags: ['macro-defined'],
+          }));
+        }
       } else if (c.type === 'namespace_definition') {
         const nsName = c.childForFieldName('name');
         const nxt = nsName != null ? nsStack.concat([textOf(nsName, src)]) : nsStack;
         const body = c.children.find((g) => g.type === 'declaration_list') ?? null;
         if (body != null) visit(body, nxt);
-      } else if (['linkage_specification', 'template_declaration', 'declaration_list'].includes(c.type)) {
+      } else if (_TRANSPARENT.has(c.type)) {
         visit(c, nsStack);
+      } else if (c.type === 'expression_statement' || c.type === 'call_expression') {
+        // Function-style-macro definition with no leading type (variant B): a bare
+        // macro call immediately followed by a block, at file scope only.
+        let next = null;
+        for (let j = i + 1; j < kids.length; j++) {
+          if (kids[j].type === 'comment') continue;
+          next = kids[j];
+          break;
+        }
+        const m = macroFnFromCall(c, next);
+        if (m) {
+          pushDecl(Declaration({
+            name: m.name,
+            namespace: ns(),
+            kind: 'function',
+            path: relPath,
+            line: c.startPosition.row + 1,
+            refs: bodyRefs(m.body, src).concat(impRefs),
+            loc: m.body.endPosition.row - c.startPosition.row + 1,
+            signature: textOf(m.call, src),
+            confidence: 'low',
+            tags: ['macro-defined'],
+          }));
+        }
       }
     }
   }

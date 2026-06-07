@@ -148,6 +148,10 @@ export async function parse(relPath, src, _projectRoot) {
     const [supers, conf] = supertypesOf(decl, src);
     const kind = kindOf(decl, src);
     const dname = textOf(nameNode, src);
+    // R1-for-Go: a method's identity is its RECEIVER, not just the package —
+    // else same-package methods named alike (multiple Close) collide on qname.
+    const recv = decl.type === 'method_declaration' ? receiverType(decl, src) : null;
+    const ns = recv ? `${namespace}.${recv}` : namespace;
     let mcount;
     if (kind === 'interface') {
       mcount = interfaceMethodCount(decl);
@@ -158,8 +162,9 @@ export async function parse(relPath, src, _projectRoot) {
     }
     decls.push(Declaration({
       name: dname,
-      namespace,
+      namespace: ns,
       kind,
+      visibility: /^[A-Z]/.test(dname) ? 'public' : 'private', // Go: exported = Capitalized
       path: relPath,
       line: decl.startPosition.row + 1,
       supertypes: supers,

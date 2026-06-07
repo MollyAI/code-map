@@ -159,7 +159,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves, cap ~6 hops, cap fan-out ~8).
    Aim for a handful of high-signal business flows, not one per seed.
 
-7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied.
+7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them.
 
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 

@@ -67,3 +67,34 @@ test('cpp extractor: file-path namespace when no enclosing namespace; enum + str
   assert.equal(color.namespace, 'geom.shapes');
   assert.equal(color.line, 1);
 });
+
+test('cpp extractor: recovers a free function inside a #ifdef preprocessor block', async () => {
+  await init();
+  const src = [
+    '#ifdef ENABLE_LOGGING',
+    'void logMessage() {',
+    '  sink();',
+    '}',
+    '#endif',
+    '',
+  ].join('\n');
+  const res = await cpp.parse('log.cpp', src, '/proj');
+  const fn = res.declarations.find((d) => d.name === 'logMessage');
+  assert.ok(fn, `decls were ${JSON.stringify(res.declarations.map((d) => d.name))}`);
+  assert.equal(fn.kind, 'function');
+  assert.ok(fn.refs.includes('sink'), `refs were ${JSON.stringify(fn.refs)}`);
+});
+
+test('cpp extractor: same class name in two namespaces is not deduped', async () => {
+  await init();
+  // dedup must be keyed on the qualified name, never the bare name.
+  const src = [
+    'namespace a { class Widget { public: void f() {} }; }',
+    'namespace b { class Widget { public: void g() {} }; }',
+    '',
+  ].join('\n');
+  const res = await cpp.parse('w.cpp', src, '/proj');
+  const widgets = res.declarations.filter((d) => d.name === 'Widget');
+  assert.equal(widgets.length, 2, `expected two distinct Widget classes, got ${widgets.length}`);
+  assert.deepEqual(widgets.map((w) => w.namespace).sort(), ['a', 'b']);
+});

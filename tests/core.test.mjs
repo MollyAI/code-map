@@ -39,3 +39,21 @@ test('markCore tie-break is deterministic by qualified_name', () => {
   assert.equal(b._core, false);
   assert.equal(z._core, false);
 });
+
+test('buildGraph: private decls are downweighted by PRIVATE_PENALTY (R2)', () => {
+  const pub = [
+    Declaration({ name: 'Pub', namespace: 'm', kind: 'function', path: 'm.py', line: 1, refs: ['Sink'] }),
+    Declaration({ name: 'Sink', namespace: 'm', kind: 'function', path: 'm.py', line: 5 }),
+  ];
+  const priv = [
+    Declaration({ name: 'Pub', namespace: 'm', kind: 'function', path: 'm.py', line: 1, refs: ['Sink'], visibility: 'private' }),
+    Declaration({ name: 'Sink', namespace: 'm', kind: 'function', path: 'm.py', line: 5 }),
+  ];
+  buildGraph(pub);
+  buildGraph(priv);
+  const pubImp = pub.find((d) => d.name === 'Pub')._importance;
+  const privImp = priv.find((d) => d.name === 'Pub')._importance;
+  assert.ok(pubImp > 0, 'public decl should have nonzero importance');
+  assert.ok(privImp < pubImp, `private (${privImp}) should be below public (${pubImp})`);
+  assert.ok(Math.abs(privImp - pubImp * 0.3) < 0.001, `private should be ~0.3× public: ${privImp} vs ${pubImp}*0.3`);
+});

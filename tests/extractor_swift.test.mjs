@@ -69,3 +69,66 @@ test('swift extractor: extension folds into same-file type', async () => {
   assert.ok(repo.refs.includes('decode'), `refs were ${JSON.stringify(repo.refs)}`);
   assert.equal(repo.method_count, 2); // save + load
 });
+
+test('swift extractor: cross-file extension surfaces member functions, not a type-named node', async () => {
+  await init();
+  // The RxSwift pattern: one file = one `extension ObservableType { func op }`,
+  // with no ObservableType type declared in this file. The operator is the unit.
+  const src = [
+    'public extension ObservableType {',
+    '    func map<R>(_ t: @escaping (Element) -> R) -> Observable<R> {',
+    '        Map(source: self, transform: t)',
+    '    }',
+    '    func filter(_ p: @escaping (Element) -> Bool) -> Observable<Element> {',
+    '        Filter(source: self, predicate: p)',
+    '    }',
+    '}',
+    '',
+  ].join('\n');
+  const res = await swift.parse('RxSwift/Observables/Map.swift', src, '/proj');
+  const names = res.declarations.map((d) => d.name).sort();
+  assert.ok(names.includes('map'), `expected operator node 'map'; names were ${JSON.stringify(names)}`);
+  assert.ok(names.includes('filter'), `expected operator node 'filter'; names were ${JSON.stringify(names)}`);
+  assert.ok(
+    !names.includes('ObservableType'),
+    `must NOT emit a node named after the extended type; names were ${JSON.stringify(names)}`,
+  );
+  const mapDecl = res.declarations.find((d) => d.name === 'map');
+  assert.equal(mapDecl.kind, 'function');
+  assert.ok(mapDecl.tags.includes('extension-method'), `tags were ${JSON.stringify(mapDecl.tags)}`);
+  assert.ok(mapDecl.refs.includes('Map'), `member refs should carry body callees; refs were ${JSON.stringify(mapDecl.refs)}`);
+});
+
+test('swift extractor: foreign-type extension with no methods emits no first-party node', async () => {
+  await init();
+  // RxCocoa `extension Int: KVORepresentable { init?(...) }` — must not masquerade
+  // as a first-party `Int` node, and the conformance init is not an operator.
+  const src = [
+    'import Foundation',
+    'extension Int: KVORepresentable {',
+    '    public typealias KVOType = NSNumber',
+    '    public init?(KVOValue: KVOType) { self.init(KVOValue.int32Value) }',
+    '}',
+    '',
+  ].join('\n');
+  const res = await swift.parse('RxCocoa/Foundation/KVORepresentable+Swift.swift', src, '/proj');
+  const names = res.declarations.map((d) => d.name);
+  assert.ok(!names.includes('Int'), `must not emit Int as a node; names were ${JSON.stringify(names)}`);
+  assert.equal(res.declarations.length, 0, `expected no decls, got ${JSON.stringify(names)}`);
+});
+
+test('swift extractor: overloaded extension members collapse to one node per name', async () => {
+  await init();
+  // CombineLatest+arity.swift defines many same-named arity overloads.
+  const src = [
+    'extension ObservableType {',
+    '    func combineLatest<A>(_ a: A) {}',
+    '    func combineLatest<A, B>(_ a: A, _ b: B) {}',
+    '    func combineLatest<A, B, C>(_ a: A, _ b: B, _ c: C) {}',
+    '}',
+    '',
+  ].join('\n');
+  const res = await swift.parse('RxSwift/Observables/CombineLatest+arity.swift', src, '/proj');
+  const cl = res.declarations.filter((d) => d.name === 'combineLatest');
+  assert.equal(cl.length, 1, `expected one combineLatest node, got ${cl.length}`);
+});

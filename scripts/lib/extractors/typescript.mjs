@@ -166,6 +166,7 @@ export async function parse(relPath, src, _projectRoot) {
       name: textOf(nameNode, src),
       namespace: namespace || null,
       kind,
+      visibility: decl.type === 'export_statement' ? 'public' : 'private', // module-private if not exported
       path: relPath,
       line: decl.startPosition.row + 1,
       supertypes: supers,

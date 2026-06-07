@@ -43,3 +43,27 @@ test('runQuery yields per-match capture dicts in order', async () => {
   for (const caps of runQuery(q, tree.rootNode)) got.push(textOf(caps.name[0]));
   assert.deepEqual(got, ['A', 'B']);
 });
+
+test('python: leading-underscore module member is private; dunder stays public (R2)', async () => {
+  await init();
+  const src = [
+    'def public_fn():',
+    '    pass',
+    '',
+    'def _private_helper():',
+    '    pass',
+    '',
+    'class _Internal:',
+    '    pass',
+    '',
+    'def __init__():',
+    '    pass',
+    '',
+  ].join('\n');
+  const res = await py.parse('pkg/mod.py', src, '/proj');
+  const vis = (n) => res.declarations.find((d) => d.name === n).visibility;
+  assert.equal(vis('public_fn'), 'public');
+  assert.equal(vis('_private_helper'), 'private');
+  assert.equal(vis('_Internal'), 'private');
+  assert.equal(vis('__init__'), 'public');
+});

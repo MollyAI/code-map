@@ -13,3 +13,9 @@ test('nodeWidth 受 importance 影响且落在 [min,max]', () => {
   const w = nodeWidth({ name: 'abcdef', importance: 0.9 }, L);
   assert.ok(w >= L.minNodeW && w <= L.maxNodeW);
 });
+test('nodeWidth sizes by display_name when present', () => {
+  const L = makeLayout(1);
+  const short = nodeWidth({ name: 'run' }, L);
+  const long  = nodeWidth({ name: 'run', display_name: 'server:run' }, L);
+  assert.ok(long > short, `display_name should widen the box: ${long} vs ${short}`);
+});

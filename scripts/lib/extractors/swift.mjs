@@ -66,6 +66,29 @@ function methodCount(node) {
   return n;
 }
 
+// The concrete `function_declaration` members directly inside a type/extension
+// body. Used to surface a cross-file extension's functions (the RxSwift
+// operators) as nodes instead of one misleading type-named node.
+function memberFunctions(node) {
+  let body = null;
+  for (const c of node.children) {
+    if (_BODY_TYPES.includes(c.type)) { body = c; break; }
+  }
+  if (body == null) return [];
+  return body.children.filter((c) => c.type === 'function_declaration');
+}
+
+// Name of a function_declaration: prefer the `name` field, fall back to the
+// first identifier child (matches the top-level free-function handling).
+function fnName(fn, src) {
+  let nm = fn.childForFieldName('name');
+  if (nm == null) {
+    nm = fn.children.find((g) => g.type === 'simple_identifier' || g.type === 'identifier') ?? null;
+  }
+  if (nm == null || hasErrorIn(nm)) return null;
+  return textOf(nm, src);
+}
+
 // Callees in this declaration's body. A Swift call_expression's first child is the
 // callee — a bare identifier, `a.b` navigation, or `Thing` constructor — whose
 // trailing name we resolve.
@@ -157,13 +180,10 @@ export async function parse(relPath, src, _projectRoot) {
     } else if (c.type === 'extension_declaration') {
       extensionsPending.push(c); // resolved after all types are known
     } else if (c.type === 'function_declaration') {
-      let nm = c.childForFieldName('name');
-      if (nm == null) {
-        nm = c.children.find((g) => g.type === 'simple_identifier' || g.type === 'identifier') ?? null;
-      }
-      if (nm == null || hasErrorIn(nm)) continue;
+      const fname = fnName(c, src);
+      if (fname == null) continue;
       decls.push(Declaration({
-        name: textOf(nm, src),
+        name: fname,
         namespace: namespace || null,
         kind: 'function',
         path: relPath,
@@ -175,8 +195,18 @@ export async function parse(relPath, src, _projectRoot) {
     }
   }
 
-  // Extensions: fold into the matching same-file type (so a class and its extension
-  // don't become two colliding nodes); otherwise emit standalone.
+  // Extensions split two ways:
+  //  - extends a SAME-FILE type → fold into it (a class and its extension must not
+  //    become two colliding nodes; this is the app pattern of splitting a type's
+  //    impl across `extension` blocks).
+  //  - extends a type declared ELSEWHERE → the extended-type name is the WRONG node
+  //    identity: every operator file (`extension ObservableType { func map }`)
+  //    would collapse to one misleading, cross-file-duplicated `ObservableType`
+  //    node (RxSwift had 100+). Surface the member functions instead — they are the
+  //    real units (the operators) — mirroring `composable_function` in the Kotlin
+  //    extractor. Member-less extensions (pure conformance / foreign-type adornment
+  //    like `extension Int: KVORepresentable`) emit nothing: miss, not misidentify.
+  const seenMembers = new Set(); // `${extendedType}::${memberName}` — collapse arity overloads
   for (const c of extensionsPending) {
     const nm = c.childForFieldName('name');
     if (nm == null || hasErrorIn(nm)) continue;
@@ -187,17 +217,24 @@ export async function parse(relPath, src, _projectRoot) {
       target.refs.push(...bodyRefs(c, src));
       for (const s of supers) if (!target.supertypes.includes(s)) target.supertypes.push(s);
       target.method_count += methodCount(c);
-    } else {
+      continue;
+    }
+    for (const fn of memberFunctions(c)) {
+      const fname = fnName(fn, src);
+      if (fname == null) continue;
+      const key = `${ename}::${fname}`;
+      if (seenMembers.has(key)) continue;
+      seenMembers.add(key);
       decls.push(Declaration({
-        name: ename,
+        name: fname,
         namespace: namespace || null,
-        kind: 'extension',
+        kind: 'function',
         path: relPath,
-        line: c.startPosition.row + 1,
-        supertypes: supers,
-        refs: bodyRefs(c, src).concat(impRefs),
-        loc: locOf(c),
-        method_count: methodCount(c),
+        line: fn.startPosition.row + 1,
+        refs: bodyRefs(fn, src).concat(impRefs),
+        loc: locOf(fn),
+        signature: signatureOf(fn, src),
+        tags: ['extension-method'],
       }));
     }
   }
