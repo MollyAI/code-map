@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { allExtensions, extractorFor } from './lib/extractors/index.mjs';
 import { qualifiedName } from './lib/extractors/base.mjs';
+import { assignDisplayNames } from './lib/labels.mjs';
 import * as core from './lib/core.mjs';
 import * as layers from './lib/layers.mjs';
 import * as flowmod from './lib/flows.mjs';
@@ -138,6 +139,7 @@ export async function main(argv) {
   layers.applyTo(decls, layerConfig);
   detection.fit = layers.templateFit(decls, layerConfig);
   core.markCore(decls, args.core_percentile, args.core_max_per_layer);
+  assignDisplayNames(decls); // R3: write _display_name on cross-module name collisions
 
   const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
   const dispatchIndex = flowmod.buildDispatchIndex(decls);
