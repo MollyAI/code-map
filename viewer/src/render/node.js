@@ -50,7 +50,7 @@ export function langColor(lang) {
  * A positioned node: the layout output `makeNodeEl` consumes.
  * `datum` is the full declaration object (id/name/language/core/hub/...).
  * @typedef {object} PositionedNode
- * @property {{ id: string, name: string, language?: string, core?: boolean, hub?: boolean }} datum
+ * @property {{ id: string, name: string, display_name?: string, language?: string, core?: boolean, hub?: boolean }} datum
  * @property {number} x
  * @property {number} y
  * @property {number} w

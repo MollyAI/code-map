@@ -13,6 +13,7 @@ import { qualifiedName } from './extractors/base.mjs';
 
 // Boilerplate names where the module is the real identity (subset of the spec's
 // TRIVIAL list that carries no architectural information on its own).
+// Conservative on purpose: a false positive here would suppress a real name.
 const GENERIC = new Set(['parse', 'main', 'run', 'load', 'init', 'ensure', 'check', 'handle', 'render']);
 const FANOUT_THRESHOLD = 3;
 
@@ -79,6 +80,7 @@ export function assignDisplayNames(declarations) {
     const fanout = GENERIC.has(nm) && group.length >= FANOUT_THRESHOLD;
     group.forEach((d, i) => {
       distByDecl.set(d, dist[i]);
+      // When dist[i] is '' (whole group shares all context) the label is the bare name here; the repair passes below then disambiguate it.
       d._display_name = fanout ? dist[i] : (dist[i] ? `${dist[i]}:${nm}` : nm);
     });
   }
