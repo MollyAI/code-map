@@ -16,6 +16,65 @@ export function textOf(node, _src) {
   return node.text;
 }
 
+/**
+ * Identifier-like leaf names directly/transitively under `node`, in document
+ * order, up to `limit`. Used to recover function-style-macro definitions where
+ * the real names hide inside a `macro_type_specifier` / `argument_list`
+ * (e.g. FreeRTOS `portTASK_FUNCTION( prvTimerTask, ... )` → ['portTASK_FUNCTION',
+ * 'prvTimerTask']). Document order matters — `walk()` is stack-based and reverses
+ * siblings, so it cannot be used here.
+ */
+export function orderedIdentifiers(node, limit = Infinity, types = _ID_TYPES) {
+  const out = [];
+  const rec = (n) => {
+    if (out.length >= limit) return;
+    if (types.has(n.type)) { out.push(n.text); return; }
+    for (const c of n.children) { rec(c); if (out.length >= limit) return; }
+  };
+  for (const c of node.children) { rec(c); if (out.length >= limit) break; }
+  return out;
+}
+
+/**
+ * Recover a function-style-macro *definition* parsed as a `function_definition`
+ * with no real declarator name (variant A — e.g. `static portTASK_FUNCTION(
+ * prvTimerTask, pvParameters ) { ... }`). tree-sitter parses the macro call as a
+ * `macro_type_specifier`; the first identifier inside is the macro name and the
+ * second is the actual function name. Returns `{name, body}` or null. The caller
+ * computes refs from `body` with its own language-specific traversal.
+ */
+export function macroFnFromDef(node) {
+  const mts = node.children.find((c) => c.type === 'macro_type_specifier');
+  if (!mts) return null;
+  const body = node.children.find((c) => c.type === 'compound_statement');
+  if (!body) return null; // no body → not a definition (e.g. a *_PROTO prototype)
+  const ids = orderedIdentifiers(mts, 2);
+  if (ids.length < 2) return null; // need macro name + at least one argument
+  return { name: ids[1], body };
+}
+
+/**
+ * Recover a function-style-macro definition parsed as a bare macro call followed
+ * by a block (variant B — e.g. `portTASK_FUNCTION( prvIdleTask, pvParameters )`
+ * then `{ ... }`). The call's first argument is the function name. Only valid at
+ * file scope (a bare call-expression there is never legal C/C++, so it is a
+ * macro). `nextSibling` is the next meaningful sibling. Returns `{name, body,
+ * call}` or null.
+ */
+export function macroFnFromCall(node, nextSibling) {
+  if (!nextSibling || nextSibling.type !== 'compound_statement') return null;
+  let call = node;
+  if (node.type === 'expression_statement') {
+    call = node.namedChildren.find((c) => c.type === 'call_expression') ?? null;
+  }
+  if (!call || call.type !== 'call_expression') return null;
+  const args = call.children.find((c) => c.type === 'argument_list');
+  if (!args) return null;
+  const ids = orderedIdentifiers(args, 1);
+  if (!ids.length) return null;
+  return { name: ids[0], body: nextSibling, call };
+}
+
 /** Trailing name of a (possibly dotted) reference node; null if none. */
 export function tailName(node, _src) {
   if (node == null) return null;
