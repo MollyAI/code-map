@@ -6,6 +6,14 @@ A Claude Code plugin that builds an interactive architectural map of any project
 
 ---
 
+## Live Demo / 在线体验
+
+Try it in your browser — no install required: **https://mollyai.github.io/code-map-showcase/**
+
+无需安装，直接在浏览器中体验：**https://mollyai.github.io/code-map-showcase/**
+
+---
+
 ## Features / 功能简介
 
 Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the collapsible left sidebar.
