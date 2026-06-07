@@ -44,7 +44,8 @@ function fmtCommitTime(sec) {
 export function populateFlowList(els) {
   const list = els.flowList;
   if (!list) return;
-  list.innerHTML = '';
+  const prevScroll = list.scrollTop;   // preserve scroll across the full rebuild
+  list.innerHTML = '';                 // so re-selecting doesn't jump the list up
   const lang = state.lang;
   for (const f of state.flowsById.values()) {
     const item = document.createElement('button');
@@ -64,6 +65,7 @@ export function populateFlowList(els) {
     }
     list.appendChild(item);
   }
+  list.scrollTop = prevScroll;
 }
 
 /** Toggle the commit sidebar chrome classes. Active only in layer mode with git.
@@ -90,6 +92,7 @@ export function closeCommitSidebar(els) {
 export function populateCommitList(els) {
   const list = els.commitList;
   if (!list) return;
+  const prevScroll = list.scrollTop;   // preserve scroll across the full rebuild
   list.innerHTML = '';
   const lang = state.lang;
   const gh = state.gitHistory;
@@ -127,6 +130,7 @@ export function populateCommitList(els) {
     }
     list.appendChild(item);
   }
+  list.scrollTop = prevScroll;
 }
 
 /** @param {EventTarget | null} target */

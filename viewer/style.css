@@ -213,22 +213,8 @@ body.light .theme-toggle .icon-moon { display: none; }
 .canvas-wrap.panning { cursor: grabbing; }
 .canvas-wrap.panning * { cursor: grabbing !important; }   /* keep cursor consistent over nodes during a pan */
 .layout.has-selection .canvas-wrap { margin-right: calc(380px * var(--fs-scale)); }
-.layout.flow-active.flow-open .canvas-wrap { margin-left: calc(240px * var(--fs-scale)); }
-.layout.commit-active.commit-open .canvas-wrap { margin-left: calc(240px * var(--fs-scale)); }
-
-.canvas-wrap::before {
-  /* registration mark, top-left corner */
-  content: "";
-  position: absolute; top: 16px; left: 16px;
-  width: 14px; height: 14px;
-  border-left: 1px solid var(--line-strong); border-top: 1px solid var(--line-strong);
-}
-.canvas-wrap::after {
-  content: "";
-  position: absolute; bottom: 16px; right: 16px;
-  width: 14px; height: 14px;
-  border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong);
-}
+.layout.flow-active.flow-open .canvas-wrap { margin-left: calc(380px * var(--fs-scale)); }
+.layout.commit-active.commit-open .canvas-wrap { margin-left: calc(380px * var(--fs-scale)); }
 
 #map { display: block; }
 
@@ -508,7 +494,7 @@ body.light .theme-toggle .icon-moon { display: none; }
 .flow-sidebar, .commit-sidebar {
   position: absolute;
   top: 0; left: 0; bottom: 0;
-  width: calc(240px * var(--fs-scale));
+  width: calc(380px * var(--fs-scale));   /* match the right detail panel width */
   background: var(--bg-1);
   display: flex; flex-direction: column;
   border-right: 1px solid var(--line);
@@ -569,7 +555,10 @@ body.light .theme-toggle .icon-moon { display: none; }
 }
 .flow-item:hover, .commit-item:hover { background: var(--bg-2); color: var(--text-0); }
 .flow-item.active, .commit-item.active { background: var(--accent-dim); border-color: var(--accent-dim); }
-.flow-item.active .flow-item-name, .commit-item.active .commit-item-name { color: var(--accent); font-weight: 600; }
+/* active item: accent color only — NOT font-weight. Bolding a name that contains
+   CJK falls back to synthetic bold (no real 600 in many CJK fonts), which widens
+   glyphs, shifts the wrap point, and makes the item's height jump on selection. */
+.flow-item.active .flow-item-name, .commit-item.active .commit-item-name { color: var(--accent); }
 .flow-item-name, .commit-item-name {
   font-family: var(--font-mono);
   font-size: calc(12.5px * var(--fs-scale));
@@ -721,8 +710,8 @@ body.light .theme-toggle .icon-moon { display: none; }
   /* slide clear of the flow sidebar when it opens (matches the panel transition) */
   transition: left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.layout.flow-active.flow-open .zoom-controls { left: calc(240px * var(--fs-scale) + 24px); }
-.layout.commit-active.commit-open .zoom-controls { left: calc(240px * var(--fs-scale) + 24px); }
+.layout.flow-active.flow-open .zoom-controls { left: calc(380px * var(--fs-scale) + 24px); }
+.layout.commit-active.commit-open .zoom-controls { left: calc(380px * var(--fs-scale) + 24px); }
 .zoom-controls button {
   background: transparent;
   border: 0;
@@ -769,6 +758,10 @@ body.light .theme-toggle .icon-moon { display: none; }
 ::-webkit-scrollbar-track { background: var(--bg-0); }
 ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 5px; border: 2px solid var(--bg-0); }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
+/* the corner where horizontal + vertical scrollbars meet — without this it
+   falls back to the browser default (white), which shows as a stray light
+   square in dark mode. Match the track so it disappears into the canvas. */
+::-webkit-scrollbar-corner { background: var(--bg-0); }
 
 /* responsive: side panels take the full viewport width on narrow screens */
 @media (max-width: 900px) {

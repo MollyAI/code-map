@@ -3,12 +3,15 @@
 // spans the full diagram (zoom/pan only scale the rendered element), so we
 // export the entire architecture regardless of zoom. External CSS is lost
 // on serialization, so we inline computed paint/text props onto a clone
-// (PROPS), strip class/id, drop selection highlight + (layer mode) the
-// #edges group, rasterize at 2x, and save via showSaveFilePicker with an
-// <a download> fallback. Was the initExport IIFE — kept verbatim (§9).
+// (PROPS), strip class/id, rasterize at 2x onto a PADded canvas, and save
+// via showSaveFilePicker with an <a download> fallback.
+//
+// Export is WYSIWYG: the live SVG is cloned verbatim, so whatever is on
+// screen — the selected node's highlight, its dimmed peers, and (layer mode)
+// the selected node's in/out edges that live in #edges — is baked into the
+// PNG exactly as seen. inlineStyles reads the computed paint of that exact
+// state, so no save/restore dance is needed. Was the initExport IIFE.
 // --------------------------------------------------------------------
-
-import { state } from '../store.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -78,25 +81,14 @@ function makeExporter({ svg, projectNameEl }) {
     const vb = svg.viewBox.baseVal;
     if (!vb || !vb.width || !vb.height) return; // nothing rendered yet
 
-    // Temporarily drop selection highlight; synchronous (removed before clone,
-    // restored after) so the browser never repaints the intermediate state.
-    const marked = [...svg.querySelectorAll('.node.selected, .node.peer, .node.dimmed')];
-    const savedClass = marked.map((el) => el.getAttribute('class'));
-    marked.forEach((el) => el.classList.remove('selected', 'peer', 'dimmed'));
-    const gEdges = /** @type {SVGElement | null} */ (svg.querySelector('#edges'));
-    const edgesDisplay = gEdges ? gEdges.style.display : null;
-    // Layer mode: #edges only holds the selected node's highlight — hide for a
-    // clean full map. Flow mode: the flow edges ARE the content — keep them.
-    if (gEdges && state.activeView !== 'flow') gEdges.style.display = 'none';
-
+    // WYSIWYG: clone the live SVG verbatim — selection highlight, dimmed peers
+    // and the selected node's edges (in #edges) are all carried through, and
+    // inlineStyles bakes the computed paint of that exact state onto the clone.
     const clone = /** @type {SVGSVGElement} */ (svg.cloneNode(true));
     inlineStyles(svg, clone);
 
-    // restore the live SVG immediately
-    marked.forEach((el, i) => { const c = savedClass[i]; if (c != null) el.setAttribute('class', c); });
-    if (gEdges) gEdges.style.display = edgesDisplay || '';
-
-    const scale = 2; // crisp on hi-dpi displays
+    const scale = 2;  // crisp on hi-dpi displays
+    const pad = 64;   // breathing room around the diagram, in viewBox units
     clone.setAttribute('xmlns', NS);
     clone.setAttribute('width', String(vb.width));
     clone.setAttribute('height', String(vb.height));
@@ -114,14 +106,15 @@ function makeExporter({ svg, projectNameEl }) {
       });
 
       const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(vb.width * scale);
-      canvas.height = Math.ceil(vb.height * scale);
+      canvas.width = Math.ceil((vb.width + pad * 2) * scale);
+      canvas.height = Math.ceil((vb.height + pad * 2) * scale);
       const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
       // paint the page background so the PNG isn't transparent
       const bg = getComputedStyle(document.body).getPropertyValue('--bg-0').trim() || '#0a0e13';
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      // offset the diagram by `pad` (scaled) so the fill reads as a uniform margin
+      ctx.setTransform(scale, 0, 0, scale, pad * scale, pad * scale);
       ctx.drawImage(img, 0, 0);
 
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
