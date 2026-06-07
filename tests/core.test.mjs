@@ -55,4 +55,5 @@ test('buildGraph: private decls are downweighted by PRIVATE_PENALTY (R2)', () =>
   const privImp = priv.find((d) => d.name === 'Pub')._importance;
   assert.ok(pubImp > 0, 'public decl should have nonzero importance');
   assert.ok(privImp < pubImp, `private (${privImp}) should be below public (${pubImp})`);
+  assert.ok(Math.abs(privImp - pubImp * 0.3) < 0.001, `private should be ~0.3× public: ${privImp} vs ${pubImp}*0.3`);
 });
