@@ -2,7 +2,7 @@
 // Port of analyze.py. Walks the project, dispatches each source file to a
 // web-tree-sitter extractor, builds the graph, assigns layers, writes
 // raw_structure.json (+ unresolved.json). Deterministic — never guesses.
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync, realpathSync } from 'node:fs';
 import { resolve as resolvePath, relative, join, sep, basename, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,17 +50,28 @@ function isDir(p) { try { return statSync(p).isDirectory(); } catch { return fal
 function isFile(p) { try { return statSync(p).isFile(); } catch { return false; } }
 
 // Yield source-file paths under root, os.walk-style top-down with in-place prune.
-function* walkProject(root, skipDirs) {
+// Entries are visited in sorted order (deterministic walk) and every yielded file
+// is deduped by realpath, so a physical file reachable through more than one path
+// (SwiftPM repos symlink a shared `Platform/` module into each target dir) is
+// parsed exactly once — the first, lexicographically-earliest path wins.
+export function* walkProject(root, skipDirs) {
   const exts = allExtensions();
+  const seenReal = new Set();
   const walk = function* (dir) {
     let entries;
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    const dirnames = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-    const filenames = entries.filter((e) => !e.isDirectory()).map((e) => e.name);
+    const dirnames = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    const filenames = entries.filter((e) => !e.isDirectory()).map((e) => e.name).sort();
     for (const fn of filenames) {
       const dot = fn.lastIndexOf('.');
       const ext = dot >= 0 ? fn.slice(dot) : '';
-      if (exts.has(ext)) yield join(dir, fn);
+      if (!exts.has(ext)) continue;
+      const full = join(dir, fn);
+      let real;
+      try { real = realpathSync(full); } catch { continue; } // broken symlink → unreadable
+      if (seenReal.has(real)) continue; // same physical file via another path
+      seenReal.add(real);
+      yield full;
     }
     for (const d of pruneDirnames(dirnames, skipDirs, filenames)) yield* walk(join(dir, d));
   };
