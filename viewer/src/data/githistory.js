@@ -5,6 +5,7 @@
 // --------------------------------------------------------------------
 
 import { state } from '../store.js';
+import { dataUrl } from './source.js';
 
 /** path → [class id, …] over all layers. A file may host several classes.
  * @param {Array<{classes?: Array<{id:string,path?:string}>}>} layers
@@ -39,7 +40,7 @@ export function nodeIdsForCommit(commit, nodesByPath) {
 export async function loadGitHistory() {
   if (state.gitHistory && state.gitHistory.loaded) return state.gitHistory;
   try {
-    const r = await fetch('/git-history.json', { cache: 'no-store' });
+    const r = await fetch(dataUrl('git-history.json'), { cache: 'no-store' });
     const j = r.ok ? await r.json() : { commits: [] };
     state.gitHistory = { loaded: true, commits: Array.isArray(j.commits) ? j.commits : [], error: null };
   } catch (e) {
