@@ -59,3 +59,12 @@ test('typescript extractor: .tsx uses tsx grammar and parses JSX-bearing compone
   assert.equal(app.line, 1);
   assert.ok(app.refs.includes('render'), `refs were ${JSON.stringify(app.refs)}`);
 });
+
+test('ts: non-exported function is private; exported is public (R2)', async () => {
+  await init();
+  const src = 'export function publicApi() { helper(); }\nfunction helper() { return 1; }\n';
+  const res = await ts.parse('src/mod.ts', src, '/proj');
+  const vis = (n) => res.declarations.find((d) => d.name === n).visibility;
+  assert.equal(vis('publicApi'), 'public');
+  assert.equal(vis('helper'), 'private');
+});
