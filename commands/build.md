@@ -29,7 +29,7 @@ Decide incremental vs full from the git diff since the last build (this writes `
 
 !CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
 
-`Read` `.code-map/incremental.json`. If `mode` is `"full"`, follow **Path A**. If `mode` is `"incremental"`, follow **Path B**. The printed `reason` explains a full fall-back (e.g. `no-prior-build`, `base-unreachable`, `too-many-changes`).
+`Read` `.code-map/incremental.json`. If `mode` is `"full"`, follow **Path A**. If `mode` is `"incremental"`, follow **Path B**. The printed `reason` explains a full fall-back (e.g. `no-prior-build`, `base-unreachable`, `too-many-changes`, `plugin-version-changed`). `plugin-version-changed` means the code-map plugin was upgraded since the last build — a full rebuild is forced so new extraction / Phase 2 logic takes effect; mention this in the final summary when it fires.
 
 ---
 
@@ -161,7 +161,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves, cap ~6 hops, cap fan-out ~8).
    Aim for a handful of high-signal business flows, not one per seed.
 
-7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them.
+7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them. The `project`-level Phase 1 provenance fields — `git`, `code_map_version`, `generated_at`, `files_scanned` — pass through to `code-map.json` unchanged too; never hand-edit `code_map_version` (the plan step relies on it to detect the next upgrade).
 
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 
