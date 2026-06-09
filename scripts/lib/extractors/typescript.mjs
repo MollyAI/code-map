@@ -233,7 +233,7 @@ export async function parse(relPath, src, _projectRoot) {
       path: relPath,
       line: decl.startPosition.row + 1,
       supertypes: supers,
-      refs: [...bodyRefs(inr, src), ...imports.filter((i) => i.qualified).map((i) => i.qualified)],
+      refs: bodyRefs(inr, src),
       confidence: conf,
       loc: locOf(decl),
       signature: kind === 'function' ? signatureOf(inr, src) : '',

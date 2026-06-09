@@ -30,7 +30,8 @@ test('typescript extractor: class/interface/function kinds, supertypes, refs, na
   assert.deepEqual(svc.supertypes.sort(), ['Base', 'Repo']);
   assert.ok(svc.refs.includes('helper'), `refs were ${JSON.stringify(svc.refs)}`);
   assert.ok(svc.refs.includes('Widget'), `refs were ${JSON.stringify(svc.refs)}`);
-  assert.ok(svc.refs.includes('./base'), `refs were ${JSON.stringify(svc.refs)}`);
+  // import 串不再污染 refs（import 是作用域，不是边）
+  assert.ok(!svc.refs.includes('./base'), `refs should not include import strings: ${JSON.stringify(svc.refs)}`);
   assert.equal(svc.method_count, 1);
 
   const repo = res.declarations.find((d) => d.name === 'Repo');
