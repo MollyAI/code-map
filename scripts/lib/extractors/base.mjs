@@ -1,4 +1,4 @@
-// scripts/lib/extractors/base.mjs — Declaration / ImportSpec / ParseResult.
+// scripts/lib/extractors/base.mjs — Declaration / ImportSpec / ReexportSpec / ParseResult.
 // Mirror of scripts/lib/extractors/base.py (dataclasses → plain object factories).
 // The framework later attaches _layer/_in_degree/_out_degree/_importance/_core/
 // _hub/_description; core.toJsonShape serializes the public + underscore fields.
@@ -27,10 +27,14 @@ export function qualifiedName(d) {
   return d.namespace ? `${d.namespace}.${d.name}` : d.name;
 }
 
-export function ImportSpec(raw, qualified = null, alias = null) {
-  return { raw, qualified, alias };
+export function ImportSpec(raw, qualified = null, alias = null, bindings = []) {
+  return { raw, qualified, alias, bindings };
 }
 
-export function ParseResult(declarations = [], imports = [], skipped = []) {
-  return { declarations, imports, skipped };
+export function ReexportSpec(source, names = [], star = false, alias = null) {
+  return { source, names, star, alias };
+}
+
+export function ParseResult(declarations = [], imports = [], skipped = [], reexports = []) {
+  return { declarations, imports, skipped, reexports };
 }
