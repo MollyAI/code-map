@@ -38,3 +38,29 @@ test('merge: reuse description for unchanged file; flag new core as stale', () =
   assert.equal(B.stale, true);                // core + changed + no description
   assert.equal(draft.project.architecture.template, 'clean-architecture'); // arch carried over
 });
+
+test('plan: plugin version changed → full', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.8.1' } };
+  const r = plan('/x', prev, true, '1.9.0');
+  assert.equal(r.mode, 'full');
+  assert.equal(r.reason, 'plugin-version-changed');
+});
+
+test('plan: prior build without code_map_version (pre-upgrade artifact) → full', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10 } };
+  const r = plan('/x', prev, true, '1.9.0');
+  assert.equal(r.mode, 'full');
+  assert.equal(r.reason, 'plugin-version-changed');
+});
+
+test('plan: same plugin version → not blocked on version (falls through to git checks)', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.9.0' } };
+  const r = plan('/x', prev, true, '1.9.0');
+  assert.notEqual(r.reason, 'plugin-version-changed'); // '/x' is not a git repo → 'not-a-git-repo'
+});
+
+test('plan: currentVersion null → version check skipped', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.8.1' } };
+  const r = plan('/x', prev, true, null);
+  assert.notEqual(r.reason, 'plugin-version-changed');
+});

@@ -16,6 +16,8 @@ import * as gitmeta from './lib/gitmeta.mjs';
 import * as vendoring from './lib/vendoring.mjs';
 import { loadSkipDirs, pruneDirnames } from './lib/skipdirs.mjs';
 import { GrammarUnavailable } from './lib/grammars.mjs';
+import { pluginVersion } from './lib/version.mjs';
+import { resolveProject } from './lib/resolve/index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +112,8 @@ export async function main(argv) {
   const files = [...walkProject(root, skipDirs)];
   const allDecls = [];
   const allSkipped = [];
+  const importsByFile = new Map();
+  const reexportsByFile = new Map();
   let parseFailures = 0;
   const langCounts = new Map();
   const filesByLang = new Map();
@@ -124,6 +128,8 @@ export async function main(argv) {
       const result = await extractor.parse(relPath, src, root);
       for (const d of result.declarations) { d.language = extractor.name; allDecls.push(d); }
       allSkipped.push(...result.skipped);
+      importsByFile.set(relPath, result.imports);
+      reexportsByFile.set(relPath, result.reexports || []);
       langCounts.set(extractor.name, (langCounts.get(extractor.name) || 0) + result.declarations.length);
       filesByLang.set(extractor.name, (filesByLang.get(extractor.name) || 0) + 1);
     } catch (e) {
@@ -135,6 +141,7 @@ export async function main(argv) {
     }
   }
 
+  const resolution = resolveProject(allDecls, importsByFile, reexportsByFile, { root });
   const [decls, edges] = core.buildGraph(allDecls);
   layers.applyTo(decls, layerConfig);
   detection.fit = layers.templateFit(decls, layerConfig);
@@ -183,6 +190,11 @@ export async function main(argv) {
     generated_at: new Date().toISOString().slice(0, 19),
   };
   projectMeta.template_detection = detection;
+  const totalCand = resolution.stats.edges_resolved + resolution.stats.edges_unresolved;
+  projectMeta.resolution = {
+    ...resolution.stats,
+    coverage: totalCand ? core.round3(resolution.stats.edges_resolved / totalCand) : 1,
+  };
   if (dispatchIndex.size) {
     projectMeta.dispatch = Object.fromEntries(
       [...dispatchIndex.entries()]
@@ -192,6 +204,8 @@ export async function main(argv) {
   if (advisories.length) projectMeta.advisories = advisories;
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
+  const cmVer = pluginVersion(pluginRoot);
+  if (cmVer) projectMeta.code_map_version = cmVer;
   // Commit-history sidecar (separate file — keeps code-map.json lean & Claude-editable).
   if (git && args.git_history) {
     const commits = gitmeta.commitHistory(root, { limit: args.git_history_limit });
@@ -212,11 +226,15 @@ export async function main(argv) {
 
   writeFileSync(outPath, JSON.stringify(data, null, 2));
 
+  const resolutionPath = join(dirname(outPath), 'resolution.json');
+  writeFileSync(resolutionPath, JSON.stringify(resolution, null, 2));
+
   const unresolvedPath = join(dirname(outPath), 'unresolved.json');
   writeFileSync(unresolvedPath, JSON.stringify({
     skipped: allSkipped,
     low_confidence: decls.filter((d) => d.confidence !== 'high')
       .map((d) => ({ id: qualifiedName(d), path: d.path, reason: 'low_confidence' })),
+    resolution: resolution.unresolved,
   }, null, 2));
 
   console.log(`[analyze] root: ${root}`);
@@ -233,8 +251,10 @@ export async function main(argv) {
     console.log(`[analyze] advisory: ${detection.fit.warning} (Phase 2 should swap/derive layers)`);
   }
   console.log(`[analyze] flows: ${flowList.length} (${dispatchFlows.length} dispatch, ${bfsFlows.length} bfs)`);
+  console.log(`[analyze] resolution: ${resolution.stats.edges_resolved} edges resolved, ${resolution.stats.edges_unresolved} unresolved (${resolution.stats.barrels_expanded} via barrel, ${resolution.stats.aliases_resolved} via alias)`);
   console.log(`[analyze] skipped/low-confidence: ${allSkipped.length} entries`);
   console.log(`[analyze] wrote ${outPath}`);
+  console.log(`[analyze] wrote ${resolutionPath}`);
   console.log(`[analyze] wrote ${unresolvedPath}`);
   return 0;
 }

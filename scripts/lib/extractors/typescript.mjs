@@ -4,7 +4,7 @@
 // The same module handles .ts/.tsx/.js/.jsx — tree-sitter-typescript ships
 // both 'typescript' and 'tsx' grammars; plain JS parses fine with the TS grammar.
 import { init, loadLanguage, makeQuery, Parser } from '../ts.mjs';
-import { Declaration, ImportSpec, ParseResult } from './base.mjs';
+import { Declaration, ImportSpec, ReexportSpec, ParseResult } from './base.mjs';
 import { textOf, hasErrorIn, walk, runQuery, locOf, signatureOf, countMethods, tailName } from './_common.mjs';
 
 export const name = 'typescript';
@@ -23,11 +23,10 @@ const _DECL_QUERY = `
 (program (export_statement (type_alias_declaration name: (type_identifier) @name)) @decl)
 (program (export_statement (enum_declaration name: (identifier) @name)) @decl)
 `;
-const _IMPORT_QUERY = `
-(import_statement source: (string (string_fragment) @import))
-`;
+const _IMPORT_QUERY = `(import_statement) @imp`;
+const _REEXPORT_QUERY = `(export_statement source: (string) @src) @exp`;
 
-let _tsLang, _tsxLang, _qDeclTs, _qDeclTsx, _qImpTs, _qImpTsx;
+let _tsLang, _tsxLang, _qDeclTs, _qDeclTsx, _qImpTs, _qImpTsx, _qRexTs, _qRexTsx;
 async function ensure() {
   if (_tsLang) return;
   await init();
@@ -37,6 +36,8 @@ async function ensure() {
   _qDeclTsx = makeQuery(_tsxLang, _DECL_QUERY);
   _qImpTs = makeQuery(_tsLang, _IMPORT_QUERY);
   _qImpTsx = makeQuery(_tsxLang, _IMPORT_QUERY);
+  _qRexTs = makeQuery(_tsLang, _REEXPORT_QUERY);
+  _qRexTsx = makeQuery(_tsxLang, _REEXPORT_QUERY);
 }
 
 // Unwrap an export_statement to the declaration it exports.
@@ -127,6 +128,60 @@ function bodyRefs(declNode, src) {
   return [...names].sort();
 }
 
+// Build [{local, imported}] from an import_statement's import_clause.
+// named: {A, B as C} -> imported='A'/'B', local='A'/'C'
+// default: import Foo -> imported='default', local='Foo'
+// namespace: import * as NS -> imported='*', local='NS'
+function importBindings(impNode) {
+  const out = [];
+  const clause = impNode.children.find((c) => c.type === 'import_clause');
+  if (!clause) return out; // side-effect import: import './x'
+  for (const c of clause.children) {
+    if (c.type === 'identifier') {
+      out.push({ local: c.text, imported: 'default' });
+    } else if (c.type === 'namespace_import') {
+      const id = c.children.find((x) => x.type === 'identifier');
+      if (id) out.push({ local: id.text, imported: '*' });
+    } else if (c.type === 'named_imports') {
+      for (const spec of c.children) {
+        if (spec.type !== 'import_specifier') continue;
+        const nameNode = spec.childForFieldName('name');
+        if (!nameNode) continue;
+        const aliasNode = spec.childForFieldName('alias');
+        out.push({ local: aliasNode ? aliasNode.text : nameNode.text, imported: nameNode.text });
+      }
+    }
+  }
+  return out;
+}
+
+function parseReexport(expNode) {
+  const srcNode = expNode.childForFieldName('source');
+  if (!srcNode) return null;
+  const frag = srcNode.children.find((x) => x.type === 'string_fragment');
+  const source = frag ? frag.text : srcNode.text.replace(/^['"]|['"]$/g, '');
+  let star = false, alias = null;
+  const names = [];
+  for (const c of expNode.children) {
+    if (c.type === 'export_clause') {
+      for (const spec of c.children) {
+        if (spec.type !== 'export_specifier') continue;
+        const nameNode = spec.childForFieldName('name');
+        if (!nameNode) continue;
+        const aliasNode = spec.childForFieldName('alias');
+        names.push({ local: aliasNode ? aliasNode.text : nameNode.text, imported: nameNode.text });
+      }
+    } else if (c.type === 'namespace_export') {
+      star = true;
+      const id = c.children.find((x) => x.type === 'identifier');
+      alias = id ? id.text : null;
+    } else if (c.type === '*') {
+      star = true;
+    }
+  }
+  return ReexportSpec(source, names, star, alias);
+}
+
 export async function parse(relPath, src, _projectRoot) {
   await ensure();
   const ext = relPath.slice(relPath.lastIndexOf('.'));
@@ -134,6 +189,7 @@ export async function parse(relPath, src, _projectRoot) {
   const lang = isTsx ? _tsxLang : _tsLang;
   const qDecl = isTsx ? _qDeclTsx : _qDeclTs;
   const qImp = isTsx ? _qImpTsx : _qImpTs;
+  const qRex = isTsx ? _qRexTsx : _qRexTs;
 
   const parser = new Parser();
   parser.setLanguage(lang);
@@ -142,12 +198,19 @@ export async function parse(relPath, src, _projectRoot) {
 
   const imports = [];
   for (const caps of runQuery(qImp, root)) {
-    for (const n of caps.import ?? []) {
-      const raw = textOf(n, src);
-      // Only resolve relative imports (./foo, ../foo) — external pkgs stay as-is
-      const qualified = raw.startsWith('.') ? raw : null;
-      imports.push(ImportSpec(raw, qualified, raw.split('/').pop()));
-    }
+    const impNode = caps.imp[0];
+    const srcNode = impNode.childForFieldName('source');
+    if (!srcNode) continue;
+    const frag = srcNode.children.find((x) => x.type === 'string_fragment');
+    const raw = frag ? frag.text : srcNode.text.replace(/^['"]|['"]$/g, '');
+    const qualified = raw.startsWith('.') ? raw : null;
+    imports.push(ImportSpec(raw, qualified, raw.split('/').pop(), importBindings(impNode)));
+  }
+
+  const reexports = [];
+  for (const caps of runQuery(qRex, root)) {
+    const r = parseReexport(caps.exp[0]);
+    if (r) reexports.push(r);
   }
 
   const decls = [];
@@ -170,12 +233,12 @@ export async function parse(relPath, src, _projectRoot) {
       path: relPath,
       line: decl.startPosition.row + 1,
       supertypes: supers,
-      refs: [...bodyRefs(inr, src), ...imports.filter((i) => i.qualified).map((i) => i.qualified)],
+      refs: bodyRefs(inr, src),
       confidence: conf,
       loc: locOf(decl),
       signature: kind === 'function' ? signatureOf(inr, src) : '',
       method_count: kind === 'class' ? countMethods(inr, ['class_body'], ['method_definition']) : 0,
     }));
   }
-  return ParseResult(decls, imports, skipped);
+  return ParseResult(decls, imports, skipped, reexports);
 }
