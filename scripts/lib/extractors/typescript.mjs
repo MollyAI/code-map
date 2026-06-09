@@ -23,9 +23,7 @@ const _DECL_QUERY = `
 (program (export_statement (type_alias_declaration name: (type_identifier) @name)) @decl)
 (program (export_statement (enum_declaration name: (identifier) @name)) @decl)
 `;
-const _IMPORT_QUERY = `
-(import_statement source: (string (string_fragment) @import))
-`;
+const _IMPORT_QUERY = `(import_statement) @imp`;
 
 let _tsLang, _tsxLang, _qDeclTs, _qDeclTsx, _qImpTs, _qImpTsx;
 async function ensure() {
@@ -127,6 +125,33 @@ function bodyRefs(declNode, src) {
   return [...names].sort();
 }
 
+// Build [{local, imported}] from an import_statement's import_clause.
+// named: {A, B as C} -> imported='A'/'B', local='A'/'C'
+// default: import Foo -> imported='default', local='Foo'
+// namespace: import * as NS -> imported='*', local='NS'
+function importBindings(impNode) {
+  const out = [];
+  const clause = impNode.children.find((c) => c.type === 'import_clause');
+  if (!clause) return out; // side-effect import: import './x'
+  for (const c of clause.children) {
+    if (c.type === 'identifier') {
+      out.push({ local: c.text, imported: 'default' });
+    } else if (c.type === 'namespace_import') {
+      const id = c.children.find((x) => x.type === 'identifier');
+      if (id) out.push({ local: id.text, imported: '*' });
+    } else if (c.type === 'named_imports') {
+      for (const spec of c.children) {
+        if (spec.type !== 'import_specifier') continue;
+        const nameNode = spec.childForFieldName('name');
+        if (!nameNode) continue;
+        const aliasNode = spec.childForFieldName('alias');
+        out.push({ local: aliasNode ? aliasNode.text : nameNode.text, imported: nameNode.text });
+      }
+    }
+  }
+  return out;
+}
+
 export async function parse(relPath, src, _projectRoot) {
   await ensure();
   const ext = relPath.slice(relPath.lastIndexOf('.'));
@@ -142,12 +167,13 @@ export async function parse(relPath, src, _projectRoot) {
 
   const imports = [];
   for (const caps of runQuery(qImp, root)) {
-    for (const n of caps.import ?? []) {
-      const raw = textOf(n, src);
-      // Only resolve relative imports (./foo, ../foo) — external pkgs stay as-is
-      const qualified = raw.startsWith('.') ? raw : null;
-      imports.push(ImportSpec(raw, qualified, raw.split('/').pop()));
-    }
+    const impNode = caps.imp[0];
+    const srcNode = impNode.childForFieldName('source');
+    if (!srcNode) continue;
+    const frag = srcNode.children.find((x) => x.type === 'string_fragment');
+    const raw = frag ? frag.text : srcNode.text.replace(/^['"]|['"]$/g, '');
+    const qualified = raw.startsWith('.') ? raw : null;
+    imports.push(ImportSpec(raw, qualified, raw.split('/').pop(), importBindings(impNode)));
   }
 
   const decls = [];

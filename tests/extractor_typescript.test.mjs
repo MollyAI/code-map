@@ -68,3 +68,19 @@ test('ts: non-exported function is private; exported is public (R2)', async () =
   assert.equal(vis('publicApi'), 'public');
   assert.equal(vis('helper'), 'private');
 });
+
+test('typescript extractor: captures import bindings (named/default/namespace + alias)', async () => {
+  await init();
+  const src = [
+    "import Default from './d';",
+    "import { A, B as C } from './m';",
+    "import * as NS from './ns';",
+    "export function use() { A(); }",
+    "",
+  ].join('\n');
+  const res = await ts.parse('src/x.ts', src, '/proj');
+  const byRaw = Object.fromEntries(res.imports.map((i) => [i.raw, i.bindings]));
+  assert.deepEqual(byRaw['./d'], [{ local: 'Default', imported: 'default' }]);
+  assert.deepEqual(byRaw['./m'], [{ local: 'A', imported: 'A' }, { local: 'C', imported: 'B' }]);
+  assert.deepEqual(byRaw['./ns'], [{ local: 'NS', imported: '*' }]);
+});
