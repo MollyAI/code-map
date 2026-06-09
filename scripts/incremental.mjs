@@ -3,8 +3,12 @@
 // Ports scripts/incremental.py (CLI) + scripts/lib/incremental.py (logic).
 // Phase 1 always re-runs full; only Phase 2 reuse is incremental.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { resolve as resolvePath, dirname } from 'node:path';
+import { resolve as resolvePath, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as gitmeta from './lib/gitmeta.mjs';
+import { pluginVersion } from './lib/version.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 function writeJson(path, obj) {
   mkdirSync(dirname(resolvePath(path)), { recursive: true });
@@ -13,9 +17,14 @@ function writeJson(path, obj) {
 
 const DEFAULT_MAX_CHANGE_RATIO = 0.4;
 
-export function plan(root, prev, architectureExists, maxChangeRatio = DEFAULT_MAX_CHANGE_RATIO) {
+export function plan(root, prev, architectureExists, currentVersion = null, maxChangeRatio = DEFAULT_MAX_CHANGE_RATIO) {
   const full = (reason) => ({ mode: 'full', base_commit: null, changed_files: [], reason });
   if (prev == null) return full('no-prior-build');
+  // A plugin upgrade may change Phase 1 extraction or the Phase 2 contract, so a
+  // same-source incremental would reuse stale annotations. Any version mismatch
+  // (incl. a pre-upgrade artifact lacking the field) forces a full rebuild.
+  const prevVer = prev.project?.code_map_version;
+  if (currentVersion != null && prevVer !== currentVersion) return full('plugin-version-changed');
   const base = prev.project?.git?.commit;
   if (!base) return full('no-anchor-commit');
   if (!architectureExists) return full('no-architecture-yml');
@@ -110,7 +119,8 @@ export function planMain(argv) {
   const prev = loadJson(flag(argv, '--prev', '.code-map/code-map.json'));
   const arch = flag(argv, '--arch', '.code-map/architecture.yml');
   const out = flag(argv, '--out', '.code-map/incremental.json');
-  const result = plan(root, prev, existsSync(arch) || existsSync(arch.replace(/\.yml$/, '.json')));
+  const currentVersion = pluginVersion(join(HERE, '..'));
+  const result = plan(root, prev, existsSync(arch) || existsSync(arch.replace(/\.yml$/, '.json')), currentVersion);
   writeJson(out, result);
   console.log(`[incremental] mode=${result.mode} reason=${result.reason} changed=${result.changed_files.length}`);
   return 0;
