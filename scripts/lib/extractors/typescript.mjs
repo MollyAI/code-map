@@ -4,7 +4,7 @@
 // The same module handles .ts/.tsx/.js/.jsx — tree-sitter-typescript ships
 // both 'typescript' and 'tsx' grammars; plain JS parses fine with the TS grammar.
 import { init, loadLanguage, makeQuery, Parser } from '../ts.mjs';
-import { Declaration, ImportSpec, ParseResult } from './base.mjs';
+import { Declaration, ImportSpec, ReexportSpec, ParseResult } from './base.mjs';
 import { textOf, hasErrorIn, walk, runQuery, locOf, signatureOf, countMethods, tailName } from './_common.mjs';
 
 export const name = 'typescript';
@@ -24,8 +24,9 @@ const _DECL_QUERY = `
 (program (export_statement (enum_declaration name: (identifier) @name)) @decl)
 `;
 const _IMPORT_QUERY = `(import_statement) @imp`;
+const _REEXPORT_QUERY = `(export_statement source: (string) @src) @exp`;
 
-let _tsLang, _tsxLang, _qDeclTs, _qDeclTsx, _qImpTs, _qImpTsx;
+let _tsLang, _tsxLang, _qDeclTs, _qDeclTsx, _qImpTs, _qImpTsx, _qRexTs, _qRexTsx;
 async function ensure() {
   if (_tsLang) return;
   await init();
@@ -35,6 +36,8 @@ async function ensure() {
   _qDeclTsx = makeQuery(_tsxLang, _DECL_QUERY);
   _qImpTs = makeQuery(_tsLang, _IMPORT_QUERY);
   _qImpTsx = makeQuery(_tsxLang, _IMPORT_QUERY);
+  _qRexTs = makeQuery(_tsLang, _REEXPORT_QUERY);
+  _qRexTsx = makeQuery(_tsxLang, _REEXPORT_QUERY);
 }
 
 // Unwrap an export_statement to the declaration it exports.
@@ -152,6 +155,33 @@ function importBindings(impNode) {
   return out;
 }
 
+function parseReexport(expNode) {
+  const srcNode = expNode.childForFieldName('source');
+  if (!srcNode) return null;
+  const frag = srcNode.children.find((x) => x.type === 'string_fragment');
+  const source = frag ? frag.text : srcNode.text.replace(/^['"]|['"]$/g, '');
+  let star = false, alias = null;
+  const names = [];
+  for (const c of expNode.children) {
+    if (c.type === 'export_clause') {
+      for (const spec of c.children) {
+        if (spec.type !== 'export_specifier') continue;
+        const nameNode = spec.childForFieldName('name');
+        if (!nameNode) continue;
+        const aliasNode = spec.childForFieldName('alias');
+        names.push({ local: aliasNode ? aliasNode.text : nameNode.text, imported: nameNode.text });
+      }
+    } else if (c.type === 'namespace_export') {
+      star = true;
+      const id = c.children.find((x) => x.type === 'identifier');
+      alias = id ? id.text : null;
+    } else if (c.type === '*') {
+      star = true;
+    }
+  }
+  return ReexportSpec(source, names, star, alias);
+}
+
 export async function parse(relPath, src, _projectRoot) {
   await ensure();
   const ext = relPath.slice(relPath.lastIndexOf('.'));
@@ -159,6 +189,7 @@ export async function parse(relPath, src, _projectRoot) {
   const lang = isTsx ? _tsxLang : _tsLang;
   const qDecl = isTsx ? _qDeclTsx : _qDeclTs;
   const qImp = isTsx ? _qImpTsx : _qImpTs;
+  const qRex = isTsx ? _qRexTsx : _qRexTs;
 
   const parser = new Parser();
   parser.setLanguage(lang);
@@ -174,6 +205,12 @@ export async function parse(relPath, src, _projectRoot) {
     const raw = frag ? frag.text : srcNode.text.replace(/^['"]|['"]$/g, '');
     const qualified = raw.startsWith('.') ? raw : null;
     imports.push(ImportSpec(raw, qualified, raw.split('/').pop(), importBindings(impNode)));
+  }
+
+  const reexports = [];
+  for (const caps of runQuery(qRex, root)) {
+    const r = parseReexport(caps.exp[0]);
+    if (r) reexports.push(r);
   }
 
   const decls = [];
@@ -203,5 +240,5 @@ export async function parse(relPath, src, _projectRoot) {
       method_count: kind === 'class' ? countMethods(inr, ['class_body'], ['method_definition']) : 0,
     }));
   }
-  return ParseResult(decls, imports, skipped);
+  return ParseResult(decls, imports, skipped, reexports);
 }

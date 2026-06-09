@@ -84,3 +84,23 @@ test('typescript extractor: captures import bindings (named/default/namespace + 
   assert.deepEqual(byRaw['./m'], [{ local: 'A', imported: 'A' }, { local: 'C', imported: 'B' }]);
   assert.deepEqual(byRaw['./ns'], [{ local: 'NS', imported: '*' }]);
 });
+
+test('typescript extractor: captures re-exports (star / named-from / namespace)', async () => {
+  await init();
+  const src = [
+    "export * from './a';",
+    "export { x, y as z } from './b';",
+    "export * as ns from './c';",
+    "export const local = 1;", // NOT a re-export (no source) -> ignored here
+    "",
+  ].join('\n');
+  const res = await ts.parse('src/barrel.ts', src, '/proj');
+  const bySrc = Object.fromEntries(res.reexports.map((r) => [r.source, r]));
+  assert.equal(bySrc['./a'].star, true);
+  assert.equal(bySrc['./a'].alias, null);
+  assert.deepEqual(bySrc['./b'].names, [{ local: 'x', imported: 'x' }, { local: 'z', imported: 'y' }]);
+  assert.equal(bySrc['./b'].star, false);
+  assert.equal(bySrc['./c'].star, true);
+  assert.equal(bySrc['./c'].alias, 'ns');
+  assert.equal(res.reexports.length, 3);
+});
