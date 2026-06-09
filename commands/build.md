@@ -23,9 +23,11 @@ If `$1` is non-empty, treat the whole argument string as a **focus hint** for Ph
 
 The pipeline runs on a JS runtime (Node ≥18 or Bun) — no Python, no `pip`, no tree-sitter install. Grammars are bundled WASM (the 6 large ones are fetched once on first use and cached). If `bin/code-map` reports no JS runtime, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
 
+**Launcher resolution.** `CLAUDE_PLUGIN_ROOT` is *not* set in the Bash tool / slash-command shell (only for hook / MCP / LSP / monitor subprocesses), so every block below resolves the launcher itself: `CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"` — a project-local `./bin/code-map`, then the PATH-installed plugin, then the legacy fallback. Run each block verbatim; do **not** substitute a hand-found path. The plugin's own dir (for bundled `templates/`) is `"$CM" root`.
+
 Decide incremental vs full from the git diff since the last build (this writes `.code-map/incremental.json`; it is always safe to run and reports `mode=full` whenever anything is uncertain):
 
-!"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
+!CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" plan --root . --prev .code-map/code-map.json --arch .code-map/architecture.yml --out .code-map/incremental.json
 
 `Read` `.code-map/incremental.json`. If `mode` is `"full"`, follow **Path A**. If `mode` is `"incremental"`, follow **Path B**. The printed `reason` explains a full fall-back (e.g. `no-prior-build`, `base-unreachable`, `too-many-changes`).
 
@@ -42,7 +44,7 @@ rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detectio
 **A2.** Get the deterministic detector's advisory scores:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --detect-only
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --detect-only
 ```
 
 **A3. Phase 0 — propose the architecture (your job):**
@@ -50,16 +52,16 @@ rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detectio
 1. `Read` `README.md` (and any other obvious top-level docs — `ARCHITECTURE.md`, `docs/`).
 2. List the top-level directories (`Glob` `*/` or `ls`).
 3. `Read` `.code-map/detection.json` — the detector's `chosen`, `scores`, and `evidence`.
-4. Pick the best-fitting template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml`, weighing the README's stated intent + the directory shape + the detector scores. The menu is the 13 bundled shapes (`ls ${CLAUDE_PLUGIN_ROOT}/templates`). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
+4. Pick the best-fitting template, weighing the README's stated intent + the directory shape + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — list them with `ls "$("$CM" root)/templates"` and `Read` the chosen one at `<root>/templates/<name>.yml` (where `<root>` is what `"$CM" root` printed). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
 
 **A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --out .code-map/raw_structure.json
 ```
 
-Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). If the launcher is missing at `$CLAUDE_PLUGIN_ROOT`, fall back to `./bin/code-map` (project-local install).
+Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). The `CM=…` resolver above finds the launcher automatically (project-local checkout, PATH-installed plugin, or the legacy `CLAUDE_PLUGIN_ROOT` fallback) — no manual path-hunting needed.
 
 **A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `raw_structure.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A4** so the heavy vendored subtree is excluded before you spend Phase 2 effort. Leave it in only if the flagged dir is actually first-party.
 
@@ -80,13 +82,13 @@ rm -f .code-map/raw_structure.json .code-map/detection.json
 **B3. Phase 1 — extract** (picks up the existing `architecture.yml`):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --out .code-map/raw_structure.json
 ```
 
 **B4. Merge prior Phase 2 work** onto the fresh structure:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" merge --raw .code-map/raw_structure.json --prev .code-map/code-map.json --incremental .code-map/incremental.json --out .code-map/code-map.draft.json
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" merge --raw .code-map/raw_structure.json --prev .code-map/code-map.json --incremental .code-map/incremental.json --out .code-map/code-map.draft.json
 ```
 
 This produces `code-map.draft.json` — the fresh structure with unchanged declarations' descriptions / tags / layer placement already filled in. Two helper flags tell you exactly what is left to do:
@@ -115,7 +117,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    **Hard trigger — check `template_detection.fit` first.** Phase 1 measures how well the assigned layers actually absorbed the code. **If `fit.fits` is `false`, the chosen architecture is wrong for this project — you MUST re-architect (Swap or Tweak below); do not Accept.** A high `fit.uncategorized_pct` (≥25%) or a near-empty layer set with one catch-all (`fit.empty_layers` + a high `fit.largest_layer_pct`) is the classic signature of an app template forced onto a **library/framework**, whose natural decomposition is by **functional subsystem** (e.g. an HTTP client → public-api / call-engine / connection / protocol / tls / cache / modules), not by presentation/domain/data. When this fires, **derive the layers from the package structure**: read the namespace histogram (group declarations by their package; the deepest distinguishing package segment drives `assignLayer`'s right-to-left match), give each cohesive subsystem its own layer with `path_segments` set to that subsystem's package segment(s), and set `architecture.customized: true`. Then pick one:
 
    - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
-   - **Swap** — load a different template from `${CLAUDE_PLUGIN_ROOT}/templates/<name>.yml` and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls ${CLAUDE_PLUGIN_ROOT}/templates` to confirm).
+   - **Swap** — load a different template from `<root>/templates/<name>.yml` (where `<root>` is `"$CM" root`) and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls "$("$CM" root)/templates"` to confirm).
    - **Tweak** — keep the chosen template but rename / add / remove / merge layers. Each layer id within `layers[]` must remain unique. The frontend reads `name` and `summary`, so renaming is purely cosmetic to the UI.
 
    Record the decision in the output as:

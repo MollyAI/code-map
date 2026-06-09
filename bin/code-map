@@ -15,6 +15,12 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PLUGIN_ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)
 CLI="$PLUGIN_ROOT/scripts/cli.mjs"
 
+# `code-map root` prints the plugin's own install dir (no JS runtime needed).
+# /code-map:build uses it to locate bundled templates/ without relying on
+# CLAUDE_PLUGIN_ROOT being present in the shell — it is NOT, in slash commands
+# (it is only set for hook / MCP / LSP / monitor subprocesses).
+if [ "$1" = "root" ]; then printf '%s\n' "$PLUGIN_ROOT"; exit 0; fi
+
 # Prefer node (validate >=18), then bun.
 #
 # --liftoff-only forces V8's baseline WASM compiler and skips the optimizing

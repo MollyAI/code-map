@@ -39,7 +39,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function runMain(argv) {
   const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
   const dataPath = resolvePath(flag(argv, '--data', '.code-map/code-map.json'));
-  const viewer = resolvePath(flag(argv, '--viewer', 'viewer'));
+  // Default the viewer to the plugin's own viewer/ (HERE = scripts/), so
+  // /code-map:run need not pass --viewer or know CLAUDE_PLUGIN_ROOT. An
+  // explicit --viewer still wins (e.g. the debug `serve` invocation).
+  const viewer = resolvePath(flag(argv, '--viewer', join(HERE, '..', 'viewer')));
   const noOpen = bool(argv, '--no-open');
   const logPath = join(dirname(statePath), 'server.log');
 

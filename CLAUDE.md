@@ -68,14 +68,18 @@ From the target project (not this repo):
 
 ```bash
 # No install step — grammars are bundled WASM. Just need a JS runtime (node>=18/bun).
+# Launcher resolution: CLAUDE_PLUGIN_ROOT is NOT in the Bash tool / slash-command
+# shell (only hook/MCP/LSP/monitor subprocesses get it), so commands resolve the
+# launcher themselves. The plugin's bin/ is on the Bash tool PATH, so `code-map` works
+# bare; ./bin/code-map wins in a checkout. Canonical resolver:
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"
 
 # Phase 1: extract
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" analyze --root . --out .code-map/raw_structure.json
+"$CM" analyze --root . --out .code-map/raw_structure.json
 
-# Phase 3: serve via the control the slash commands use
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" run \
-  --plugin-root "${CLAUDE_PLUGIN_ROOT:-.}" --data .code-map/code-map.json --viewer "${CLAUDE_PLUGIN_ROOT:-.}/viewer"
-"${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map" stop
+# Phase 3: serve via the control the slash commands use (mapctl self-locates viewer/)
+"$CM" run --data .code-map/code-map.json
+"$CM" stop
 # (bin/code-map serve --data ... --viewer ... --open runs the server directly, for debugging.)
 
 # Tune core selection (default 0.25 = top quartile/layer, cap 40/layer)
