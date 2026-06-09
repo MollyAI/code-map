@@ -16,6 +16,7 @@ import * as gitmeta from './lib/gitmeta.mjs';
 import * as vendoring from './lib/vendoring.mjs';
 import { loadSkipDirs, pruneDirnames } from './lib/skipdirs.mjs';
 import { GrammarUnavailable } from './lib/grammars.mjs';
+import { pluginVersion } from './lib/version.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -192,6 +193,8 @@ export async function main(argv) {
   if (advisories.length) projectMeta.advisories = advisories;
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
+  const cmVer = pluginVersion(pluginRoot);
+  if (cmVer) projectMeta.code_map_version = cmVer;
   // Commit-history sidecar (separate file — keeps code-map.json lean & Claude-editable).
   if (git && args.git_history) {
     const commits = gitmeta.commitHistory(root, { limit: args.git_history_limit });
