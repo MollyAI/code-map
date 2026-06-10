@@ -105,6 +105,7 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
 - `project.git` (fresh HEAD) and `project.architecture` (carried) are already correct in the draft — do not overwrite them.
+- **Score the architecture** — the merge dropped the prior `project.score` on purpose (the graph changed); after writing the final `code-map.json`, run full-build Phase 2 step 8 (`"$CM" score --data .code-map/code-map.json --write`, plus a whitelisted `--adjust` only with evidence) to re-stamp it.
 
 ---
 
@@ -163,6 +164,14 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them. The `project`-level Phase 1 provenance fields — `git`, `code_map_version`, `generated_at`, `files_scanned` — pass through to `code-map.json` unchanged too; never hand-edit `code_map_version` (the plan step relies on it to detect the next upgrade).
 
+8. **Score the architecture (arch-score).** The rubric of record is the plugin's `skills/arch-score/SKILL.md` — follow its workflow. Minimum: stamp the deterministic baseline:
+
+   ```bash
+   CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" score --data .code-map/code-map.json --write
+   ```
+
+   Read the printed penalty breakdown. Only if a penalty matches the skill's adjustment whitelist (template misfit, domain-normal cycles, generated-code skew, graph distortion) re-run with `--adjust <int> --reason-zh "…" --reason-en "…"` — the CLI clamps |delta| to 10% of base and requires both reasons. Never adjust without naming the specific penalty being corrected.
+
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 
 ---
@@ -176,9 +185,10 @@ After the build completes, print a brief summary:
   Languages: kotlin (7), go (9), typescript (4), rust (3)
   Layers:    Presentation (8) · Domain (5) · Data (8) · Infrastructure (2)
   Edges:     14
+  Score:     架构评分 124 = round(D 109.4 × E 1.13) (+6 adjusted)
   Data:      .code-map/code-map.json
 
 Next: run /code-map:run to open the visualization in your browser.
 ```
 
-Pull the `mode` and changed-file count from `.code-map/incremental.json` (on an incremental build, name the changed files Phase 2 re-described). If any unresolved entries remain after Phase 2, list them so the user knows what's missing.
+Pull the `mode` and changed-file count from `.code-map/incremental.json` (on an incremental build, name the changed files Phase 2 re-described). Pull the Score line from the `score` command's printed total (omit "(+N adjusted)" when no adjustment was applied). If any unresolved entries remain after Phase 2, list them so the user knows what's missing.
