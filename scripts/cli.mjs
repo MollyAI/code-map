@@ -10,6 +10,7 @@ const routes = {
   run: () => import('./mapctl.mjs').then((m) => m.runMain(rest)),
   stop: () => import('./mapctl.mjs').then((m) => m.stopMain(rest)),
   serve: () => import('./serve.mjs').then((m) => m.runServer(rest)),
+  score: () => import('./score.mjs').then((m) => m.main(rest)),
 };
 
 (async () => {
