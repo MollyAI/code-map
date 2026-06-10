@@ -64,3 +64,19 @@ test('plan: currentVersion null → version check skipped', () => {
   const r = plan('/x', prev, true, null);
   assert.notEqual(r.reason, 'plugin-version-changed');
 });
+
+test('merge: prior project.score is not carried into the merged draft', () => {
+  const raw = {
+    project: { name: 'p' },
+    layers: [{ id: 'm', name: 'M', order: 1, classes: [] }],
+    edges: [], flows: [],
+  };
+  const prev = {
+    project: { name: 'p', architecture: { template: 'layered', customized: false },
+      score: { rubric: 'arch-score-v1', total: 99, base: 99 } },
+    layers: [], edges: [], flows: [],
+  };
+  const out = merge(raw, prev, new Set());
+  assert.equal(out.project.score, undefined);
+  assert.deepEqual(out.project.architecture, { template: 'layered', customized: false });
+});
