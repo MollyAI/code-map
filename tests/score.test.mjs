@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   tarjanSCC, reachDensity, scoreLayering, scoreDependencies, scoreHygiene,
+  computeScore, applyAdjustment,
 } from '../scripts/lib/score.mjs';
+import { round3 } from '../scripts/lib/core.mjs';
 
 const decl = (id, extra = {}) => ({
   id, name: id.split('.').pop(), kind: 'class', loc: 50,
@@ -170,4 +172,57 @@ test('hygiene: parse failures, advisories, isolated, oversized all itemized', ()
 test('hygiene: clean model scores 100', () => {
   const m = mkModel({ layers: [{ id: 'm', name: 'M', order: 1, classes: [decl('m.a'), decl('m.b')] }] });
   assert.equal(scoreHygiene(m).score, 100);
+});
+
+test('computeScore: D×E assembly, schema shape, no timestamp', () => {
+  const m = mkModel({
+    layers: [
+      { id: 'app', name: 'App', order: 1, classes: [decl('app.A'), decl('app.B')] },
+      { id: 'lib', name: 'Lib', order: 2, classes: [decl('lib.C'), decl('lib.D')] },
+    ],
+    edges: [
+      { from: 'app.A', to: 'lib.C', kind: 'uses' },
+      { from: 'app.B', to: 'lib.D', kind: 'uses' },
+    ],
+  });
+  const s = computeScore(m);
+  assert.equal(s.rubric, 'arch-score-v1');
+  assert.equal(s.execution, 1.5); // all dims 100
+  // D = 10·ln5 + 6·ln3 + 4·ln11 ≈ 32.278; base = round(D·1.5) = 48
+  assert.equal(s.difficulty, 32.3);
+  assert.equal(s.base, 48);
+  assert.equal(s.total, s.base);
+  assert.deepEqual(s.inputs, { decls: 4, edges: 2, files: 10, languages: 1 });
+  assert.equal(s.adjustment, undefined);
+  assert.ok(!('computed_at' in s));
+});
+
+test('computeScore: extra language adds 5 points to D', () => {
+  const layers = [{ id: 'm', name: 'M', order: 1, classes: [decl('m.a')] }];
+  const one = computeScore(mkModel({ layers }));
+  const two = computeScore(mkModel({ layers,
+    project: { declarations_by_language: { typescript: 1, go: 1 } } }));
+  assert.equal(round3(two.difficulty - one.difficulty, 1), 5);
+});
+
+test('computeScore: deterministic and safe on degenerate inputs', () => {
+  const m = mkModel({ layers: [{ id: 'm', name: 'M', order: 1, classes: [] }] });
+  assert.deepEqual(computeScore(m), computeScore(m));
+  const empty = computeScore({ project: {}, layers: [], edges: [] });
+  assert.equal(typeof empty.total, 'number');
+  assert.equal(empty.inputs.decls, 0);
+});
+
+test('applyAdjustment: enforces the ±10% bound and bilingual reasons', () => {
+  const s = { rubric: 'arch-score-v1', base: 118, total: 118 };
+  const ok = applyAdjustment(s, 12, '理由', 'reason'); // max = round(11.8) = 12
+  assert.equal(ok.total, 130);
+  assert.deepEqual(ok.adjustment, { delta: 12, reason_zh: '理由', reason_en: 'reason' });
+  assert.equal(ok.base, 118);
+  assert.throws(() => applyAdjustment(s, 13, '理由', 'reason'), /±12/);
+  assert.throws(() => applyAdjustment(s, -13, '理由', 'reason'), /±12/);
+  assert.throws(() => applyAdjustment(s, 5, '', 'reason'), /reason/);
+  assert.throws(() => applyAdjustment(s, 5, '理由', ''), /reason/);
+  assert.throws(() => applyAdjustment(s, 2.5, '理由', 'reason'), /integer/);
+  assert.throws(() => applyAdjustment(s, 0, '理由', 'reason'), /integer/);
 });

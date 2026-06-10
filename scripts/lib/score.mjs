@@ -228,3 +228,63 @@ export function reachDensity(ids, adj, sampleAbove = 3000) {
   }
   return pairs / (sources.length * n);
 }
+
+const W_LAYERING = 0.4, W_DEPENDENCIES = 0.4, W_HYGIENE = 0.2;
+
+/**
+ * Deterministic baseline score for a code-map.json model.
+ * total = round(D × E); no adjustment, no timestamp (byte-stable output).
+ *   D (unbounded difficulty) = 10·ln(1+decls) + 6·ln(1+edges)
+ *                            + 4·ln(1+files) + 5·(languages−1)
+ *   E (execution, 0.5–1.5)   = 0.5 + (0.4·L + 0.4·Dq + 0.2·H)/100
+ */
+export function computeScore(model) {
+  const project = model.project || {};
+  const nDecl = declsOf(model).length;
+  const nEdge = (model.edges || []).length;
+  const nFile = project.files_scanned || 0;
+  const byLang = project.declarations_by_language || {};
+  let nLang = Object.values(byLang).filter((v) => v > 0).length;
+  if (!nLang) nLang = (project.languages || []).length || 1;
+
+  const D = 10 * Math.log1p(nDecl) + 6 * Math.log1p(nEdge)
+          + 4 * Math.log1p(nFile) + 5 * Math.max(0, nLang - 1);
+  const layering = scoreLayering(model);
+  const dependencies = scoreDependencies(model);
+  const hygiene = scoreHygiene(model);
+  const E = 0.5 + (W_LAYERING * layering.score + W_DEPENDENCIES * dependencies.score
+                 + W_HYGIENE * hygiene.score) / 100;
+  const base = round3(D * E, 0);
+  return {
+    rubric: RUBRIC,
+    total: base,
+    base,
+    difficulty: round3(D, 1),
+    execution: round3(E, 3),
+    dimensions: { layering, dependencies, hygiene },
+    inputs: { decls: nDecl, edges: nEdge, files: nFile, languages: nLang },
+  };
+}
+
+/**
+ * Bounded AI adjustment: |delta| ≤ round(10% of base), both bilingual
+ * reasons mandatory. Throws on violation — the CLI surfaces the message,
+ * so the bound holds no matter what the caller intended.
+ */
+export function applyAdjustment(score, delta, reasonZh, reasonEn) {
+  if (!Number.isInteger(delta) || delta === 0) {
+    throw new Error('adjustment delta must be a non-zero integer');
+  }
+  const maxAbs = Math.round(0.10 * score.base);
+  if (Math.abs(delta) > maxAbs) {
+    throw new Error(`adjustment ${delta} exceeds the bound ±${maxAbs} (10% of base ${score.base})`);
+  }
+  if (!reasonZh || !reasonEn) {
+    throw new Error('adjustment requires both --reason-zh and --reason-en');
+  }
+  return {
+    ...score,
+    total: score.base + delta,
+    adjustment: { delta, reason_zh: reasonZh, reason_en: reasonEn },
+  };
+}
