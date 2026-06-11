@@ -19,7 +19,7 @@ import { LAYOUT_BASE, labelWidth } from './metrics.js';
  */
 
 /** Self-loop geometry shared with the renderer (render/diagrams.js). */
-export const SELF_LOOP = Object.freeze({ w: 26, h: 14 });
+export const SELF_LOOP = Object.freeze({ w: 34, h: 18 });
 
 /** @param {any} p @param {Layout} LAYOUT */
 function participantWidth(p, LAYOUT) {

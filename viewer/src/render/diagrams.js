@@ -148,7 +148,7 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
       }));
       // arrowhead pointing back at the lifeline (explicit path — no markers)
       gEdges.appendChild(el('path', {
-        class: 'seq-arrowhead',
+        class: 'seq-arrowhead self',
         d: `M ${s.x1} ${s.y + SELF_LOOP.h} l ${AR} ${-AR / 2} l 0 ${AR} Z`,
       }));
       // NB: anchor via class — the .edge-label CSS rule (text-anchor: middle)
@@ -165,7 +165,7 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
     }));
     const dir = s.x2 >= s.x1 ? -1 : 1;      // arrowhead at the target end
     gEdges.appendChild(el('path', {
-      class: 'seq-arrowhead',
+      class: 'seq-arrowhead' + (kind === 'return' ? ' return' : ''),
       d: `M ${s.x2} ${s.y} l ${dir * AR} ${-AR / 2} l 0 ${AR} Z`,
     }));
     gLabels.appendChild(labelEl((s.x1 + s.x2) / 2, s.y - 6, label));

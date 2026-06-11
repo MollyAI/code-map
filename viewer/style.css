@@ -843,13 +843,25 @@ body.light .theme-toggle .icon-moon { display: none; }
   paint-order: stroke; stroke: var(--bg-0); stroke-width: 3px; stroke-linejoin: round;
 }
 .edge-label.start { text-anchor: start; }   /* self-loop labels hang right of the loop */
-.edge.flow.k-control { opacity: 0.3; }
-.edge.flow.k-return { stroke-dasharray: 5 4; opacity: 0.4; }
+/* diagram edges are few and hand-authored — render them confident, not
+   hairball-faint. call/data solid accent; return = cyan dashed (the classic
+   sync-call vs return distinction); control stays muted. */
+.edge.flow.k-data, .edge.flow.k-call, .edge.flow.k-self { opacity: 0.85; stroke-width: 1.5; }
+.edge.flow.k-control { opacity: 0.45; }
+.edge.flow.k-return { stroke: var(--cyan); stroke-dasharray: 6 5; opacity: 0.95; stroke-width: 1.5; }
+/* re-assert selection states AFTER the k-* rules: equal specificity means
+   source order decides, and dimming/lighting must beat the per-kind opacity */
+.edge.flow.active { opacity: 1; stroke-width: 1.7; }
+.edge.flow.dimmed { opacity: 0.05; }
 .node.synthetic rect { fill: var(--bg-2); stroke: var(--line-strong); }
 .node.synthetic .fold { fill: none; stroke: var(--line-strong); }
 .node.synthetic.artifact rect { fill: var(--artifact-bg); stroke: var(--artifact-line); }
 .node.synthetic.artifact .fold { stroke: var(--artifact-line); }
 .node.synthetic.artifact .nlabel { fill: var(--artifact-text); }
-.lifeline { stroke: var(--line); stroke-dasharray: 4 4; }
-.seq-arrowhead { fill: var(--accent); opacity: 0.7; }
+/* sequence participants are column headers — card-like, bolder label */
+.node.synthetic.participant rect { fill: var(--bg-1); stroke: var(--line-strong); stroke-width: 1.2; }
+.node.synthetic.participant .nlabel { font-weight: 600; fill: var(--text-0); }
+.lifeline { stroke: var(--line-strong); stroke-dasharray: 4 4; }
+.seq-arrowhead { fill: var(--accent); }
+.seq-arrowhead.return { fill: var(--cyan); }
 .flow-item-kind { margin-right: 6px; color: var(--text-3); font-size: 10px; }
