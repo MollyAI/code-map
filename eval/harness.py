@@ -240,6 +240,73 @@ def check_invariants(raw, code_map, unresolved):
         if not (f.get("description") or "").strip():
             hard.append(f"flow {fid!r} has empty description")
 
+    # 7. diagram annotations (optional, Phase-2-authored) must be structurally
+    #    sound: known type, resolvable refs, bilingual labels. Mirrors the
+    #    viewer's data/diagram.js validator — the viewer falls back SILENTLY,
+    #    so this is the only loud guard.
+    decl_ids = {d.get("id") for _lid, d in _iter_decls(code_map)}
+
+    def _pair(o, base):
+        return bool((o.get(base + "_zh") or "").strip()
+                    and (o.get(base + "_en") or "").strip())
+
+    for f in code_map.get("flows", []):
+        dg = f.get("diagram")
+        if not dg:
+            continue
+        fid = f.get("id")
+        dtype = dg.get("type")
+        if dtype == "pipeline":
+            stage_ids, placed = set(), set()
+            flow_nodes = set(f.get("nodes") or [])
+            for s in dg.get("stages") or []:
+                sid = s.get("id")
+                if not sid or sid in stage_ids:
+                    hard.append(f"flow {fid!r} diagram: stage id missing/dup {sid!r}")
+                stage_ids.add(sid)
+                if not _pair(s, "name"):
+                    hard.append(f"flow {fid!r} diagram: stage {sid!r} missing bilingual name")
+                for nid in s.get("nodes") or []:
+                    if nid not in decl_ids:
+                        hard.append(f"flow {fid!r} diagram: stage {sid!r} references unknown decl {nid!r}")
+                    if nid not in flow_nodes:
+                        hard.append(f"flow {fid!r} diagram: stage {sid!r} node {nid!r} not in flow.nodes")
+                    placed.add(nid)
+            extra_ids = set()
+            for x in dg.get("extra_nodes") or []:
+                xid = x.get("id") or ""
+                if not xid.startswith("x:"):
+                    hard.append(f"flow {fid!r} diagram: extra node id {xid!r} must be x:-prefixed")
+                if x.get("kind") not in ("artifact", "actor"):
+                    hard.append(f"flow {fid!r} diagram: extra node {xid!r} bad kind")
+                extra_ids.add(xid)
+            ok_ids = stage_ids | placed | extra_ids
+            for l in dg.get("links") or []:
+                if l.get("from") not in ok_ids or l.get("to") not in ok_ids:
+                    hard.append(f"flow {fid!r} diagram: link {l.get('from')!r}->{l.get('to')!r} unknown endpoint")
+                if not _pair(l, "label"):
+                    hard.append(f"flow {fid!r} diagram: link missing bilingual label")
+        elif dtype == "sequence":
+            pids = set()
+            for p in dg.get("participants") or []:
+                pid = p.get("id") or ""
+                if not pid.startswith("p:") or pid in pids:
+                    hard.append(f"flow {fid!r} diagram: participant id {pid!r} invalid/dup")
+                pids.add(pid)
+                if not _pair(p, "name"):
+                    hard.append(f"flow {fid!r} diagram: participant {pid!r} missing bilingual name")
+                if (p.get("kind") or "code") == "code":
+                    for nid in p.get("nodes") or []:
+                        if nid not in decl_ids:
+                            hard.append(f"flow {fid!r} diagram: participant {pid!r} unknown decl {nid!r}")
+            for s in dg.get("steps") or []:
+                if s.get("from") not in pids or s.get("to") not in pids:
+                    hard.append(f"flow {fid!r} diagram: step {s.get('from')!r}->{s.get('to')!r} unknown participant")
+                if not _pair(s, "label"):
+                    hard.append(f"flow {fid!r} diagram: step missing bilingual label")
+        else:
+            hard.append(f"flow {fid!r} diagram: unknown type {dtype!r}")
+
     # 5. soft: flow name still equal to seed's short name (maybe not humanized)
     for f in code_map.get("flows", []):
         seed_short = (f.get("seed") or "").split(".")[-1]

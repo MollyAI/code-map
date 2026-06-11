@@ -215,6 +215,74 @@ class TestInvariants(unittest.TestCase):
         self.assertTrue(any("skipped triage" in m for m in rep["soft"]))
         self.assertTrue(any("ai-inferred" in m for m in rep["soft"]))
 
+    # ---- flow.diagram structural checks (v1.13) ----
+
+    def _with_pipeline(self):
+        raw, cm = self._good()
+        cm["flows"][0]["diagram"] = {
+            "type": "pipeline",
+            "stages": [{"id": "s1", "name_zh": "一", "name_en": "One",
+                        "nodes": ["a.Main"]}],
+            "links": [{"from": "s1", "to": "s1",
+                       "label_zh": "环", "label_en": "loop"}],
+        }
+        return raw, cm
+
+    def _with_sequence(self):
+        raw, cm = self._good()
+        cm["flows"][0]["diagram"] = {
+            "type": "sequence",
+            "participants": [
+                {"id": "p:m", "name_zh": "主", "name_en": "main",
+                 "kind": "code", "nodes": ["a.Main"]},
+                {"id": "p:fs", "name_zh": "文件", "name_en": "fs",
+                 "kind": "artifact"},
+            ],
+            "steps": [{"from": "p:m", "to": "p:fs",
+                       "label_zh": "写", "label_en": "write"}],
+        }
+        return raw, cm
+
+    def test_valid_pipeline_diagram_passes(self):
+        raw, cm = self._with_pipeline()
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertEqual([h for h in rep["hard"] if "diagram" in h], [])
+
+    def test_valid_sequence_diagram_passes(self):
+        raw, cm = self._with_sequence()
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertEqual([h for h in rep["hard"] if "diagram" in h], [])
+
+    def test_diagram_dangling_ref_is_hard(self):
+        raw, cm = self._with_pipeline()
+        cm["flows"][0]["diagram"]["stages"][0]["nodes"] = ["ghost"]
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("unknown decl" in h for h in rep["hard"]))
+
+    def test_diagram_missing_bilingual_label_is_hard(self):
+        raw, cm = self._with_pipeline()
+        cm["flows"][0]["diagram"]["links"][0].pop("label_en")
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("bilingual" in h for h in rep["hard"]))
+
+    def test_diagram_unknown_type_is_hard(self):
+        raw, cm = self._with_pipeline()
+        cm["flows"][0]["diagram"] = {"type": "mindmap"}
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("unknown type" in h for h in rep["hard"]))
+
+    def test_sequence_step_unknown_participant_is_hard(self):
+        raw, cm = self._with_sequence()
+        cm["flows"][0]["diagram"]["steps"][0]["to"] = "p:ghost"
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("unknown participant" in h for h in rep["hard"]))
+
+    def test_diagram_link_unknown_endpoint_is_hard(self):
+        raw, cm = self._with_pipeline()
+        cm["flows"][0]["diagram"]["links"][0]["to"] = "ghost"
+        rep = harness.check_invariants(raw, cm, {})
+        self.assertTrue(any("unknown endpoint" in h for h in rep["hard"]))
+
 
 class TestConfig(unittest.TestCase):
     @unittest.skipUnless(_HAS_YAML, "PyYAML not installed")

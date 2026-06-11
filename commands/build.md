@@ -100,7 +100,7 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - `Read` `.code-map/code-map.draft.json` and `.code-map/unresolved.json`.
 - **Describe only `stale` declarations.** For each class with `"stale": true`, `Read` its file and write `description_zh` + `description_en` (one architecture-level sentence each). Leave every other class untouched (its reused description stays).
 - **Re-route only changed classes.** A class is "changed" iff its `path` is in `incremental.json.changed_files`; only those may need a different layer — move them between `classes` arrays. Leave unchanged classes where the merge placed them (their prior override is intentional).
-- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise. Preserve each edge's `kind`/`via`; when recomputing, branch interface-referencing nodes to `project.dispatch` implementors as `kind:"dispatch"` edges (same rule as full build 6b).
+- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise. Preserve each edge's `kind`/`via`; when recomputing, branch interface-referencing nodes to `project.dispatch` implementors as `kind:"dispatch"` edges (same rule as full build 6b). A flow whose prior `diagram` was stripped by the merge (its referenced decls vanished) arrives as `needs_review` — re-draw the diagram per full-build step 6c or leave it as a DAG flow. Diagrams on untouched flows are reused verbatim; do not regenerate them.
 - **Triage only new unresolved** — apply the unresolved rules (Phase 2 step 3) only to entries whose `path` is in `changed_files`.
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
@@ -161,6 +161,36 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - **Merge** near-duplicate candidates and **split** an over-broad one.
    - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves, cap ~6 hops, cap fan-out ~8).
    Aim for a handful of high-signal business flows, not one per seed.
+
+6c. **Draw the flow diagrams（绘制流程图）.** For each flow you keep, you SHOULD attach an
+   optional `diagram` object — the viewer renders it as a stage-pipeline or a sequence
+   diagram and falls back to the plain DAG when absent or structurally invalid. Pick the
+   type by the story: build/transform/data-processing flows → `"pipeline"`; request-response
+   / component-interaction flows → `"sequence"`; if neither reads clearly, attach nothing.
+
+   **Pipeline** (`{"type":"pipeline","stages":[…],"extra_nodes":[…],"links":[…]}`):
+   - 3–6 `stages`, each `{id, name_zh, name_en, nodes:[decl ids]}`; every staged decl id
+     MUST appear in `flow.nodes`, and a decl may sit in at most one stage. Order of
+     `stages[]` = left→right reading order.
+   - `extra_nodes` (optional): `{id:"x:…", kind:"artifact"|"actor", name, description_zh?,
+     description_en?, stage?}` — artifacts are files/JSON/DBs, actors are users/browsers/
+     external services. Ids MUST be `x:`-prefixed. With `stage` set the node renders inside
+     that stage; without it, after the last stage.
+   - `links`: `{from, to, label_zh, label_en, kind?: "data"|"control"|"dispatch"}` where
+     `from`/`to` are stage ids, staged decl ids, or extra-node ids. **Every link carries a
+     bilingual label naming the thing that flows** (e.g. "Declaration[]", "源文件 · source
+     files"); when unsure of a type name use a verb phrase ("写入磁盘 · write to disk") —
+     never invent type names.
+
+   **Sequence** (`{"type":"sequence","participants":[…],"steps":[…]}`):
+   - 3–7 `participants`, each `{id:"p:…", name_zh, name_en, kind?: "code"|"actor"|"artifact",
+     nodes?:[decl ids]}`; a `code` participant aggregates 1+ decls into one lifeline.
+   - `steps` in TEMPORAL order (array order is the timeline): `{from, to, label_zh, label_en,
+     kind?: "call"|"return"|"self"}`; `self` requires `from === to`.
+
+   **Self-check before writing** (the viewer falls back SILENTLY on any violation, so
+   verify yourself): every referenced decl id exists in the map; staged ids ⊆ `flow.nodes`;
+   stage/participant/extra ids unique; every link/step label has BOTH `_zh` and `_en`.
 
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them. The `project`-level Phase 1 provenance fields — `git`, `code_map_version`, `generated_at`, `files_scanned` — pass through to `code-map.json` unchanged too; never hand-edit `code_map_version` (the plan step relies on it to detect the next upgrade).
 

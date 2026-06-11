@@ -51,6 +51,24 @@ function indexPrev(prev) {
 
 const hasDesc = (c) => !!(c.description_zh || c.description_en || c.description);
 
+// A Phase-2-authored flow.diagram stays valid only while every decl it
+// references still exists; unknown types fail closed (stripped).
+function diagramRefsAlive(dg, liveIds) {
+  if (dg.type === 'pipeline') {
+    for (const s of dg.stages || []) {
+      for (const id of s.nodes || []) if (!liveIds.has(id)) return false;
+    }
+    return true;
+  }
+  if (dg.type === 'sequence') {
+    for (const p of dg.participants || []) {
+      for (const id of p.nodes || []) if (!liveIds.has(id)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 export function merge(raw, prev, changedFiles) {
   const changed = new Set(changedFiles);
   const prevIdx = indexPrev(prev);
@@ -98,6 +116,18 @@ export function merge(raw, prev, changedFiles) {
   }
   for (const f of raw.flows || []) {
     if (!prevFlowIds.has(f.id)) outFlows.push({ ...f, needs_review: true });
+  }
+
+  // diagram annotations ride on flow objects; one whose referenced decls no
+  // longer exist in the fresh Phase 1 output is stripped (the viewer would
+  // fall back to the DAG anyway) and the flow flagged for re-curation.
+  const liveIds = new Set();
+  for (const layer of raw.layers || []) for (const c of layer.classes) liveIds.add(c.id);
+  for (const nf of outFlows) {
+    if (nf.diagram && !diagramRefsAlive(nf.diagram, liveIds)) {
+      delete nf.diagram;
+      nf.needs_review = true;
+    }
   }
 
   const project = { ...(raw.project || {}) };
