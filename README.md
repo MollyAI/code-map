@@ -14,31 +14,20 @@ Try it in your browser — no install required: **https://mollyai.github.io/code
 
 ---
 
-## Features / 功能简介
+## Install / 安装
 
-Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the collapsible left sidebar.
+**Prerequisites:** Claude Code ≥ 2.x and a JS runtime — **Node ≥ 18** (or Bun). No Python, no `pip`. Grammars are bundled WebAssembly: 8 common languages ship inside the plugin; the 6 larger ones (C++, C#, Kotlin, Swift, Objective-C, Dart) are fetched once on first use and cached. If no JS runtime is found, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
 
-**Arch score:** every build also stamps a deterministic, open-ended architecture score (difficulty × execution quality, after gymnastics' open-ended Code of Points) into the map, shown in the topbar after the build time (`Arch Score: 124`) with a penalty-by-penalty tooltip breakdown.
+**前置条件：** Claude Code ≥ 2.x 与一个 JS 运行时——**Node ≥ 18**（或 Bun）。不再需要 Python 或 `pip`。语法以 WebAssembly 形式内置：8 种常用语言随插件打包，6 种较大的（C++、C#、Kotlin、Swift、Objective-C、Dart）首次使用时拉取一次并缓存。若未找到 JS 运行时，请从 https://nodejs.org 安装 Node（`brew install node` / `winget install OpenJS.NodeJS`）。
 
-**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
+```text
+/plugin marketplace add MollyAI/code-map
+/plugin install code-map@code-map
+```
 
-扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从左侧可收起的侧边栏选择流程。
+To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall code-map@code-map`.
 
-**架构评分：** 每次构建还会向地图写入一个确定性的、无上限的架构评分（难度 × 执行质量，借鉴体操开放式计分），展示在顶栏构建时间之后（`架构评分：124`），悬停可查看逐项扣分明细。
-
-**支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
-
----
-
-## Screenshot / 效果截图
-
-<p align="center">
-  <img src="screenshot/vibe_app_code_map.png" alt="Code Map visualization of VibeApp — layered architecture with dependency edges" width="900"/>
-  <br/>
-  <em>Interactive architectural map of <a href="https://github.com/Skykai521/VibeApp">VibeApp</a> — click any node to explore its dependencies, source path, and role.</em>
-  <br/>
-  <em>VibeApp 的交互式架构图谱——点击任意节点即可查看其依赖、源码路径与角色。</em>
-</p>
+更新：`/plugin marketplace update code-map`。卸载：`/plugin uninstall code-map@code-map`。
 
 ---
 
@@ -53,6 +42,22 @@ Scans your project, picks a fitting architectural template (Clean Architecture, 
 `build` runs the analysis, `run` opens the visualization, and `stop` shuts down the server.
 
 `build` 执行分析，`run` 打开可视化页面，`stop` 关闭后台服务。
+
+---
+
+## Features / 功能简介
+
+Scans your project, picks a fitting architectural template (Clean Architecture, MVC, MVVM, MVP, MVI, Layered / N-Tier, Hexagonal, CQRS / Event-Driven, Frontend SPA, CLI Tool, Pipeline, ECS, or Microkernel / Plugin), extracts core classes / structs / traits with their dependency edges, and serves a blueprint-style HTML visualization where you can click any node to see its source path, role, and dependencies — and toggle between **layer** grouping and **flow** view. Flow view traces `uses`-edges forward from entry points in a left→right pipeline, pruning high-in-degree hub nodes as non-expandable leaves; pick a flow from the collapsible left sidebar.
+
+**Arch score:** every build also stamps a deterministic, open-ended architecture score (difficulty × execution quality, after gymnastics' open-ended Code of Points) into the map, shown in the topbar after the build time (`Arch Score: 124`) with a penalty-by-penalty tooltip breakdown.
+
+**Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
+
+扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从左侧可收起的侧边栏选择流程。
+
+**架构评分：** 每次构建还会向地图写入一个确定性的、无上限的架构评分（难度 × 执行质量，借鉴体操开放式计分），展示在顶栏构建时间之后（`架构评分：124`），悬停可查看逐项扣分明细。
+
+**支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
 
 ---
 
@@ -71,23 +76,6 @@ Template auto-detection covers the 13 shapes above, including **C / RTOS kernels
 - **`skip-dirs.txt`** —— 每行一个要在分析时跳过的目录名；`#` 为注释，行首 `-` 表示*取消*某个默认跳过项（例如 `-testsuites`，用于真实源码就放在 `testsuites/` 下的项目）。默认已跳过 `node_modules`、`build`、`test`/`tests`/`testsuites` 等常见目录。
 
 模板自动检测覆盖上述 13 种形态，包括 **C / RTOS 内核**（可识别 `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` 等信号）。第 2 阶段始终会对照真实代码校验所选模板。
-
----
-
-## Install / 安装
-
-**Prerequisites:** Claude Code ≥ 2.x and a JS runtime — **Node ≥ 18** (or Bun). No Python, no `pip`. Grammars are bundled WebAssembly: 8 common languages ship inside the plugin; the 6 larger ones (C++, C#, Kotlin, Swift, Objective-C, Dart) are fetched once on first use and cached. If no JS runtime is found, install Node from https://nodejs.org (`brew install node` / `winget install OpenJS.NodeJS`).
-
-**前置条件：** Claude Code ≥ 2.x 与一个 JS 运行时——**Node ≥ 18**（或 Bun）。不再需要 Python 或 `pip`。语法以 WebAssembly 形式内置：8 种常用语言随插件打包，6 种较大的（C++、C#、Kotlin、Swift、Objective-C、Dart）首次使用时拉取一次并缓存。若未找到 JS 运行时，请从 https://nodejs.org 安装 Node（`brew install node` / `winget install OpenJS.NodeJS`）。
-
-```text
-/plugin marketplace add MollyAI/code-map
-/plugin install code-map@code-map
-```
-
-To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall code-map@code-map`.
-
-更新：`/plugin marketplace update code-map`。卸载：`/plugin uninstall code-map@code-map`。
 
 ---
 
