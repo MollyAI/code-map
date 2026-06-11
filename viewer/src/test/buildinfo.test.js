@@ -89,3 +89,34 @@ test('score without adjustment renders no adjustment line', () => {
   assert.equal(r.text, '2026-06-06 14:30 · Arch Score: 118');
   assert.ok(!/adjustment/i.test(r.title));
 });
+
+// --- lines[] (popover content; title stays its joined form) ---
+
+test('lines carries the structured rows and title is its join', () => {
+  const r = formatBuildInfo({
+    generated_at: '2026-06-06T14:30:09',
+    git: { branch: 'dev', commit: 'f1510ac5f3db9c29193f1ab382e17b17e3a08e08', short: 'f1510ac', dirty: true },
+    score: SCORE,
+  }, 'en');
+  assert.deepEqual(r.lines, [
+    'Branch: dev',
+    'Commit: f1510ac5f3db9c29193f1ab382e17b17e3a08e08',
+    'Built: 2026-06-06 14:30',
+    'Built with uncommitted changes',
+    'Arch Score: 124',
+    'Difficulty D: 109.4 · Execution E: 1.083',
+    'Layering: 82 · Dependencies: 74 · Hygiene: 91',
+    'AI adjustment: +6 — Parser recursion is domain-normal',
+  ]);
+  assert.equal(r.title, r.lines.join('\n'));
+});
+
+test('lines on a non-git project holds only time (+score when present)', () => {
+  const r = formatBuildInfo({ generated_at: '2026-06-06T14:30:09' }, 'en');
+  assert.deepEqual(r.lines, ['Built: 2026-06-06 14:30']);
+});
+
+test('lines is empty when the badge is hidden', () => {
+  const r = formatBuildInfo({}, 'en');
+  assert.deepEqual(r.lines, []);
+});

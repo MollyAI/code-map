@@ -142,7 +142,10 @@ header.topbar {
   color: var(--text-2);
   white-space: nowrap;
   letter-spacing: 0.02em;
+  cursor: pointer;               /* opens the build-popover */
+  transition: color 0.15s;
 }
+.brand .build-info:hover { color: var(--text-1); }
 
 .controls { display: flex; gap: 12px; align-items: center; }
 
@@ -691,6 +694,41 @@ body.light .theme-toggle .icon-moon { display: none; }
 }
 .tooltip.visible { opacity: 1; }
 .tooltip .pkg { color: var(--text-3); }
+
+/* build-info popover (click the topbar badge; body-level like .tooltip) */
+.build-popover {
+  position: fixed;
+  z-index: 110;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-width: min(560px, calc(100vw - 16px));
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--fs-scale));
+  line-height: 1.65;
+  color: var(--text-1);
+  box-shadow: 0 10px 30px var(--shadow-tooltip);
+}
+.build-popover[hidden] { display: none; }
+.build-popover .rows {
+  user-select: text;
+  cursor: text;
+  padding-right: 78px;           /* clears the absolute copy button */
+}
+.build-popover .row { word-break: break-all; }
+.build-popover .copy {
+  position: absolute; top: 8px; right: 8px;
+  border: 1px solid var(--line); border-radius: 4px;
+  background: transparent; color: var(--text-2);
+  padding: 3px 10px; cursor: pointer;
+  font-family: var(--font-mono); font-size: calc(11px * var(--fs-scale));
+  min-width: 64px;               /* sized for "copied"/"failed" so it doesn't reflow */
+  text-align: center;
+  transition: color 0.15s, background 0.15s;
+}
+.build-popover .copy:hover { color: var(--text-0); background: var(--bg-3); }
+.build-popover .copy.ok { color: var(--accent); }
 
 /* zoom controls (bottom-left overlay) */
 .zoom-controls {
