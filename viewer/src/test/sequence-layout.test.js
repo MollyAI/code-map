@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutSequence } from '../layout/sequence.js';
-import { LAYOUT_BASE } from '../layout/metrics.js';
+import { layoutSequence, SELF_LOOP } from '../layout/sequence.js';
+import { LAYOUT_BASE, labelWidth } from '../layout/metrics.js';
 
 const flow = {
   diagram: {
@@ -62,4 +62,22 @@ test('self step 两端同 x；尺寸覆盖全部内容', () => {
   const last = lay.participants[2];
   assert.ok(lay.width >= last.x + last.w);
   assert.ok(lay.height > lay.steps[3].y);
+});
+
+test('相邻生命线距离随长标签加宽（标签不压参与者盒）', () => {
+  const f = JSON.parse(JSON.stringify(flow));
+  f.diagram.steps[0].label_en = 'a quite long message label that must fit between lifelines';
+  const lay = layoutSequence(f, LAYOUT_BASE);
+  const d = lay.lifelines[1].x - lay.lifelines[0].x;
+  assert.ok(d >= labelWidth(f.diagram.steps[0].label_en, LAYOUT_BASE), `distance ${d}`);
+});
+
+test('末位参与者的 self 长标签计入总宽（不被裁掉）', () => {
+  const f = JSON.parse(JSON.stringify(flow));
+  f.diagram.steps.push({ from: 'p:fs', to: 'p:fs',
+    label_zh: '一段很长很长的自环步骤说明文字', label_en: 'long self note', kind: 'self' });
+  const lay = layoutSequence(f, LAYOUT_BASE);
+  const lastLife = lay.lifelines[2].x;
+  const lw = labelWidth('一段很长很长的自环步骤说明文字', LAYOUT_BASE);
+  assert.ok(lay.width >= lastLife + SELF_LOOP.w + 8 + lw, `width ${lay.width}`);
 });

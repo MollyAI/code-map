@@ -19,6 +19,7 @@
 import { truncate } from '../util.js';
 import { pickL } from '../data/diagram.js';
 import { buildLinkPath, flowEdgeClass } from './edges.js';
+import { SELF_LOOP } from '../layout/sequence.js';
 import { NS } from './backend.js';
 
 /** @param {string} tag @param {Record<string, string>} attrs */
@@ -83,8 +84,8 @@ export function buildPipelineContent(backend, lay, ctx, { appendNode, flowDecora
   const lang = st.lang;
 
   const gStages = el('g', { class: 'stages' });
-  for (const s of lay.stages) {
-    const g = el('g', { class: 'stage-band', 'data-stage': s.id });
+  lay.stages.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
+    const g = el('g', { class: 'stage-band stage-c' + (i % 4), 'data-stage': s.id });
     g.appendChild(el('rect', {
       class: 'bg', x: String(s.x), y: String(s.y),
       width: String(s.w), height: String(s.h), rx: '8',
@@ -93,9 +94,10 @@ export function buildPipelineContent(backend, lay, ctx, { appendNode, flowDecora
     title.textContent = truncate(pickL(s.spec, 'name', lang), Math.max(4, Math.floor((s.w - 24) / st.LAYOUT.charW)));
     g.appendChild(title);
     gStages.appendChild(g);
-  }
+  });
 
   const gEdges = el('g', { id: 'edges' });
+  const gLabels = el('g', { class: 'edge-labels' });   // topmost so boxes never cover labels
   for (const { link, from, to, label } of lay.links) {
     const kind = link.kind || 'data';
     gEdges.appendChild(el('path', {
@@ -103,7 +105,7 @@ export function buildPipelineContent(backend, lay, ctx, { appendNode, flowDecora
       'data-from': link.from, 'data-to': link.to, 'data-kind': kind,
       d: buildLinkPath(from, to),
     }));
-    gEdges.appendChild(labelEl(label.x, label.y, pickL(link, 'label', lang)));
+    gLabels.appendChild(labelEl(label.x, label.y, pickL(link, 'label', lang)));
   }
 
   const gNodes = el('g', { class: 'diagram-nodes' });
@@ -113,6 +115,7 @@ export function buildPipelineContent(backend, lay, ctx, { appendNode, flowDecora
   backend.add(gStages);
   backend.add(gEdges);
   backend.add(gNodes);
+  backend.add(gLabels);
 }
 
 /**
@@ -132,7 +135,8 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
   }
 
   const gEdges = el('g', { id: 'edges' });
-  const SELF_W = 26, SELF_H = 14, AR = 7;   // self-loop box + arrowhead size
+  const gLabels = el('g', { class: 'edge-labels' });   // topmost so boxes never cover labels
+  const AR = 7;                                        // arrowhead size
   for (const s of lay.steps) {
     const kind = s.step.kind || 'call';
     const label = `${s.index}. ${pickL(s.step, 'label', lang)}`;
@@ -140,16 +144,18 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
       gEdges.appendChild(el('path', {
         class: flowEdgeClass(kind),
         'data-from': s.step.from, 'data-to': s.step.to, 'data-kind': kind,
-        d: `M ${s.x1} ${s.y} h ${SELF_W} v ${SELF_H} h ${-SELF_W}`,
+        d: `M ${s.x1} ${s.y} h ${SELF_LOOP.w} v ${SELF_LOOP.h} h ${-SELF_LOOP.w}`,
       }));
       // arrowhead pointing back at the lifeline (explicit path — no markers)
       gEdges.appendChild(el('path', {
         class: 'seq-arrowhead',
-        d: `M ${s.x1} ${s.y + SELF_H} l ${AR} ${-AR / 2} l 0 ${AR} Z`,
+        d: `M ${s.x1} ${s.y + SELF_LOOP.h} l ${AR} ${-AR / 2} l 0 ${AR} Z`,
       }));
-      const lt = labelEl(s.x1 + SELF_W + 8, s.y + SELF_H / 2 + 3, label);
-      lt.setAttribute('text-anchor', 'start');
-      gEdges.appendChild(lt);
+      // NB: anchor via class — the .edge-label CSS rule (text-anchor: middle)
+      // would override a text-anchor presentation attribute.
+      const lt = labelEl(s.x1 + SELF_LOOP.w + 8, s.y + SELF_LOOP.h / 2 + 3, label);
+      lt.setAttribute('class', 'edge-label start');
+      gLabels.appendChild(lt);
       continue;
     }
     gEdges.appendChild(el('path', {
@@ -162,7 +168,7 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
       class: 'seq-arrowhead',
       d: `M ${s.x2} ${s.y} l ${dir * AR} ${-AR / 2} l 0 ${AR} Z`,
     }));
-    gEdges.appendChild(labelEl((s.x1 + s.x2) / 2, s.y - 6, label));
+    gLabels.appendChild(labelEl((s.x1 + s.x2) / 2, s.y - 6, label));
   }
 
   const gParts = el('g', { class: 'diagram-nodes' });
@@ -180,4 +186,5 @@ export function buildSequenceContent(backend, lay, ctx, _helpers) {
   backend.add(gLife);
   backend.add(gEdges);
   backend.add(gParts);
+  backend.add(gLabels);
 }

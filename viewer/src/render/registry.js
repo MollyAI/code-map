@@ -64,6 +64,9 @@ export function appendNode(st, group, n, ctx, decorateNode) {
 }
 
 const NO_DECOR = () => [];
+// Pipeline-diagram decl nodes: uniform "card on tinted stage" look — the
+// flow-core/flow-hub accents read as noise inside stage containers.
+const IN_STAGE = () => ['in-stage'];
 /** @param {any} datum */
 function flowDecorate(datum) {
   const out = [];
@@ -162,11 +165,11 @@ const flowView = {
       return;
     }
     if (layout.kind === 'pipeline') {
-      buildPipelineContent(backend, layout.lay, ctx, { appendNode, flowDecorate });
+      buildPipelineContent(backend, layout.lay, ctx, { appendNode, flowDecorate: IN_STAGE });
       return;
     }
     if (layout.kind === 'sequence') {
-      buildSequenceContent(backend, layout.lay, ctx, { appendNode, flowDecorate });
+      buildSequenceContent(backend, layout.lay, ctx, { appendNode, flowDecorate: NO_DECOR });
       return;
     }
     const lay = layout.lay;

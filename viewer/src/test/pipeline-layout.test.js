@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutPipeline } from '../layout/pipeline.js';
-import { LAYOUT_BASE } from '../layout/metrics.js';
+import { LAYOUT_BASE, labelWidth } from '../layout/metrics.js';
 
 const classById = new Map([
   ['a.x', { id: 'a.x', name: 'x' }],
@@ -70,6 +70,29 @@ test('links: 端点解析为 stage/节点矩形，label 锚点在两端之间', 
   assert.ok(l1.label.x > l1.from.x + l1.from.w && l1.label.x < l1.to.x);
   const l2 = lay.links[1];                       // a.y → x:out (node rects)
   assert.equal(l2.from.x, lay.nodes.find((n) => n.datum.id === 'a.y').x);
+});
+
+test('列间距随标签加宽：标签完整落在两矩形之间（不被盒子盖住）', () => {
+  const f = JSON.parse(JSON.stringify(flow));
+  f.diagram.links[0].label_zh = '一个特别长的中文数据标签名称';
+  f.diagram.links[0].label_en = 'a very long english data label';
+  const lay = layoutPipeline(f, classById, LAYOUT_BASE);
+  const l = lay.links[0];                      // s1 → s2
+  const lw = labelWidth('a very long english data label', LAYOUT_BASE);
+  const gap = l.to.x - (l.from.x + l.from.w);
+  assert.ok(gap >= lw, `gap ${gap} should fit label ${lw}`);
+  assert.ok(l.label.x - lw / 2 >= l.from.x + l.from.w, 'label left edge clear of from-rect');
+  assert.ok(l.label.x + lw / 2 <= l.to.x, 'label right edge clear of to-rect');
+});
+
+test('CJK 标签按双倍宽计入列距', () => {
+  const f = JSON.parse(JSON.stringify(flow));
+  f.diagram.links[0].label_zh = '依赖图与重要度评分结果';   // 11 个 CJK
+  f.diagram.links[0].label_en = 'graph';
+  const lay = layoutPipeline(f, classById, LAYOUT_BASE);
+  const l = lay.links[0];
+  const gap = l.to.x - (l.from.x + l.from.w);
+  assert.ok(gap >= labelWidth('依赖图与重要度评分结果', LAYOUT_BASE), `gap ${gap}`);
 });
 
 test('引用失效的 link 被静默丢弃（防御）', () => {

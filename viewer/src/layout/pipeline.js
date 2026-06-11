@@ -8,7 +8,7 @@
 // still defensive (unknown ids are skipped, never thrown).
 // --------------------------------------------------------------------
 
-import { LAYOUT_BASE, nodeWidth } from './metrics.js';
+import { LAYOUT_BASE, nodeWidth, labelWidth } from './metrics.js';
 
 /**
  * @typedef {import('./metrics.js').Layout} Layout
@@ -62,13 +62,35 @@ export function layoutPipeline(flow, classById, LAYOUT) {
   const maxInner = Math.max(LAYOUT.nodeH, ...cols.map(innerH));
   const stageH = TITLE_H + maxInner + SPAD;             // 等高对齐
 
+  // Per-gap widths: a gap grows to fit the widest (CJK-aware, both-language)
+  // label crossing it, so edge labels never overlap stage/node boxes.
+  const unstaged = (dg.extra_nodes || []).filter((/** @type {any} */ e) => e.stage == null);
+  /** @type {Map<string, number>} */
+  const idCol = new Map();
+  cols.forEach((c, i) => {
+    idCol.set(c.s.id, i);
+    for (const m of c.members) idCol.set(m.id, i);
+    for (const e of c.extras) idCol.set(e.id, i);
+  });
+  for (const e of unstaged) idCol.set(e.id, cols.length);
+  const nGaps = cols.length - 1 + (unstaged.length ? 1 : 0);
+  const gapW = new Array(Math.max(0, nGaps)).fill(COL_GAP);
+  for (const l of dg.links || []) {
+    const a = idCol.get(l.from), b = idCol.get(l.to);
+    if (a == null || b == null || a === b) continue;
+    const g = Math.floor((a + b - 1) / 2);   // the gap the label midpoint falls in
+    if (g < 0 || g >= gapW.length) continue;
+    const w = Math.max(labelWidth(l.label_zh, LAYOUT), labelWidth(l.label_en, LAYOUT)) + 20;
+    if (w > gapW[g]) gapW[g] = w;
+  }
+
   const stages = [];
   const nodes = [];
   const extraNodes = [];
   /** @type {Map<string, Rect>} */
   const rectById = new Map();
   let x = PAD_X;
-  for (const c of cols) {
+  cols.forEach((c, i) => {
     stages.push({ id: c.s.id, x, y: PAD_Y, w: c.w, h: stageH, spec: c.s });
     rectById.set(c.s.id, { x, y: PAD_Y, w: c.w, h: stageH });
     let y = PAD_Y + TITLE_H + (maxInner - innerH(c)) / 2;
@@ -86,11 +108,10 @@ export function layoutPipeline(flow, classById, LAYOUT) {
       rectById.set(e.id, n);
       y += LAYOUT.nodeH + ROW_GAP;
     }
-    x += c.w + COL_GAP;
-  }
+    x += c.w + (gapW[i] ?? 0);
+  });
 
   // unstaged extras: one trailing column, vertically centred against stages
-  const unstaged = (dg.extra_nodes || []).filter((/** @type {any} */ e) => e.stage == null);
   if (unstaged.length) {
     const w = Math.max(...unstaged.map((/** @type {any} */ e) => nodeWidth({ name: e.name || '' }, LAYOUT)));
     const colH = unstaged.length * LAYOUT.nodeH + (unstaged.length - 1) * ROW_GAP;
@@ -101,10 +122,10 @@ export function layoutPipeline(flow, classById, LAYOUT) {
       rectById.set(e.id, n);
       y += LAYOUT.nodeH + ROW_GAP;
     }
-    x += w + COL_GAP;
+    x += w;
   }
 
-  const width = x - COL_GAP + PAD_X;
+  const width = x + PAD_X;
   const height = PAD_Y + stageH + LAYOUT.bandPadBottom;
 
   // links: resolve endpoints; dangling refs are skipped (defensive)
