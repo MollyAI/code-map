@@ -65,6 +65,70 @@ test('plan: currentVersion null → version check skipped', () => {
   assert.notEqual(r.reason, 'plugin-version-changed');
 });
 
+// ---- flow.diagram carry-over (v1.13) ----
+
+function diagramRaw() {
+  return {
+    project: {},
+    layers: [{ id: 'domain', name: 'Domain', classes: [
+      { id: 'a.A', name: 'A', path: 'a.py' },
+    ] }],
+    edges: [], flows: [],
+  };
+}
+
+function diagramPrev() {
+  return {
+    project: {},
+    layers: [{ id: 'domain', classes: [{ id: 'a.A' }] }],
+    flows: [{
+      id: 'flow:a', name: 'A 流程', seed: 'a.A', nodes: ['a.A'], edges: [],
+      diagram: {
+        type: 'pipeline',
+        stages: [{ id: 's1', name_zh: '一', name_en: 'One', nodes: ['a.A'] }],
+        links: [{ from: 's1', to: 's1', label_zh: '环', label_en: 'loop' }],
+      },
+    }],
+  };
+}
+
+test('merge: keeps a diagram whose decls all survive', () => {
+  const out = merge(diagramRaw(), diagramPrev(), []);
+  assert.ok(out.flows[0].diagram, 'diagram preserved');
+  assert.notEqual(out.flows[0].needs_review, true);
+});
+
+test('merge: strips a diagram referencing a vanished decl and flags review', () => {
+  const prev = diagramPrev();
+  prev.flows[0].diagram.stages[0].nodes = ['gone.decl'];
+  const out = merge(diagramRaw(), prev, []);
+  assert.equal(out.flows[0].diagram, undefined, 'diagram stripped');
+  assert.equal(out.flows[0].needs_review, true);
+});
+
+test('merge: strips a sequence diagram whose participant decl vanished', () => {
+  const prev = diagramPrev();
+  prev.flows[0].diagram = {
+    type: 'sequence',
+    participants: [
+      { id: 'p:a', name_zh: '甲', name_en: 'A', kind: 'code', nodes: ['gone.decl'] },
+      { id: 'p:fs', name_zh: '文件', name_en: 'fs', kind: 'artifact' },
+    ],
+    steps: [{ from: 'p:a', to: 'p:fs', label_zh: '写', label_en: 'write' }],
+  };
+  const out = merge(diagramRaw(), prev, []);
+  assert.equal(out.flows[0].diagram, undefined);
+  assert.equal(out.flows[0].needs_review, true);
+});
+
+test('merge: strips an unknown-type diagram (fail closed)', () => {
+  const prev = diagramPrev();
+  prev.flows[0].diagram = { type: 'mindmap' };
+  const out = merge(diagramRaw(), prev, []);
+  assert.equal(out.flows[0].diagram, undefined);
+  assert.equal(out.flows[0].needs_review, true);
+});
+
 test('merge: prior project.score is not carried into the merged draft', () => {
   const raw = {
     project: { name: 'p' },
