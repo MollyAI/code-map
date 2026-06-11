@@ -810,3 +810,18 @@ body.light .theme-toggle .icon-moon { display: none; }
 /* dispatch (interface → implementor) flow edges: dashed, slightly muted */
 .edge.flow.dispatch { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
 .dispatch-more { font: 500 11px var(--font-mono); fill: var(--text-2); }
+
+/* ---- flow diagrams: pipeline stages + sequence lifelines (v1.13) ---- */
+.stage-band rect.bg { fill: var(--bg-1); stroke: var(--line); }
+.stage-title { font: 600 12px var(--font-mono); fill: var(--text-1); }
+.edge-label {
+  font: 500 10.5px var(--font-mono); fill: var(--text-2); text-anchor: middle;
+  paint-order: stroke; stroke: var(--bg-0); stroke-width: 3px; stroke-linejoin: round;
+}
+.edge.flow.k-control { opacity: 0.3; }
+.edge.flow.k-return { stroke-dasharray: 5 4; opacity: 0.4; }
+.node.synthetic rect { fill: var(--bg-2); stroke: var(--line-strong); }
+.node.synthetic .fold { fill: none; stroke: var(--line-strong); }
+.lifeline { stroke: var(--line); stroke-dasharray: 4 4; }
+.seq-arrowhead { fill: var(--accent); opacity: 0.7; }
+.flow-item-kind { margin-right: 6px; color: var(--text-3); font-size: 10px; }
