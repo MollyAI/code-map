@@ -24,10 +24,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 function parseArgs(argv) {
   const a = {
     root: '.', out: '.code-map/raw_structure.json',
-    core_percentile: 0.25, core_max_per_layer: 40,
+    core_percentile: 0.3, core_max_per_layer: 40, core_min_per_layer: 4,
     flow_hub_percentile: 0.05, flow_max_depth: 6, flow_seed_max: 12, flow_max_nodes: 25,
     skip: [], name: null, detect_only: false,
-    git_history_limit: 200, git_history: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
@@ -36,6 +35,7 @@ function parseArgs(argv) {
     else if (k === '--out') a.out = next();
     else if (k === '--core-percentile') a.core_percentile = parseFloat(next());
     else if (k === '--core-max-per-layer') a.core_max_per_layer = parseInt(next(), 10);
+    else if (k === '--core-min-per-layer') a.core_min_per_layer = parseInt(next(), 10);
     else if (k === '--flow-hub-percentile') a.flow_hub_percentile = parseFloat(next());
     else if (k === '--flow-max-depth') a.flow_max_depth = parseInt(next(), 10);
     else if (k === '--flow-seed-max') a.flow_seed_max = parseInt(next(), 10);
@@ -43,8 +43,6 @@ function parseArgs(argv) {
     else if (k === '--skip') a.skip.push(next());
     else if (k === '--name') a.name = next();
     else if (k === '--detect-only') a.detect_only = true;
-    else if (k === '--git-history-limit') a.git_history_limit = parseInt(next(), 10);
-    else if (k === '--no-git-history') a.git_history = false;
   }
   return a;
 }
@@ -145,7 +143,7 @@ export async function main(argv) {
   const [decls, edges] = core.buildGraph(allDecls);
   layers.applyTo(decls, layerConfig);
   detection.fit = layers.templateFit(decls, layerConfig);
-  core.markCore(decls, args.core_percentile, args.core_max_per_layer);
+  core.markCore(decls, args.core_percentile, args.core_max_per_layer, args.core_min_per_layer);
   assignDisplayNames(decls); // R3: write _display_name on cross-module name collisions
 
   const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
@@ -206,18 +204,6 @@ export async function main(argv) {
   if (git) projectMeta.git = git;
   const cmVer = pluginVersion(pluginRoot);
   if (cmVer) projectMeta.code_map_version = cmVer;
-  // Commit-history sidecar (separate file — keeps code-map.json lean & Claude-editable).
-  if (git && args.git_history) {
-    const commits = gitmeta.commitHistory(root, { limit: args.git_history_limit });
-    if (commits) {
-      const historyPath = join(dirname(outPath), 'git-history.json');
-      writeFileSync(historyPath, JSON.stringify({
-        anchor: git.commit, limit: args.git_history_limit,
-        truncated: commits.length >= args.git_history_limit, commits,
-      }, null, 2));
-      console.log(`[analyze] wrote ${historyPath} (${commits.length} commits)`);
-    }
-  }
 
   const data = core.toJsonShape(
     decls, edges,

@@ -55,6 +55,8 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
 4. Pick the best-fitting template, weighing the README's stated intent + the directory shape + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — list them with `ls "$("$CM" root)/templates"` and `Read` the chosen one at `<root>/templates/<name>.yml` (where `<root>` is what `"$CM" root` printed). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
 
+   **No Test / Mock / Sample layers — hard rule.** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed.
+
 **A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
 
 ```bash
@@ -121,6 +123,8 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - **Swap** — load a different template from `<root>/templates/<name>.yml` (where `<root>` is `"$CM" root`) and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls "$("$CM" root)/templates"` to confirm).
    - **Tweak** — keep the chosen template but rename / add / remove / merge layers. Each layer id within `layers[]` must remain unique. The frontend reads `name` and `summary`, so renaming is purely cosmetic to the UI.
 
+   Whichever you pick, the **no Test / Mock / Sample layers** rule from Phase 0 (A3.5) applies to the final `layers[]` too: drop any such layer outright, and exclude test/mock/fixture/sample/demo/example declarations from every layer instead of routing them to `uncategorized`.
+
    Record the decision in the output as:
    ```json
    "project": {
@@ -138,13 +142,13 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - `description_zh` — one sentence in 中文
    - `description_en` — one sentence in English
 
-   Both should explain what the declaration does at the architecture level — skip mechanical detail, capture intent. Do **not** describe non-core declarations (leave their description fields unset); the viewer shows a "core-only" placeholder for them. The legacy single `description` field is no longer required. Note: `core` is decided in Phase 1 (top quartile per layer + entry points), but step 5 (focus hint) and step 6 (entry points) below may promote more declarations to `core` — describe those too.
+   Both should explain what the declaration does at the architecture level — skip mechanical detail, capture intent. Do **not** describe non-core declarations (leave their description fields unset); the viewer **renders core declarations only** and shows a "core-only" placeholder for the rest. The legacy single `description` field is no longer required. Note: `core` is decided in Phase 1 (top ~30% per layer, padded to at least 4 per layer so no layer renders a single lonely box, + entry points), but step 5 (focus hint) and step 6 (entry points) below may promote more declarations to `core` — describe those too.
 
 3. Walk the `unresolved.json.skipped` list:
    - If the file is genuinely empty/generated/test code → mark with `tags: ["excluded"]` in the output (do not include in code-map.json).
    - If tree-sitter just couldn't parse it but the file looks important (read it yourself) → add it back manually with `confidence: "ai-inferred"` and `tags: ["ai-inferred"]`. Include `name`, `namespace`, `kind`, `path`, `line`; if you mark it `core: true`, also add `description_zh` + `description_en`.
 
-4. **Re-route classes** against the final architecture from step 0. For each class, ask: does its current layer match what the code actually does? If not, move it from the source layer's `classes` array to the target layer's `classes` array. If step 0 swapped templates, every class needs reassignment — use the new template's `path_segments` / `name_suffixes` as guidance plus the class's actual role. Genuinely ambiguous classes go to `uncategorized`.
+4. **Re-route classes** against the final architecture from step 0. For each class, ask: does its current layer match what the code actually does? If not, move it from the source layer's `classes` array to the target layer's `classes` array. If step 0 swapped templates, every class needs reassignment — use the new template's `path_segments` / `name_suffixes` as guidance plus the class's actual role. Genuinely ambiguous classes go to `uncategorized`. Test/mock/fixture/sample/demo/example declarations are **removed from the map entirely** (the A3.5 hard rule), never re-routed.
 
 5. Apply the focus hint if `$1` was provided. Surface relevant classes by marking `core: true` and writing emphatic descriptions.
 

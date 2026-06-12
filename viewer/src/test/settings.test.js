@@ -8,9 +8,9 @@ function fakeStorage() {
 }
 test('createSettings 带前缀读写、缺失返回 fallback', () => {
   const s = createSettings(fakeStorage(), 'code-map-');
-  assert.equal(s.get('view', 'core'), 'core');
-  s.set('view', 'all');
-  assert.equal(s.get('view', 'core'), 'all');
+  assert.equal(s.get('theme', 'dark'), 'dark');
+  s.set('theme', 'light');
+  assert.equal(s.get('theme', 'dark'), 'light');
 });
 test('migrateGrouping 把 legacy subsystem 映射为 layer', () => {
   assert.equal(migrateGrouping('subsystem'), 'layer');

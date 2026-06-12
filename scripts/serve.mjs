@@ -110,12 +110,6 @@ export function runServer(argv) {
         try { return send(res, 200, readFileSync(dataPath), 'application/json; charset=utf-8'); }
         catch (e) { return send(res, 500, `read failed: ${e}`, 'text/plain'); }
       }
-      if (path === '/git-history.json') {
-        const hp = join(dirname(dataPath), 'git-history.json');
-        if (!existsSync(hp)) return send(res, 200, JSON.stringify({ commits: [] }), 'application/json; charset=utf-8');
-        try { return send(res, 200, readFileSync(hp), 'application/json; charset=utf-8'); }
-        catch (e) { return send(res, 500, `read failed: ${e}`, 'text/plain'); }
-      }
       // static from viewer/
       const candidate = resolvePath(join(viewer, decodeURIComponent(path.replace(/^\//, ''))));
       const relToViewer = relative(viewer, candidate);

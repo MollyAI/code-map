@@ -21,3 +21,14 @@ test('layoutFlow 把 seed 放在第 0 列', () => {
   const b = out.nodes.find(n => n.datum.id === 'B');
   assert.ok(a.x < b.x, 'seed 应在 B 左侧');
 });
+test('layoutFlow 同一流程内所有节点等宽（取最长标签）', () => {
+  const flow = { seed: 'A', nodes: ['A', 'B', 'C'], edges: [{ from: 'A', to: 'B' }, { from: 'B', to: 'C' }] };
+  const classById = new Map([
+    ['A', { id: 'A', name: 'A' }],
+    ['B', { id: 'B', name: 'AVeryLongOrchestratorClassName' }],
+    ['C', { id: 'C', name: 'C' }],
+  ]);
+  const out = layoutFlow(flow, classById, L);
+  const widths = new Set(out.nodes.map(n => n.w));
+  assert.equal(widths.size, 1, `所有节点应等宽，实际: ${[...widths]}`);
+});
