@@ -78,6 +78,22 @@ function dim(penalties) {
   return { score: Math.max(0, round3(100 - total, 0)), penalties };
 }
 
+// Test/mock/sample layers must not exist in a map (build.md A3.5), but a
+// polluted map must not skew the score either way — scoring works on a view
+// with those layers and every edge touching their declarations removed.
+const TESTY_RE = /(^|[-_ ])(test|tests|testing|mock|mocks|fake|fakes|stub|stubs|fixture|fixtures|sample|samples|demo|demos|example|examples)([-_ ]|$)/;
+const isTestLayer = (l) =>
+  TESTY_RE.test(String(l.id || '').toLowerCase()) || TESTY_RE.test(String(l.name || '').toLowerCase());
+
+function scoringView(model) {
+  const all = model.layers || [];
+  const layers = all.filter((l) => !isTestLayer(l));
+  if (layers.length === all.length) return model;
+  const dropped = new Set(all.filter(isTestLayer).flatMap((l) => (l.classes || []).map((c) => c.id)));
+  const edges = (model.edges || []).filter((e) => !dropped.has(e.from) && !dropped.has(e.to));
+  return { ...model, layers, edges };
+}
+
 function declsOf(model) {
   return (model.layers || []).flatMap((l) => l.classes || []);
 }
@@ -99,6 +115,7 @@ function adjacencyOf(model) {
  *  a library's published API surface is its domain center, and internals
  *  referencing their own API types is the norm, not a violation. */
 export function scoreLayering(model) {
+  model = scoringView(model);
   const layers = model.layers || [];
   const n = declsOf(model).length;
   const penalties = [];
@@ -146,6 +163,7 @@ export function scoreLayering(model) {
  *  dense), degree concentration (≥20 edges), TS/JS import-resolution
  *  coverage when present, opacity when dynamic languages dominate. */
 export function scoreDependencies(model) {
+  model = scoringView(model);
   const { ids, adj } = adjacencyOf(model);
   const n = ids.length;
   const nEdge = (model.edges || []).length;
@@ -191,8 +209,11 @@ export function scoreDependencies(model) {
         .filter(([l]) => DYNAMIC_LANGS.has(l))
         .reduce((s, [, v]) => s + v, 0) / langTotal;
       if (dyn > 0.5) {
-        penalties.push(pen('opacity', 8 * dyn, dyn,
-          `${pct(dyn)} of declarations are in dynamic languages — runtime coupling is invisible to static extraction`));
+        // unverifiable ≠ perfect: a clean-looking dynamic graph caps at 85,
+        // and 8·share is the floor on top of whatever is already visible
+        const visible = penalties.reduce((s, p) => s + p.points, 0);
+        penalties.push(pen('opacity', Math.max(8 * dyn, 100 - visible - 85), dyn,
+          `${pct(dyn)} of declarations are in dynamic languages — runtime coupling is invisible to static extraction (clarity capped at 85)`));
       }
     }
   }
@@ -203,6 +224,7 @@ export function scoreDependencies(model) {
  *  isolated (zero-degree) declarations, oversized units (SIG unit-size:
  *  functions >300 loc, types >800 loc). */
 export function scoreHygiene(model) {
+  model = scoringView(model);
   const project = model.project || {};
   const decls = declsOf(model);
   const n = decls.length;
@@ -266,17 +288,21 @@ export function reachDensity(ids, adj, sampleAbove = 3000) {
 
 const W_LAYERING = 0.4, W_DEPENDENCIES = 0.4, W_HYGIENE = 0.2;
 
+const D_CAP = 90;
+
 /**
  * Deterministic baseline score for a code-map.json model.
  * total = round(D × E); no adjustment, no timestamp (byte-stable output).
- *   D (unbounded difficulty) = 10·ln(1+wDecl) + 6·ln(1+wEdge)
- *                            + 4·ln(1+files) + 5·(effLangs−1)
+ *   D (difficulty GATE, capped at 90 — scale filters out toy repos but buys
+ *   nothing beyond the gate; past it, only execution quality ranks)
+ *     = min(90, 10·ln(1+wDecl) + 6·ln(1+wEdge) + 4·ln(1+files) + 5·(effLangs−1))
  *     wDecl = Σ kindWeight (type 1, function 1/3, alias 1/6);
  *     wEdge = edges · wDecl/decls (edges scale by the same granularity);
  *     effLangs counts only languages holding ≥10% of declarations.
  *   E (execution, 0.5–1.5)   = 0.5 + (0.4·L + 0.4·Dq + 0.2·H)/100
  */
 export function computeScore(model) {
+  model = scoringView(model);
   const project = model.project || {};
   const decls = declsOf(model);
   const nDecl = decls.length;
@@ -292,8 +318,9 @@ export function computeScore(model) {
   if (!nLang) nLang = (project.languages || []).length || 1;
   if (!effLang) effLang = nLang;
 
-  const D = 10 * Math.log1p(wDecl) + 6 * Math.log1p(wEdge)
-          + 4 * Math.log1p(nFile) + 5 * Math.max(0, effLang - 1);
+  const Draw = 10 * Math.log1p(wDecl) + 6 * Math.log1p(wEdge)
+             + 4 * Math.log1p(nFile) + 5 * Math.max(0, effLang - 1);
+  const D = Math.min(D_CAP, Draw);
   const layering = scoreLayering(model);
   const dependencies = scoreDependencies(model);
   const hygiene = scoreHygiene(model);
@@ -305,6 +332,7 @@ export function computeScore(model) {
     total: base,
     base,
     difficulty: round3(D, 1),
+    difficulty_raw: round3(Draw, 1),
     execution: round3(E, 3),
     dimensions: { layering, dependencies, hygiene },
     inputs: { decls: nDecl, edges: nEdge, files: nFile, languages: nLang,

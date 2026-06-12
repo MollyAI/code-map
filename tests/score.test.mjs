@@ -125,6 +125,29 @@ test('layering: upward uses edges into an api:true layer are exempt (v2)', () =>
   assert.equal(exempt.penalties.find((p) => p.id === 'layer_violations'), undefined);
 });
 
+test('layering: test/mock/sample layers are excluded from scoring entirely (v2)', () => {
+  const clean = {
+    layers: [
+      { id: 'app', name: 'App', order: 0, classes: [decl('app.A'), decl('app.B')] },
+      { id: 'lib', name: 'Lib', order: 1, classes: [decl('lib.C'), decl('lib.D')] },
+    ],
+    edges: [
+      { from: 'app.A', to: 'lib.C', kind: 'uses' },
+      { from: 'app.B', to: 'lib.D', kind: 'uses' },
+    ],
+  };
+  // a polluted map: a testing layer holding most decls, with heavy upward edges
+  const testDecls = Array.from({ length: 12 }, (_, i) => decl(`t.x${i}`));
+  const polluted = {
+    layers: [...clean.layers, { id: 'testing', name: 'Testing', order: 2, classes: testDecls }],
+    edges: [...clean.edges, ...testDecls.map((d) => ({ from: d.id, to: 'app.A', kind: 'uses' }))],
+  };
+  const a = scoreLayering(mkModel(clean));
+  const b = scoreLayering(mkModel(polluted));
+  assert.equal(a.score, 100);
+  assert.deepEqual(b, a); // no monolayer from test mass, no upward violations from test edges
+});
+
 test('layering: <10 cross-layer uses edges → violation metric not judged', () => {
   const m = mkModel({
     layers: [
@@ -180,15 +203,30 @@ test('dependencies: cycles weigh the largest SCC 90 and smaller SCCs 30 (v2)', (
   assert.equal(c.points, 18); // 90·(3/20) + 30·(3/20)
 });
 
-test('dependencies: opacity penalty when dynamic languages dominate (v2)', () => {
+test('dependencies: opacity caps a clean dynamic-language graph at 85 (v2)', () => {
   const layers = [{ id: 'm', name: 'M', order: 1,
     classes: Array.from({ length: 10 }, (_, i) => decl(`m.c${i}`)) }];
   const dyn = scoreDependencies(mkModel({ layers,
     project: { declarations_by_language: { python: 8, typescript: 2 } } }));
-  assert.equal(dyn.penalties.find((p) => p.id === 'opacity').points, 6.4); // 8·0.8
+  // no visible penalties → opacity = max(8·0.8, 100−0−85) = 15 → unverifiable ≠ perfect
+  assert.equal(dyn.penalties.find((p) => p.id === 'opacity').points, 15);
+  assert.equal(dyn.score, 85);
   const half = scoreDependencies(mkModel({ layers,
     project: { declarations_by_language: { python: 5, typescript: 5 } } }));
   assert.equal(half.penalties.find((p) => p.id === 'opacity'), undefined); // share not > 0.5
+});
+
+test('dependencies: opacity falls back to the 8·share floor when problems are visible (v2)', () => {
+  const cls = Array.from({ length: 10 }, (_, i) => decl(`m.c${i}`));
+  const edges = cls.map((d, i) => ({ from: d.id, to: cls[(i + 1) % 10].id, kind: 'uses' }));
+  const m = mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1, classes: cls }],
+    edges, // one 10-cycle → cycles min(30, 90·1) = 30 already visible
+    project: { declarations_by_language: { python: 10 } },
+  });
+  const D = scoreDependencies(m);
+  assert.equal(D.penalties.find((p) => p.id === 'opacity').points, 8); // max(8·1, 100−30−85<0)
+  assert.equal(D.score, 62); // 100 − 30 − 8
 });
 
 test('dependencies: god node fires only at ≥20 edges, capped at 15', () => {
@@ -260,6 +298,7 @@ test('computeScore: D×E assembly, schema shape, no timestamp', () => {
   assert.equal(s.execution, 1.5); // all dims 100
   // all-class model: wDecl = decls → D = 10·ln5 + 6·ln3 + 4·ln11 ≈ 32.278
   assert.equal(s.difficulty, 32.3);
+  assert.equal(s.difficulty_raw, 32.3); // below the 90 gate: raw == capped
   assert.equal(s.base, 48);
   assert.equal(s.total, s.base);
   assert.deepEqual(s.inputs, { decls: 4, edges: 2, files: 10, languages: 1,
@@ -305,6 +344,32 @@ test('computeScore: extra language adds 5 points to D', () => {
   const two = computeScore(mkModel({ layers,
     project: { declarations_by_language: { typescript: 1, go: 1 } } }));
   assert.equal(round3(two.difficulty - one.difficulty, 1), 5);
+});
+
+test('computeScore: difficulty is a gate, capped at 90 (v2)', () => {
+  const cls = Array.from({ length: 2000 }, (_, i) => decl(`m.c${i}`));
+  const edges = Array.from({ length: 3000 }, (_, i) => ({
+    from: `m.c${i % 2000}`, to: `m.c${(i + 1) % 2000}`, kind: 'uses' }));
+  const s = computeScore(mkModel({ layers: [{ id: 'm', name: 'M', order: 1, classes: cls }], edges }));
+  assert.equal(s.difficulty, 90); // scale beyond the gate buys nothing
+  assert.ok(s.difficulty_raw > 90);
+  assert.equal(s.base, round3(90 * s.execution, 0));
+});
+
+test('computeScore: test layers and their edges leave decl/edge inputs (v2)', () => {
+  const base = {
+    layers: [{ id: 'app', name: 'App', order: 0, classes: [decl('app.A'), decl('app.B')] }],
+    edges: [{ from: 'app.A', to: 'app.B', kind: 'uses' }],
+  };
+  const polluted = {
+    layers: [...base.layers,
+      { id: 'examples', name: 'Examples', order: 1, classes: [decl('ex.E1'), decl('ex.E2')] }],
+    edges: [...base.edges, { from: 'ex.E1', to: 'app.A', kind: 'uses' }],
+  };
+  const s = computeScore(mkModel(polluted));
+  assert.equal(s.inputs.decls, 2);
+  assert.equal(s.inputs.edges, 1);
+  assert.equal(s.total, computeScore(mkModel(base)).total);
 });
 
 test('computeScore: a language under 10% of declarations earns no bonus (v2)', () => {
