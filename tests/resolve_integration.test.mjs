@@ -15,7 +15,7 @@ test('analyze resolves a barrel+alias TS edge end-to-end', async () => {
     writeFileSync(join(dir, 'src', 'consumer.ts'), "import { Widget } from '@/index';\nexport function run() { return new Widget(); }\n");
 
     const out = join(dir, '.code-map', 'raw_structure.json');
-    await main(['--root', dir, '--out', out, '--no-git-history']);
+    await main(['--root', dir, '--out', out]);
 
     const data = JSON.parse(readFileSync(out, 'utf8'));
     const edge = data.edges.find((e) => e.from === 'consumer.run' && e.to === 'widget.Widget');

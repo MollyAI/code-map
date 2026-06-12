@@ -19,6 +19,13 @@ export const DEFAULT_SKIP_DIRS = new Set([
   'androidHostTest', 'androidUnitTest', 'androidInstrumentedTest', 'androidDeviceTest',
   'appleTest', 'iosTest', 'macosTest', 'tvosTest', 'watchosTest',
   'linuxTest', 'mingwTest', 'wasmJsTest', 'wasmWasiTest',
+  // Test/Mock/Sample/Demo trees are never part of the architecture map (the
+  // viewer shows the core layers only), so they are pruned at the walk — they
+  // must not flood layers, importance, or core selection. A leading "-" line
+  // in .code-map/skip-dirs.txt un-skips any of these for a project that truly
+  // ships them as first-party code.
+  'mock', 'mocks', 'sample', 'samples', 'demo', 'demos', 'example', 'examples',
+  'fixtures', 'testdata', 'testFixtures',
   '.code-map',
 ]);
 

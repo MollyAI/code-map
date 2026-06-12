@@ -8,5 +8,6 @@ repos:
       skip: []
       focus: null
     expect:
-      files_min: 30
+      # src/click 本体 ~17 个文件;tests/examples 自 v1.4 起默认 skip,不再计入
+      files_min: 15
       # template / sentinels / entry_points 可按实际跑出结果逐步补充

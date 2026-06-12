@@ -33,11 +33,25 @@ test('markCore tie-break is deterministic by qualified_name', () => {
   // two equal-importance decls in one layer at the k boundary
   const mk = (n) => { const d = Declaration({ name: n, namespace: 'm', kind: 'function', path: 'm.py', line: 1 }); d._layer = 'x'; d._importance = 0.5; return d; };
   const a = mk('aaa'), b = mk('bbb'), c = mk('ccc'), z = mk('zzz');
-  // percentile 0.25 of 4 → k=1; lowest qualified_name (m.aaa) wins
-  markCore([z, c, b, a], 0.25, 40);
+  // percentile 0.25 of 4 → k=1 (minPerLayer=1 disables the lonely-layer floor);
+  // lowest qualified_name (m.aaa) wins
+  markCore([z, c, b, a], 0.25, 40, 1);
   assert.equal(a._core, true);
   assert.equal(b._core, false);
   assert.equal(z._core, false);
+});
+
+test('markCore lonely-layer floor pads up to minPerLayer, importance>0 only', () => {
+  const mk = (n, imp) => { const d = Declaration({ name: n, namespace: 'm', kind: 'function', path: 'm.py', line: 1 }); d._layer = 'x'; d._importance = imp; return d; };
+  // percentile 0.1 of 6 → k=1, floor pads to 4 — but the zero-importance decl
+  // stays non-core even inside the floor.
+  const decls = [mk('a', 0.9), mk('b', 0.8), mk('c', 0.7), mk('d', 0.6), mk('e', 0.5), mk('f', 0)];
+  markCore(decls, 0.1, 40, 4);
+  assert.deepEqual(decls.map((d) => !!d._core), [true, true, true, true, false, false]);
+  // floor never exceeds the layer size, and an all-zero layer stays non-core
+  const zeros = [mk('p', 0), mk('q', 0)];
+  markCore(zeros, 0.5, 40, 4);
+  assert.deepEqual(zeros.map((d) => !!d._core), [false, false]);
 });
 
 test('buildGraph: private decls are downweighted by PRIVATE_PENALTY (R2)', () => {

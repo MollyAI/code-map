@@ -1,5 +1,5 @@
 // scripts/score.mjs — `code-map score`: compute / stamp the arch-score
-// (rubric v1, skills/arch-score/SKILL.md) onto a code-map.json.
+// (rubric v2, skills/arch-score/SKILL.md) onto a code-map.json.
 // Deterministic baseline; --adjust applies the bounded AI correction
 // (validated in lib/score.mjs — out-of-bound deltas exit 1).
 import { readFileSync, writeFileSync } from 'node:fs';

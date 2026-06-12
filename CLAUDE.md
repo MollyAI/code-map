@@ -4,165 +4,102 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Claude Code plugin that builds an interactive architectural map of a target project — multi-language (Kotlin, Java, Python, Go, Rust, TypeScript/JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), **web-tree-sitter (WASM)** powered, served as a local HTML visualization with click-through dependency navigation.
+A Claude Code plugin that builds an interactive architectural map of a target project — 13 languages (Kotlin, Java, Python, Go, Rust, TypeScript/JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), **web-tree-sitter (WASM)** powered, served as a local HTML visualization.
 
-**Runtime: Node ≥18 (or Bun) — no Python.** The pipeline is ESM JavaScript run on a JS runtime; tree-sitter grammars are bundled WebAssembly (8 common ones committed under `grammars/bundled/`; 6 large ones fetched once on first use, sha256-pinned in `grammars/manifest.json`, cached under `${CLAUDE_PLUGIN_DATA}`). This is why the old "wrong python / wrong tree-sitter ABI" crashes are gone: the grammar ABI is frozen at build time, and the only prerequisite is a JS runtime (detected by `bin/code-map`).
+**Runtime: Node ≥18 (or Bun) — no Python, no install step.** Grammars are bundled WASM: 8 committed under `grammars/bundled/`, 6 large ones fetched once on first use, sha256-pinned in `grammars/manifest.json`, cached under `${CLAUDE_PLUGIN_DATA}` (offline miss → that language's files go to `unresolved`, never a crash). When adjusting an extractor, target the vendored WASM grammar's actual node names — the community grammars (kotlin, lua, objc, dart, swift) are a different dialect than the old PyPI ones.
 
 Three slash commands, all thin wrappers over the `bin/code-map` launcher:
 
-- `/code-map:build` — Phase 1 (extraction) + Phase 2 (semantic refinement); `commands/build.md`. Produces `.code-map/code-map.json`.
-- `/code-map:run` — `bin/code-map run` (→ `mapctl.mjs`): reuse a live server or launch `serve.mjs` detached, then open the browser; `commands/run.md`.
-- `/code-map:stop` — `bin/code-map stop` (→ `mapctl.mjs`): SIGTERM the recorded server and clean up; `commands/stop.md`.
-
-**Grammar-version note:** the bundled WASM grammars come from `@sourcegraph/tree-sitter-wasms` (built with tree-sitter-cli 0.21). For the official grammars (python, typescript, go, java, rust, c, cpp, c#) the AST node names match the modern PyPI grammars, so output is identical to the pre-1.0 Python pipeline. The community grammars (kotlin=fwcd, lua, objc, dart, swift) are a *different dialect/version* — they produce correct, useful maps that are **not** byte-identical to the old output (different node vocabulary). When porting/adjusting an extractor, target the vendored WASM grammar's actual node names, not the PyPI grammar's.
+- `/code-map:build` — Phase 1 (extraction) + Phase 2 (semantic refinement); produces `.code-map/code-map.json`. The exact Phase 0/2 contract lives in `commands/build.md`.
+- `/code-map:run` / `/code-map:stop` — server lifecycle via `mapctl.mjs` (`commands/run.md` / `stop.md`).
 
 ## Releasing / versioning
 
-**Before every push to `main`, bump `.claude-plugin/plugin.json`'s `version` if the push changes installed-plugin behavior.** Installed copies are keyed on this version; `/plugin` reports "already at the latest version" when it is unchanged, so users keep running the old cached code until the number changes — source fixes without a bump are silently inert.
-
-Bump for changes to `commands/*.md`, `bin/**`, `scripts/**`, `grammars/**`, `viewer/**`, `templates/**`, `examples/**`, or `plugin.json`/`marketplace.json` metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for things that never alter an installed plugin's behavior: `README*.md`, `CLAUDE.md`, `LICENSE`, `docs/**`, `tests/**`, `eval/**`, `tools/**`, `.gitignore`. `marketplace.json` has no version field today; keep it in sync if that changes.
+**Before every push to `main`, bump `.claude-plugin/plugin.json`'s `version` if the push changes installed-plugin behavior** — installed copies are keyed on it, so source fixes without a bump are silently inert. Bump for `commands/`, `bin/`, `scripts/`, `grammars/`, `viewer/`, `templates/`, `examples/`, plugin metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for `README*`, `CLAUDE.md`, `LICENSE`, `docs/`, `tests/`, `eval/`, `tools/`, `.gitignore`.
 
 ## Repo layout
 
 ```
 .claude-plugin/   plugin.json  marketplace.json
-bin/              code-map         # POSIX-sh launcher: detect node>=18/bun, exec scripts/cli.mjs
+bin/              code-map        # POSIX-sh launcher: detect node>=18/bun, exec scripts/cli.mjs
 commands/         build.md  run.md  stop.md
-skills/           arch-score/SKILL.md   # 架构评分 rubric v1(确定性 D×E + AI 有界修正)
+skills/           arch-score/SKILL.md   # 架构评分 rubric(确定性 D×E + AI 有界修正)
 examples/         default-layers.yml
-grammars/         manifest.json  tree-sitter.js  tree-sitter.wasm   # vendored web-tree-sitter 0.25.10
-  bundled/        # 8 committed grammar .wasm (python js ts go java rust c lua) + tsx
-templates/        # 13 architectural shapes: clean-architecture, mvc, mvvm, mvp,
-                  #   mvi, layered, hexagonal, cqrs, frontend-spa, cli-tool,
-                  #   pipeline, ecs, microkernel
-tools/            fetch-grammars.sh   # dev-only: refetch vendored wasm + print sha256
-scripts/
-  cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs  score.mjs
-  lib/      core.mjs  layers.mjs  templates.mjs  skipdirs.mjs  flows.mjs
-            gitmeta.mjs  vendoring.mjs  score.mjs
-            ts.mjs       # web-tree-sitter wrapper (init/loadLanguage/makeQuery)
-            grammars.mjs # bundled resolver + sha256-verified lazy remote fetch
-            yaml.mjs     # minimal YAML reader for templates/ + architecture.yml
-    extractors/ index.mjs  base.mjs  _common.mjs  _generic? (none — Phase 2 recovers)
-                kotlin java python go rust typescript c cpp csharp swift objc dart lua (.mjs)
-viewer/           index.html  src/...
-tests/            # node --test (*.test.mjs) for pure logic; test_external_harness.py (harness only)
-eval/             # local external-repo eval harness (Python, dev-only) — see Testing (NOT tests/)
+grammars/         manifest.json + vendored web-tree-sitter + bundled/ *.wasm
+templates/        # 13 architectural shapes (clean-architecture, mvc, mvvm, …)
+tools/            fetch-grammars.sh     # dev-only
+scripts/          cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs  score.mjs
+  lib/            core.mjs  layers.mjs  templates.mjs  skipdirs.mjs  flows.mjs  gitmeta.mjs
+                  vendoring.mjs  score.mjs  ts.mjs  grammars.mjs  yaml.mjs  labels.mjs
+    extractors/   index.mjs  base.mjs  _common.mjs  + one .mjs per language
+viewer/           index.html  src/...   # modular native ESM, no build step
+tests/            # node --test for pure logic; test_external_harness.py (eval harness only)
+eval/             # local-only external-repo eval harness (dev-only, never ships)
 ```
 
-ESM modules use relative imports (`./lib/...`, `../ts.mjs`). The pipeline is a single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → the subcommand module. No package.json / npm install — `web-tree-sitter` is vendored under `grammars/`. The launcher passes `--liftoff-only` to node (the tree-sitter-swift WASM makes V8's optimizing tier OOM; baseline-only is stable and faster).
+Single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → subcommand module. No package.json / npm install. The launcher passes `--liftoff-only` to node (the swift grammar OOMs V8's optimizing tier).
 
 ## Pipeline (Phase 0 + three phases)
 
 | Phase | Where | What |
 |---|---|---|
-| 0. Architecture | Claude, via `build.md` | Reads `README.md` + dir tree + the detector's advisory `--detect-only` scores, picks/tweaks a `templates/*.yml`, writes `.code-map/architecture.yml` (inspectable, editable). |
-| 1. Extract | `analyze.mjs` (web-tree-sitter) | Walks the project, parses each file, builds the dependency graph, scores importance, assigns layers from `architecture.yml` (or `lib/templates.mjs` detection if Phase 0 didn't run). Also sets a per-decl `hub` flag and a deterministic `flows[]` (one forward `uses`-traversal per entry point; `lib/flows.mjs`). Writes `raw_structure.json` (+ `project.template_detection`) and `unresolved.json`. **Deterministic — never guesses.** |
-| 2. Refine | Claude, via `build.md` | Verifies/swaps/tweaks the template, writes bilingual descriptions for **core** decls, fixes layer assignments, triages `unresolved`, names & curates `flows[]`. Writes `code-map.json` with `project.architecture`. |
-| 3. Serve | `serve.mjs`, via `mapctl.mjs` | Serves `viewer/` + re-reads `code-map.json` every request (a rebuild shows on refresh). Detached; tracks `{pid,port,url,...}` in `.code-map/server.json`. |
+| 0. Architecture | Claude, via `build.md` | Reads README + dir tree + detector scores, picks/tweaks a `templates/*.yml`, writes `.code-map/architecture.yml`. |
+| 1. Extract | `analyze.mjs` | Walks, parses, builds the dependency graph, scores importance, assigns layers, marks `core`/`hub`, writes deterministic `flows[]`. Outputs `raw_structure.json` + `unresolved.json`. **Deterministic — never guesses.** |
+| 2. Refine | Claude, via `build.md` | Verifies/swaps the template, bilingual descriptions for **core** decls, layer overrides, triages `unresolved`, names/curates flows, draws flow diagrams, stamps the arch score. Writes `code-map.json`. |
+| 3. Serve | `serve.mjs` via `mapctl.mjs` | Serves `viewer/`, re-reads the JSON every request. Detached; state in `.code-map/server.json`. |
 
-The split is deliberate: Phase 1 is auditable; Phase 2 spends tokens only where judgment helps. **Phase 2 is your job on `/code-map:build`** — see `commands/build.md` for the exact contract (template decision under `project.architecture`; bilingual `description_zh`/`description_en` for core decls; `unresolved.skipped` triaged as `excluded` or re-added `ai-inferred`; layer overrides; entry points → `core:true` + `tags:["entry-point"]`; flows named/curated).
+**Phase 2 is your job on `/code-map:build`** — follow `commands/build.md` exactly (including the A3.5 hard rule: no Test/Mock/Sample/Demo/Example layers, and such decls never enter any layer).
 
 ## Common commands
 
-From the target project (not this repo):
+From the target project (CLAUDE_PLUGIN_ROOT is NOT set in the Bash-tool shell — resolve the launcher first):
 
 ```bash
-# No install step — grammars are bundled WASM. Just need a JS runtime (node>=18/bun).
-# Launcher resolution: CLAUDE_PLUGIN_ROOT is NOT in the Bash tool / slash-command
-# shell (only hook/MCP/LSP/monitor subprocesses get it), so commands resolve the
-# launcher themselves. The plugin's bin/ is on the Bash tool PATH, so `code-map` works
-# bare; ./bin/code-map wins in a checkout. Canonical resolver:
 CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"
 
-# Phase 1: extract
-"$CM" analyze --root . --out .code-map/raw_structure.json
-
-# Phase 3: serve via the control the slash commands use (mapctl self-locates viewer/)
-"$CM" run --data .code-map/code-map.json
+"$CM" analyze --root . --out .code-map/raw_structure.json   # Phase 1
+"$CM" run --data .code-map/code-map.json                     # Phase 3
 "$CM" stop
-# (bin/code-map serve --data ... --viewer ... --open runs the server directly, for debugging.)
 
-# Tune core selection (default 0.25 = top quartile/layer, cap 40/layer)
-bin/code-map analyze --root . --out .code-map/raw_structure.json --core-percentile 0.15 --core-max-per-layer 60
+# Core selection tuning (defaults: percentile 0.30, cap 40/layer, floor 4/layer)
+"$CM" analyze --root . --out .code-map/raw_structure.json --core-percentile 0.15 --core-max-per-layer 60 --core-min-per-layer 2
 
-# Skip extra dirs (repeatable). Also honors .code-map/skip-dirs.txt (one name/line; leading "-" un-skips a default).
-bin/code-map analyze --root . --out .code-map/raw_structure.json --skip generated --skip third_party
+# Extra skips (also honors .code-map/skip-dirs.txt; leading "-" un-skips a default)
+"$CM" analyze --root . --out .code-map/raw_structure.json --skip generated
 ```
-
-There is **no install step** (no `bootstrap.py`, no `pip`). Grammars are WASM: `lib/grammars.mjs` resolves a language's `.wasm` from `grammars/manifest.json` — bundled ones from `grammars/bundled/`, the 6 large ones fetched from the pinned URL and sha256-verified into `${CLAUDE_PLUGIN_DATA}/grammars` (fallback `~/.cache/code-map/grammars`) on first use. The ABI is frozen at our build time (web-tree-sitter 0.25.10 + a co-built grammar set), so the "Incompatible Language version" crash can't recur on the user's machine. A remote grammar that can't be fetched offline sends that language's files to `unresolved` (reason `grammar_<lang>_unavailable_offline`) — the pipeline continues. `tools/fetch-grammars.sh` re-fetches the vendored set and prints fresh sha256 when bumping versions.
 
 ## Testing
 
-No linter, no build step; tests use only stdlib / native runners.
+No linter, no build step.
 
-- **Unit tests (`tests/`)** — pure logic in `scripts/lib/` and `viewer/src/`. Run with `node --liftoff-only --test tests/*.test.mjs` (the `--liftoff-only` flag avoids a V8 OOM on the swift grammar). Viewer DOM-free modules: `node --test viewer/src/test/*.test.js`. The CLIs (`scripts/*.mjs`) and DOM wiring (`viewer/src/main.js`) are covered end-to-end instead. The one remaining Python test, `tests/test_external_harness.py`, covers the dev-only eval harness (`python3 -m unittest discover -s tests -p 'test_*.py'`).
-
-- **External-repo eval harness (`eval/` — distinct from `tests/`)** — a **local-only** dev tool that runs the pipeline against real GitHub repos, for evaluating map quality and catching regressions. It only orchestrates (clone via `git`, then shell out to the Node `bin/code-map`); the actual pipeline stays the shipped Node/WASM one. `.gitignore` allowlists only `run.py`/`harness.py`/`config.yml`/`README.md`; clones (`repos/`), golden snapshots (`golden/`), and output (`out/`) are ignored and never ship. Zero user impact — no command invokes it. `harness.py` is pure logic (unit-tested in `tests/test_external_harness.py`); `run.py` is the CLI. All work stays isolated from the real `.code-map/` via an absolute `--out` and a per-repo `--state`. Repos are pinned by commit SHA in `eval/config.yml`. Two paths:
-  - **B — interactive eval (primary):** `run.py prepare <name | --url URL>` (fetch pinned SHA + Phase 1) → Claude does Phase 2 into `eval/out/<name>/code-map.json` → `run.py invariants <name>` (structural checks) → `run.py serve <name>` (browser) / `stop`.
-  - **A — deterministic regression (zero-token):** `run.py bless <name>` snapshots normalized Phase 1; `run.py check <name | --all>` re-runs and golden-diffs. `harness.normalize_raw` strips volatile fields and **canonicalizes unordered lists** — analyze's `edges[]` and per-layer `classes[]` order is not byte-stable run-to-run.
-  - See `eval/README.md`.
+- Unit tests: `node --liftoff-only --test tests/*.test.mjs` and `node --test viewer/src/test/*.test.js` (pure logic only; CLIs and DOM wiring are covered end-to-end). Harness test: `python3 -m unittest discover -s tests -p 'test_*.py'`.
+- `eval/` — local-only harness that runs the pipeline against pinned real repos: `run.py prepare/invariants/serve` (interactive eval) and `run.py bless/check` (zero-token golden regression). See `eval/README.md`.
 
 ## Architectural invariants
 
-Non-obvious, hold across files:
+Non-obvious rules that hold across files (rationale in git history):
 
-**Language-agnostic framework.** `core.mjs` (graph + importance) and `layers.mjs` (layer assignment) operate only on the `Declaration` shape (`extractors/base.mjs`) and never import a language module. Adding a language = one extractor file + one tuple in the registry (`extractors/index.mjs`) + a `grammars/manifest.json` entry. No core changes.
-
-**Extractor contract** (the whole protocol — `base.mjs`; ESM, async):
-
-```js
-export const name = 'kotlin';
-export const extensions = ['.kt', '.kts'];
-export const grammar = 'kotlin';                 // grammars/manifest.json key
-export async function parse(relPath, src, projectRoot) // -> ParseResult
-```
-
-`src` is a **JS string** (web-tree-sitter `startIndex`/`endIndex` are UTF-16 code-unit offsets into the string, NOT UTF-8 bytes — slice the string, never a Buffer). The orchestrator sets `d.language`. Extractors return `Declaration`s; the framework attaches `_layer`/`_in_degree`/`_out_degree`/`_importance`/`_core`/`_hub` during the graph build (`core.buildGraph`, `layers.applyTo`, `core.markCore`, `flows.markHubs`), and `core.toJsonShape` serializes those underscore fields.
-
-**Lazy grammar loading.** `extractors/index.mjs:loadExtractor` dynamically imports an extractor only when its extension is present, and `ts.loadLanguage` loads the WASM grammar on first parse — a missing/unfetchable grammar just makes that language unavailable (its files go to `unresolved`), never a crash.
-
-**Miss rather than misidentify.** Anything web-tree-sitter can't parse cleanly goes to `unresolved.json` for Phase 2, never silently into the map. No regex fallbacks in extractors — Phase 2 recovers them (e.g. C `#include`/macro dispatch deliberately synthesize no edges; recovering them is Phase 2's job).
-
-**C/C++ descend "transparent containers" (`c.mjs`/`cpp.mjs`).** Both extractors recurse — not just over `translation_unit`'s direct children — through nodes that *hold* file-scope declarations but aren't themselves architectural: `preproc_if`/`preproc_ifdef`/`preproc_else`/`preproc_elif`/(`elifdef`/`elifndef`), `linkage_specification`, `declaration_list`, `ERROR`, plus (cpp) `template_declaration`/`namespace_definition`. Without this, a kernel that wraps a whole file in `#if ( configUSE_TIMERS == 1 )` yields **zero** decls (the functions are grandchildren), and tree-sitter's error-recovery `ERROR` nodes in huge/macro-heavy files swallow definitions (FreeRTOS `tasks.c`: 1→120 functions). The recursion **never enters `compound_statement`**, so loop-style macros inside function bodies can't be mistaken for definitions. Same-name definitions repeated across mutually-exclusive `#if`/`#else` branches are deduped by `(kind, qualified-name, signature)` — the signature in the key keeps genuine C++ overloads. **Function-style-macro definitions are recovered** (still AST-grounded, not regex): the first arg of `portTASK_FUNCTION( prvTimerTask, … ) { … }` becomes the function name, in both parse forms (variant A = `function_definition` with a `macro_type_specifier` + empty declarator; variant B = a bare `call_expression`/`expression_statement` immediately followed by a `compound_statement` at file scope). These carry `confidence:"low"` + `tags:["macro-defined"]` so Phase 2 can audit them. Helpers (`orderedIdentifiers`/`macroFnFromDef`/`macroFnFromCall`) live in `_common.mjs`. NB: this **intentionally** diverges from the old Python pipeline's byte-identical C output — preproc/macro recovery is the point.
-
-**Swift extensions: the extended-type name is NOT the node identity (`swift.mjs`).** This grammar parses `extension Foo { … }` as a `class_declaration` carrying an `extension` keyword child. Two cases split in the fold pass: (1) `Foo` is declared in the **same file** → fold the extension into it (`method_count`/refs/supertypes merge) so a type and its `extension` blocks don't become colliding nodes (the app pattern of splitting an impl). (2) `Foo` is declared **elsewhere** → naming a node `Foo` is wrong: every operator file (`extension ObservableType { func map }`) would collapse to one misleading, cross-file-**duplicated** label (RxSwift had **115 `ObservableType` nodes, 396 extension nodes = 45% of the map**, plus `Int`/`Bool`/`Error` from `extension Int: KVORepresentable` masquerading as first-party types). Instead **surface the member `function_declaration`s as nodes** (the real units — the operators `map`/`filter`/`flatMap`/…), mirroring Kotlin's `composable_function` precedent; tagged `["extension-method"]`, deduped per `(extendedType, memberName)` so arity overloads in one file collapse to one box. Member-less extensions (pure conformance / foreign-type adornment) **emit nothing** — miss, not misidentify; this makes the `Int`/`Bool` masquerade vanish for free. Residual (accepted): the *same* operator on the *same* host split across organizational files (`CombineLatest.swift` + `+arity` + `+Collection`) still yields one node per file — a cross-file same-host merge would need framework-level logic that risks over-merging other languages. Like the C/C++ note, this **intentionally** diverges from the old byte-identical Swift output.
-
-**Walker dedups by realpath (`analyze.mjs:walkProject`).** Source files are visited in **sorted** order and every yielded path is deduped by `realpathSync` — a physical file reachable through more than one path is parsed exactly once (the lexicographically-earliest path wins). SwiftPM repos symlink a shared `Platform/` module into each target dir (RxSwift: `RxSwift/Platform/AtomicInt.swift` → `../../Platform/AtomicInt.swift`); without this the same file is parsed N times, inflating the graph with phantom duplicate symbols (`add`/`sub`/`Bag` ×3). Language-agnostic and output-neutral for symlink-free repos (verified: `click` byte-identical before/after). Broken symlinks (realpath throws) are skipped.
-
-**Edge resolution, importance, core (`core.mjs`).** `resolve` tries qualified name → de-adorned base → short name. On a short-name *collision* it disambiguates by linkage, not guessing: a definition in the **same file** as the caller wins; else, if exactly one candidate is **public** (`visibility != "private"`), a cross-file ref must mean that one. Extractors set `visibility` (C `static`→`"private"`; Go lowercase-initial→`"private"`; Python `_`-prefixed non-dunder→`"private"`; TS/JS non-`export`ed top-level→`"private"`; default `"public"`). Importance **blends log-normalized in- and out-degree** (`0.55·in + 0.35·out + 0.1·entry-point-boost`, each degree `log1p(deg)/log1p(max_deg)` so one super-hub doesn't crush the long tail). Private decls are then **downweighted** (`importance *= PRIVATE_PENALTY` = 0.3 in `buildGraph`) so internal helpers fall out of `core`; entry-points stay core regardless (`markCore`'s `isEntryPoint` override). Fan-out carries a real share deliberately: at the old `0.7/0.2` a layer's pure data sinks (high fan-in, zero fan-out) buried its behavioral drivers (services / orchestrators / compilers — high fan-out, low fan-in) out of `core` entirely. `markCore` takes **rank-based** top-`percentile`/layer (default 0.25), capped at `--core-max-per-layer` (40), gated on `importance > 0` (so a homogeneous layer of importance-0 decls isn't wholly marked core). `Declaration.line` (1-indexed) is serialized for `@path:line` deep-links.
-
-**Node identity ≠ display label (`lib/labels.mjs`).** A node's identity stays `id = qualifiedName = namespace.name` — never changed. But the bare `name` collides on the canvas when N modules export the same short symbol (13 extractors each have a top-level `parse`; per-adapter `main`; etc. — these are *label* collisions, not identity collisions, since `namespace` is path-derived). `analyze.mjs` calls `assignDisplayNames(decls)` (after `markCore`, before `toJsonShape`) to compute a **globally-unique `display_name`**, written to `code-map.json` **only when it differs from `name`** (so clean type-level repos like Gson get no new field — the negative guard). The split (deterministic, language-agnostic): a boilerplate name (`parse`/`main`/`run`/…) fanned across ≥3 sibling modules → drop the name, label by the distinguishing namespace segment (`kotlin`/`java`/…); any other collision → `<distinguisher>:<name>` (`server:run`, `api:Config`). Distinguisher = namespace segments left after stripping the group's common prefix+suffix (path-stem fallback); two repair passes guarantee uniqueness without numeric suffixes. The viewer prefers `display_name || name` for the node box, detail-panel title, and edge rows. Go methods feed this for free: `go.mjs` folds the receiver into a method's `namespace` (`pkg.Receiver.Method`), so same-package same-name methods (multiple `Close`) become `Server:Close`/`Conn:Close` instead of colliding.
-
-**Honest layer counts (`viewer/src/data/counts.js`).** A layer header is no longer always "N 个类": `honestCount` splits members by `kind` (types vs functions/methods), and `countLabel` renders all-types → "N 个类", all-functions → "N 个函数", mixed → "N 项（M 类 · K 函数）" (bilingual via i18n `count_types`/`count_functions`/`count_mixed`).
-
-**Templates & layer assignment.** Phase 1 picks a template from `templates/*.yml` by signal-scoring files, manifest deps, and dir names (`lib/templates.mjs:detectTemplate`); the winner's `layers` are the buckets, which Phase 2 may accept/swap/tweak. Resolution precedence (`layers.loadConfig`): (1) `.code-map/architecture.yml` (Phase 0) > (2) `templates/` + detection > (3) embedded clean-architecture fallback. **`loadConfig` always returns a detection dict, never `null`** — the detector runs even on path (1), so `project.template_detection` carries real `scores`/`evidence` with `reason: "ai-phase0"`; fallback paths carry a `reason` (`"no-templates-dir"`, `"no-valid-templates"`, …) with empty scores. Any `reason` other than `"ai-phase0"` means signal detection did *not* run → Phase 2 treats the architecture as unverified. After layer assignment, `analyze.mjs` attaches `template_detection.fit` (`layers.templateFit`, a pure advisory measure: `uncategorized_pct`, `largest_layer_pct`, `empty_layers`, `fits`) — `fits:false` (≥25% uncategorized, or ≥2 empty layers beside one catch-all holding ≥60%, judged only at ≥20 decls) is the reliable tell that an app template was forced onto a **library** and is a **hard trigger** for Phase 2 (`build.md` step 0) to swap/derive layers from the package structure. Templates + `architecture.yml` are read by `lib/yaml.mjs` (a minimal YAML subset parser validated byte-identical to PyYAML on all 13 templates; `architecture.json` also accepted). Within a template, `assignLayer` reverses path + namespace segments so deeper packages outweigh prefixes (`app/domain/order/data/...` → `data`): first pass on `path_segments`, second on `name_suffixes`, fallback `uncategorized` (auto-appended). The frontend reads only `layer.name`/`summary`/`classes`; `layer.id` is internal and AI may rename it in Phase 2 as long as ids stay unique per `layers[]`.
-
-**One canonical skip list (`lib/skipdirs.mjs`).** `analyze.mjs` and `templates.mjs` both pull `DEFAULT_SKIP_DIRS` from `skipdirs.mjs` so they scan the same file set (divergent literals once let test-heavy repos flood the graph and pollute `core`). Per-project tuning without code edits: repeatable `--skip DIR` and `.code-map/skip-dirs.txt` (one name/line; `#` comments; leading `-` removes a default). Both walk with a recursive `readdirSync` + in-place dir pruning via the shared `pruneDirnames(dirnames, skip, filenames)`. Pruning is **path-aware**: the output-dir names in `OUTPUT_SKIP_DIRS` (`build`/`out`/`dist`/`target`) are skipped only when they sit *beside a build manifest* (`build.gradle*`/`pom.xml`/`Cargo.toml`/…), so a *source package* literally named `build` (e.g. `com.vibe.build`) isn't silently swallowed — bare-name matching once ate whole modules. Defaults also skip by-convention vendored trees (`third_party`, `Pods`, `Carthage`, `.cxx`, …).
-
-**Vendored-flooding advisory (`lib/vendoring.mjs`).** No skip list can know a project-specific vendored dir (e.g. an on-device toolchain under `build-tools/`). So `analyze.mjs` emits a deterministic, advisory-only `project.advisories`: top-level dirs that are large *and* dominated by packages outside the project's own roots are named so Phase 2 / the user can add them to `skip-dirs.txt`. Own roots come from build manifests (`namespace`/`applicationId`/first Maven `<groupId>`) — the only reliable anchor when vendored code outnumbers first-party code. Never changes extraction.
-
-**Entry points are auto-promoted.** `core.isEntryPoint` (`MainActivity`, `*Application`, `/cmd/`, …) forces `core:true` + the `"entry-point"` tag regardless of in-degree. Both Phase 1 and the Phase 2 contract enforce this — keep them in sync.
-
-**Two grouping modes, two renderers.** `viewer/` toggles (`#group-toggle`) between *layer* grouping (`groupedLayers`/`layoutLayers`/`render`) and *flow* mode (left→right DAG: `renderFlow`/`layoutFlow`/`buildFlowEdgePath`). Flow mode renders one `flows[]` entry, selected from the left **flow sidebar** (`#flow-sidebar`/`#flow-list` — a vertical, collapsible list whose collapse state persists via the `flow-collapsed` setting). When the JSON has no `flows[]`, the viewer synthesizes them client-side (`data/flows.js` `traceFlow`/`synthesizeFlows`, mirroring `lib/flows.mjs`): forward `uses`-traversal from an entry point, `hub:true` nodes as leaves, depth-capped. Phase 1 writes `flows[]` deterministically; Phase 2 names/curates. Phase 1 now seeds flows at entry points **and** public orchestrators (high-out-degree public decls; `flows.selectFlowSeeds`), and is **dispatch-aware**: `flows.buildDispatchIndex` builds an interface→implementors map from declarations' `supertypes` strings (NOT graph `extends` edges — those drop a supertype whose target node was never extracted, e.g. Kotlin `fun interface`), and `traceFlow` fans a node's interface-referencing `refs` out to implementors as `kind:"dispatch"` edges (capped fan-out, overflow in `dispatch_omitted`). `analyze.mjs` exposes the index as `project.dispatch` for Phase 2 to name the chains. The viewer renders `kind:"dispatch"` edges dashed; client-side `synthesizeFlows` stays uses-only (no `refs` to expand). Forward-BFS is bounded by a node budget (`--flow-max-nodes`, default 25) so a densely-connected library doesn't yield 100+-node mega-flows; and because BFS doesn't focus in such graphs (every seed reaches the same blob), `flows.buildDispatchFlows` additionally emits **focused dispatch flows** — one per major dispatch interface, rooted at its canonical dispatcher (highest-out-degree non-implementor referencer), depth-2 fan-out to all implementors + their collaborators — which `suppressSubsets` never drops. Choice persists via `Settings`; in flow mode the core/all `#view-toggle` is hidden (the filter doesn't apply). Since v1.13 a flow may carry an OPTIONAL Phase-2-authored `diagram` annotation (`type:"pipeline"` stage containers with bilingual labelled data links + controlled non-code nodes `artifact`/`actor`, or `type:"sequence"` participants/lifelines/temporally-ordered steps — see `commands/build.md` 6c). Rendering dispatch lives in `render/registry.js`'s flowView via `data/diagram.js:diagramOf` (validate → render; **any structural violation falls back silently to the DAG renderer** — miss rather than misidentify; old JSON without the field renders byte-identical). Pure geometry: `layout/pipeline.js` / `layout/sequence.js`; DOM: `render/diagrams.js`. Sequence arrowheads are explicit triangle paths, NOT `<marker>` — export/png.js strips `id`s on the clone, which would break `url(#…)`. `incremental.mjs` merge strips a `diagram` whose referenced decls vanished and flags the flow `needs_review`; `eval/harness.py` check_invariants #7 enforces the same structure.
-
-**Determinism for cross-pipeline equivalence.** Two spots were made order-independent so output doesn't depend on filesystem walk order: `core.buildGraph` builds edges in a deterministic order (extends before uses, dedup by `(from,to)` so extends wins a dual pair), and `core.markCore` breaks importance ties by `qualified_name`. Importance uses banker's rounding (`round3`) to match the pre-1.0 Python `round(x,3)`. These let the official-grammar languages stay byte-identical to the old pipeline.
-
-**Architecture score (`lib/score.mjs`, skill `skills/arch-score/SKILL.md`).** `code-map score` stamps a deterministic, open-ended score into `project.score`: `total = round(D × E) + adjustment`, where D grows logarithmically with size (unbounded) and E ∈ [0.5, 1.5] weighs layering 0.4 / dependency clarity 0.4 / hygiene 0.2, every penalty itemized for audit. **No timestamps in the output** — same JSON in, byte-identical score out (eval-golden safe). The AI may adjust only via `--adjust` (CLI clamps |delta| ≤ 10% of base, bilingual reasons mandatory) per the skill's whitelist; `incremental.mjs` merge deliberately drops the prior score (regression-locked) and build.md re-stamps it on both paths (Phase 2 step 8 / B5). The viewer badge (`ui/buildinfo.js`) appends `架构评分：N` / `Arch Score: N` after the build time only when `project.score` exists — absent field renders byte-identical to pre-1.11 output (showcase-gallery contract).
-
-**Build provenance + incremental builds.** `analyze.mjs` stamps `project.git` (`branch`/`commit`/`short`/`dirty`) via `lib/gitmeta.mjs` (defensive, shells out to `git`; omitted off-git); the viewer shows it as a topbar badge. The build **anchor** is the commit in the previous `code-map.json`'s `project.git.commit`. `build.md` runs `bin/code-map plan` to pick **full** (Path A) vs **incremental** (Path B). **Only Phase 2 is incremental — Phase 1 always runs full** (cheap, and importance/`core`/`hub`/flows are global). Path B: `bin/code-map merge` (pure dict→dict, `scripts/incremental.mjs`) reuses prior Phase 2 annotations for unchanged files, flagging `stale` and flow `needs_review`; Phase 0 skipped, `architecture.yml` reused. **Any uncertainty → full** (`plan` reports a `reason`). Delete `code-map.json` to force full.
-
-**Phase 3 is intentionally dumb.** `serve.mjs` re-reads `code-map.json` every request (no caching) so a later `/code-map:build` shows without restart. Don't add caching.
-
-**Server lifecycle is owned by `mapctl.mjs`, not the command markdown.** `run.md`/`stop.md` are one-shot: a single `bin/code-map` call relaying its stdout verbatim. Keep them dumb — no shell-side PID files or polling. Mechanism: `serve.mjs --state .code-map/server.json` atomically writes `{pid,port,url,data,viewer,started_at}` the instant the port binds, and removes it on graceful shutdown (`process.on('exit')` + SIGTERM→`process.exit(0)`). `mapctl.mjs run` reuses a live pid (never a second instance) or spawns `cli.mjs serve` detached (`{detached:true, stdio:['ignore',log,log]}` + `unref()`) and waits for `server.json`; `stop` SIGTERMs, waits, then removes it as a backstop. A stale `server.json` is auto-cleared on the next `run`/`stop`.
+- **Language-agnostic framework.** `core.mjs` / `layers.mjs` operate only on the `Declaration` shape (`extractors/base.mjs`), never import a language module. Adding a language = one extractor + one registry tuple + one manifest entry.
+- **Extractor contract** (`base.mjs`; ESM, async): `export const name / extensions / grammar` + `async parse(relPath, src, projectRoot) -> ParseResult`. `src` is a **JS string** — web-tree-sitter offsets are UTF-16 code units, slice the string, never a Buffer. Grammars and extractors load lazily.
+- **Miss rather than misidentify.** Anything not cleanly parsed goes to `unresolved.json` for Phase 2 — no regex fallbacks in extractors.
+- **C/C++ extractors descend "transparent containers"** (`preproc_*`, `linkage_specification`, `ERROR`, cpp `template_declaration`/`namespace_definition`) but never enter `compound_statement`; function-style-macro definitions are recovered AST-grounded with `confidence:"low"` + `tags:["macro-defined"]`; dedup by `(kind, qname, signature)`.
+- **Swift extensions are not named after the extended type** — same-file extensions fold into the type; cross-file extensions surface their member functions as nodes (`tags:["extension-method"]`); member-less extensions emit nothing.
+- **Walker dedups by realpath** (`analyze.mjs:walkProject`), sorted order — symlinked files parse exactly once.
+- **Importance & core (`core.mjs`).** Importance = `0.55·in + 0.35·out + 0.1·entry-boost` (log-normalized degrees); private decls ×0.3 (`PRIVATE_PENALTY`); `resolve` disambiguates short-name collisions by same-file then unique-public, never guesses. `markCore`: rank-based top-percentile/layer (default 0.30), cap 40, **floor 4** (lonely layers padded from their own members), gated on `importance > 0`. Entry points (`isEntryPoint`) are always `core:true` + `tags:["entry-point"]` — Phase 1 and the Phase 2 contract must stay in sync on this.
+- **Node identity ≠ display label (`lib/labels.mjs`).** `id = qualifiedName`, never changed; `assignDisplayNames` writes a globally-unique `display_name` only when it differs from `name`. The viewer renders `display_name || name` everywhere.
+- **Templates & layers (`lib/templates.mjs`, `lib/layers.mjs`).** Precedence: `.code-map/architecture.yml` > template detection > embedded fallback; `loadConfig` always returns a detection dict (`reason:"ai-phase0"` means Phase 0 ran). `template_detection.fit.fits === false` is a hard trigger for Phase 2 to re-architect. `assignLayer` matches reversed path/namespace segments (deepest wins); YAML read by the minimal `lib/yaml.mjs`.
+- **One canonical skip list (`lib/skipdirs.mjs`)** shared by walk + detection. Output dirs (`build`/`out`/`dist`/`target`) are pruned only beside a build manifest. Test/mock/sample/demo/example/fixtures trees are skipped by default — the map shows the core architecture only. Per-project tuning via `--skip` / `.code-map/skip-dirs.txt`. `lib/vendoring.mjs` adds an advisory-only `project.advisories` for project-specific vendored dirs.
+- **Viewer (modular native ESM, no build step — don't propose React).** Two modes: layer bands and flow (left→right DAG + optional Phase-2 `diagram` annotations, pipeline/sequence). Layer mode renders **core declarations only** (the core/all toggle was removed in v1.14). A structurally invalid `diagram` falls back silently to the DAG renderer. No SVG `<marker>` — export/png.js strips ids; arrowheads are explicit paths. Flow/DAG/pipeline/sequence node boxes are uniform-width per flow, sized to the full label (no truncation).
+- **Determinism.** Edge build order and `markCore` tie-breaks are order-independent; importance uses banker's rounding (`round3`). Official-grammar languages stay byte-identical to the pre-1.0 pipeline.
+- **Arch score (`lib/score.mjs`, `skills/arch-score/SKILL.md`).** Deterministic `total = round(D × E) + adjustment`, **no timestamps** (eval-golden safe); AI adjustment only via `--adjust`, clamped to ±10% with mandatory bilingual reasons; `incremental.mjs` merge drops the prior score and build.md re-stamps it. Rubric v2: **D is a gate, capped at 90** — scale filters out toys, then only E ranks; D uses kind-weighted counts (type 1, function 1/3, alias 1/6 — extractor granularity differs per language) and only languages holding ≥10% of decls; test/mock/sample layers and their edges are excluded from scoring entirely (A3.5-polluted maps must not skew either way); cycles weigh the largest SCC (2-node pairs exempt); `opacity` caps a dynamic-language-dominated Dq at 85 (unverifiable ≠ perfect); upward edges into `api: true` layers are exempt (flag authored in architecture.yml, passed through by `analyze`).
+- **Incremental builds.** Only Phase 2 is incremental — **Phase 1 always runs full**. `plan` picks full/incremental; any uncertainty → full. `merge` reuses prior annotations, flags `stale` decls and `needs_review` flows, strips diagrams whose decls vanished.
+- **Phase 3 is intentionally dumb.** `serve.mjs` re-reads `code-map.json` every request — don't add caching.
+- **Server lifecycle is owned by `mapctl.mjs`.** `run.md`/`stop.md` stay one-shot relays — no shell-side PID files or polling. `serve.mjs --state` writes/cleans `.code-map/server.json`; `mapctl` reuses a live pid, never starts a second instance.
 
 ## Sources
 
-- `README.md` — user-facing overview, pipeline, limitations
-- `commands/build.md` — Phase 1+2 contract (what Claude does in Phase 2)
-- `commands/run.md` / `stop.md` — server lifecycle
+- `README.md` — user-facing overview
+- `commands/build.md` — the Phase 0/2 contract (the authoritative spec for what Claude does)
 - `eval/README.md` — external-repo eval harness
-- `scripts/lib/extractors/base.mjs` — `Declaration`/`ParseResult` + the extractor protocol
-- `scripts/lib/extractors/index.mjs` — language registry + lazy load; `grammars/manifest.json` — grammar pins
-- `scripts/lib/ts.mjs` / `lib/grammars.mjs` — web-tree-sitter wrapper + WASM grammar resolution
-```
+- `scripts/lib/extractors/base.mjs` — `Declaration`/`ParseResult` + extractor protocol
+- `grammars/manifest.json` — grammar pins
