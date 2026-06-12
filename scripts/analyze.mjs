@@ -207,7 +207,8 @@ export async function main(argv) {
 
   const data = core.toJsonShape(
     decls, edges,
-    layerConfig.map((l) => ({ id: l.id, name: l.name, order: l.order, summary: l.summary })),
+    layerConfig.map((l) => ({ id: l.id, name: l.name, order: l.order, summary: l.summary,
+      ...(l.api === true ? { api: true } : {}) })),
     projectMeta, flowList);
 
   writeFileSync(outPath, JSON.stringify(data, null, 2));

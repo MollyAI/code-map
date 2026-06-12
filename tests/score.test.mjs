@@ -106,6 +106,25 @@ test('layering: upward uses edges are violations once ≥10 cross-layer edges', 
   assert.equal(v.points, 15); // 3/12 = 0.25 → ·60 = 15
 });
 
+test('layering: upward uses edges into an api:true layer are exempt (v2)', () => {
+  const apiDecls = [decl('api.A'), decl('api.B')];
+  const implDecls = Array.from({ length: 12 }, (_, i) => decl(`impl.i${i}`));
+  const edges = [];
+  for (let i = 0; i < 11; i++) edges.push({ from: `impl.i${i}`, to: 'api.A', kind: 'uses' }); // upward
+  for (let i = 0; i < 5; i++) edges.push({ from: 'api.A', to: `impl.i${i}`, kind: 'uses' });  // downward
+  for (let i = 5; i < 10; i++) edges.push({ from: 'api.B', to: `impl.i${i}`, kind: 'uses' }); // downward
+  const layersOf = (apiFlag) => [
+    { id: 'api', name: 'API', order: 0, classes: apiDecls, ...(apiFlag ? { api: true } : {}) },
+    { id: 'impl', name: 'Impl', order: 1, classes: implDecls },
+  ];
+  // without the flag: 11/21 upward → ·60 = 31.4 → cap 30
+  const plain = scoreLayering(mkModel({ layers: layersOf(false), edges }));
+  assert.equal(plain.penalties.find((p) => p.id === 'layer_violations').points, 30);
+  // with api:true: the 11 api-bound edges leave both numerator and denominator
+  const exempt = scoreLayering(mkModel({ layers: layersOf(true), edges }));
+  assert.equal(exempt.penalties.find((p) => p.id === 'layer_violations'), undefined);
+});
+
 test('layering: <10 cross-layer uses edges → violation metric not judged', () => {
   const m = mkModel({
     layers: [
@@ -117,7 +136,7 @@ test('layering: <10 cross-layer uses edges → violation metric not judged', () 
   assert.equal(scoreLayering(m).penalties.find((p) => p.id === 'layer_violations'), undefined);
 });
 
-test('dependencies: full cycle hits the 40-point cycles cap', () => {
+test('dependencies: full cycle hits the 30-point cycles cap (v2)', () => {
   const cls = ['a', 'b', 'c', 'd'].map((x) => decl(`m.${x}`));
   const m = mkModel({
     layers: [{ id: 'm', name: 'M', order: 1, classes: cls }],
@@ -129,8 +148,47 @@ test('dependencies: full cycle hits the 40-point cycles cap', () => {
     ],
   });
   const D = scoreDependencies(m);
-  assert.equal(D.penalties.find((p) => p.id === 'cycles').points, 40); // c=1 → ·120 cap 40
-  assert.equal(D.score, 60); // n=4<50 propagation skipped; 4 edges<20 god skipped
+  assert.equal(D.penalties.find((p) => p.id === 'cycles').points, 30); // core 4/4 → 90·1 cap 30
+  assert.equal(D.score, 70); // n=4<50 propagation skipped; 4 edges<20 god skipped
+});
+
+test('dependencies: a 2-node mutual pair is not a cycle penalty (v2)', () => {
+  const cls = ['a', 'b', 'c', 'd'].map((x) => decl(`m.${x}`));
+  const m = mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1, classes: cls }],
+    edges: [
+      { from: 'm.a', to: 'm.b', kind: 'uses' },
+      { from: 'm.b', to: 'm.a', kind: 'uses' },
+      { from: 'm.c', to: 'm.d', kind: 'uses' },
+    ],
+  });
+  assert.equal(scoreDependencies(m).penalties.find((p) => p.id === 'cycles'), undefined);
+});
+
+test('dependencies: cycles weigh the largest SCC 90 and smaller SCCs 30 (v2)', () => {
+  const cls = Array.from({ length: 20 }, (_, i) => decl(`m.n${i}`));
+  const cyc = (a, b, c) => [
+    { from: `m.n${a}`, to: `m.n${b}`, kind: 'uses' },
+    { from: `m.n${b}`, to: `m.n${c}`, kind: 'uses' },
+    { from: `m.n${c}`, to: `m.n${a}`, kind: 'uses' },
+  ];
+  const m = mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1, classes: cls }],
+    edges: [...cyc(0, 1, 2), ...cyc(3, 4, 5)],
+  });
+  const c = scoreDependencies(m).penalties.find((p) => p.id === 'cycles');
+  assert.equal(c.points, 18); // 90·(3/20) + 30·(3/20)
+});
+
+test('dependencies: opacity penalty when dynamic languages dominate (v2)', () => {
+  const layers = [{ id: 'm', name: 'M', order: 1,
+    classes: Array.from({ length: 10 }, (_, i) => decl(`m.c${i}`)) }];
+  const dyn = scoreDependencies(mkModel({ layers,
+    project: { declarations_by_language: { python: 8, typescript: 2 } } }));
+  assert.equal(dyn.penalties.find((p) => p.id === 'opacity').points, 6.4); // 8·0.8
+  const half = scoreDependencies(mkModel({ layers,
+    project: { declarations_by_language: { python: 5, typescript: 5 } } }));
+  assert.equal(half.penalties.find((p) => p.id === 'opacity'), undefined); // share not > 0.5
 });
 
 test('dependencies: god node fires only at ≥20 edges, capped at 15', () => {
@@ -174,6 +232,18 @@ test('hygiene: clean model scores 100', () => {
   assert.equal(scoreHygiene(m).score, 100);
 });
 
+test('hygiene: isolated share is kind-weighted — a stray alias is noise, not signal (v2)', () => {
+  const m = mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1, classes: [
+      decl('m.a'),
+      decl('m.t', { kind: 'type_alias', in_degree: 0, out_degree: 0 }),
+    ] }],
+  });
+  const iso = scoreHygiene(m).penalties.find((p) => p.id === 'isolated');
+  assert.equal(iso.points, 11.4); // (1/6)/(1+1/6) ≈ 0.143 → ·80
+  assert.equal(iso.value, 0.143);
+});
+
 test('computeScore: D×E assembly, schema shape, no timestamp', () => {
   const m = mkModel({
     layers: [
@@ -186,15 +256,47 @@ test('computeScore: D×E assembly, schema shape, no timestamp', () => {
     ],
   });
   const s = computeScore(m);
-  assert.equal(s.rubric, 'arch-score-v1');
+  assert.equal(s.rubric, 'arch-score-v2');
   assert.equal(s.execution, 1.5); // all dims 100
-  // D = 10·ln5 + 6·ln3 + 4·ln11 ≈ 32.278; base = round(D·1.5) = 48
+  // all-class model: wDecl = decls → D = 10·ln5 + 6·ln3 + 4·ln11 ≈ 32.278
   assert.equal(s.difficulty, 32.3);
   assert.equal(s.base, 48);
   assert.equal(s.total, s.base);
-  assert.deepEqual(s.inputs, { decls: 4, edges: 2, files: 10, languages: 1 });
+  assert.deepEqual(s.inputs, { decls: 4, edges: 2, files: 10, languages: 1,
+    weighted_decls: 4, effective_languages: 1 });
   assert.equal(s.adjustment, undefined);
   assert.ok(!('computed_at' in s));
+});
+
+test('computeScore: D weighs functions 1/3 and aliases 1/6 of a type (v2)', () => {
+  const mk = (kind, n) => computeScore(mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1,
+      classes: Array.from({ length: n }, (_, i) => decl(`m.x${i}`, { kind })) }],
+  }));
+  // 3 functions → wDecl 1 → D = 10·ln2 + 4·ln11 ≈ 16.52
+  assert.equal(mk('function', 3).difficulty, 16.5);
+  // 3 classes → wDecl 3 → D = 10·ln4 + 4·ln11 ≈ 23.45
+  assert.equal(mk('class', 3).difficulty, 23.5);
+  // 6 aliases → wDecl 1 → same D as 3 functions
+  assert.equal(mk('type_alias', 6).difficulty, 16.5);
+});
+
+test('computeScore: edges scale by the same granularity factor (v2)', () => {
+  const cls = [decl('m.a'), decl('m.b'),
+    ...Array.from({ length: 4 }, (_, i) => decl(`m.f${i}`, { kind: 'function' }))];
+  const m = mkModel({
+    layers: [{ id: 'm', name: 'M', order: 1, classes: cls }],
+    edges: [
+      { from: 'm.a', to: 'm.f0', kind: 'uses' },
+      { from: 'm.b', to: 'm.f1', kind: 'uses' },
+      { from: 'm.f2', to: 'm.f3', kind: 'uses' },
+    ],
+  });
+  const s = computeScore(m);
+  // wDecl = 2 + 4/3 ≈ 3.333, g ≈ 0.556, wEdge = 3g ≈ 1.667
+  // D = 10·ln(4.333) + 6·ln(2.667) + 4·ln11 ≈ 30.14
+  assert.equal(s.difficulty, 30.1);
+  assert.equal(s.inputs.weighted_decls, 3.3);
 });
 
 test('computeScore: extra language adds 5 points to D', () => {
@@ -203,6 +305,18 @@ test('computeScore: extra language adds 5 points to D', () => {
   const two = computeScore(mkModel({ layers,
     project: { declarations_by_language: { typescript: 1, go: 1 } } }));
   assert.equal(round3(two.difficulty - one.difficulty, 1), 5);
+});
+
+test('computeScore: a language under 10% of declarations earns no bonus (v2)', () => {
+  const layers = [{ id: 'm', name: 'M', order: 1,
+    classes: Array.from({ length: 4 }, (_, i) => decl(`m.c${i}`)) }];
+  const pure = computeScore(mkModel({ layers,
+    project: { declarations_by_language: { typescript: 20 } } }));
+  const trace = computeScore(mkModel({ layers,
+    project: { declarations_by_language: { typescript: 19, go: 1 } } }));
+  assert.equal(trace.difficulty, pure.difficulty); // go at 5% is not a second architecture
+  assert.equal(trace.inputs.languages, 2);
+  assert.equal(trace.inputs.effective_languages, 1);
 });
 
 test('computeScore: deterministic and safe on degenerate inputs', () => {

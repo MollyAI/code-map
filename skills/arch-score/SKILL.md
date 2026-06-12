@@ -3,7 +3,7 @@ name: arch-score
 description: Score the architecture of the current project's code map (架构评分). Use when the user asks to score / rate / re-score the architecture, asks what the arch score means, or after /code-map:build needs its scoring step. Runs `code-map score` on .code-map/code-map.json, reviews the deterministic penalty breakdown, and only with documented evidence applies a bounded ±10% adjustment with bilingual reasons.
 ---
 
-# 架构评分 / Architecture Score (rubric v1)
+# 架构评分 / Architecture Score (rubric v2)
 
 对 `.code-map/code-map.json` 计算一个**无上限**的架构评分,展示在 viewer 顶栏时间后
 (`架构评分：124` / `Arch Score: 124`)。计分是**确定性**的(`scripts/lib/score.mjs`,
@@ -13,9 +13,14 @@ description: Score the architecture of the current project's code map (架构评
 
 ```
 总分 = round(D × E) + AI修正
-D(难度分,无上限) = 10·ln(1+声明数) + 6·ln(1+边数) + 4·ln(1+文件数) + 5·(语言数−1)
+D(难度分,无上限) = 10·ln(1+加权声明数) + 6·ln(1+加权边数) + 4·ln(1+文件数) + 5·(有效语言数−1)
 E(执行系数,0.5~1.5) = 0.5 + (0.4·分层 + 0.4·依赖 + 0.2·整洁) / 100
 ```
+
+**粒度加权**(v2;抽取器粒度跨语言不可比 — JVM 出类型级声明,Python/TS/C 出函数级):
+type 类 kind 权重 1、`function/method` 1/3、`type_alias/typedef` 1/6;
+加权边数 = 边数 × (加权声明数/声明数);**有效语言** = 声明占比 ≥10% 的语言
+(1.7% 的零星语言不构成第二套架构)。原始与加权计数都写进 `inputs`。
 
 三个质量维度各 0~100、从 100 起扣(出处:ISO/IEC 25010 可维护性、SIG 可维护性模型、
 Martin ADP、MacCormack 传播成本):
@@ -25,15 +30,19 @@ Martin ADP、MacCormack 传播成本):
 | 分层 L | `uncategorized` | 未分类层成员占比 ×150 | 40 |
 | | `monolayer` | 最大层占比 >50% 起罚 (s−0.5)×100 | 30 |
 | | `empty_layers` | 每个空层 −5 | 15 |
-| | `layer_violations` | 跨层 uses 边逆 layers[] 顺序(目标层 order 更小=向上调用)比例 ×60;跨层边 <10 不评 | 30 |
-| 依赖 Dq | `cycles` | Tarjan 强连通,环中声明占比 ×120 | 40 |
+| | `layer_violations` | 跨层 uses 边逆 layers[] 顺序(目标层 order 更小=向上调用)比例 ×60;跨层边 <10 不评;**指向 `api: true` 层的向上边整条豁免**(库内部引用自家 API 类型是常态) | 30 |
+| 依赖 Dq | `cycles` | Tarjan 强连通,只计 size≥3 的 SCC(2 节点互引=单条双向关系,豁免);(90·最大SCC占比 + 30·其余SCC成员占比) | 30 |
 | | `propagation` | 可达密度 >0.2 起罚 ×80;声明 <50 不评 | 20 |
 | | `god_node` | 单节点度数占边端点比 >15% 起罚;边 <20 不评 | 15 |
 | | `resolution` | TS/JS 解析覆盖率缺口 ×30(无该字段则跳过) | 15 |
+| | `opacity` | 动态语言(python/javascript/lua)声明占比 >50% 时 8×占比 — 静态图看不见运行时耦合,"依赖近满分"在动态代码上不可证 | 8 |
 | 整洁 H | `parse_failures` | 解析失败文件比例 ×200 | 25 |
 | | `vendored` | 每条 vendored 混入 advisory −8 | 16 |
-| | `isolated` | 零度数声明占比 ×80 | 20 |
+| | `isolated` | 零度数声明**加权**占比 ×80(孤立 alias 是噪声,孤立 class 是信号) | 20 |
 | | `oversized` | 函数 >300 行 / 类型 >800 行占比 ×60 | 15 |
+
+**api 层标记**:库形项目在 `.code-map/architecture.yml` 的发布 API 层上写 `api: true`
+(Phase 0/2 的职责,见 build.md);`analyze` 会透传到 code-map.json 供计分豁免。
 
 ## 工作流
 
