@@ -79,3 +79,24 @@ export function assertInvU1(model, LAYOUT, deps = {}) {
   }
   return out;
 }
+
+/** Run both assertions over the model; returns the merged violation list. */
+export function collectViolations(model, LAYOUT, deps = {}) {
+  return [...assertInv1(model), ...assertInvU1(model, LAYOUT, deps)];
+}
+
+/** Render violations in the actionable diagnostic format. */
+export function formatDiagnostics(violations) {
+  return violations.map((v) => {
+    if (v.inv === 'INV-1') {
+      const srcs = v.sources.map((s) => `    - ${s.path}  ${s.signature}`).join('\n');
+      return `INV-1 FAIL — category "${v.category}"\n`
+        + `  duplicate rendered label: "${v.label}" ×${v.sources.length}\n`
+        + `  sources:\n${srcs}\n`
+        + `  fix: R3b 按签名消歧, 或合并(若真重复)`;
+    }
+    return `INV-U1 FAIL — node "${v.node}"\n`
+      + `  reason: ${v.reason}\n`
+      + `  fix: 检查 nodeWidth 是否重新引入了截断帽`;
+  }).join('\n\n');
+}

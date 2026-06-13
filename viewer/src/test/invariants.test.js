@@ -102,3 +102,35 @@ test('static guard: the .node .nlabel CSS rule has no clip/ellipsis', () => {
     assert.ok(!block.includes(bad), `.node .nlabel must not clip (found ${bad})`);
   }
 });
+
+import { collectViolations, formatDiagnostics } from '../data/invariants.js';
+
+test('collectViolations merges INV-1 + INV-U1', () => {
+  const L = makeLayout(1);
+  const model = { layers: [layer('Cocoa Bindings', [
+    cls({ id: 'a', name: 'dup' }), cls({ id: 'b', name: 'dup' }),
+  ])] };
+  const v = collectViolations(model, L);
+  assert.equal(v.filter((x) => x.inv === 'INV-1').length, 1);
+});
+
+test('formatDiagnostics renders the actionable INV-1 block', () => {
+  const out = formatDiagnostics([{
+    inv: 'INV-1', category: 'Cocoa Bindings', label: 'observeWeaklyKeyPathFor',
+    sources: [
+      { path: 'Foundation/NSObject+Rx.swift', signature: 'func observeWeaklyKeyPathFor(_:options:) -> Observable<T?>' },
+      { path: 'Foundation/NSObject+Rx.swift', signature: 'func observeWeaklyKeyPathFor(_:options:) -> Observable<T>' },
+    ],
+  }]);
+  assert.match(out, /INV-1 FAIL — category "Cocoa Bindings"/);
+  assert.match(out, /duplicate rendered label: "observeWeaklyKeyPathFor" ×2/);
+  assert.match(out, /Foundation\/NSObject\+Rx\.swift {2}func observeWeaklyKeyPathFor/);
+  assert.match(out, /fix: R3b/);
+});
+
+test('formatDiagnostics renders the INV-U1 block', () => {
+  const out = formatDiagnostics([{ inv: 'INV-U1', node: 'Foo', reason: 'box narrower than label (nodeWidth 220px < label 312px)' }]);
+  assert.match(out, /INV-U1 FAIL — node "Foo"/);
+  assert.match(out, /reason: box narrower than label/);
+  assert.match(out, /fix: 检查 nodeWidth/);
+});
