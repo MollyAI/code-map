@@ -129,7 +129,7 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - `Read` `.code-map/code-map.draft.json` and `.code-map/unresolved.json`.
 - **Describe only `stale` declarations.** For each class with `"stale": true`, `Read` its file and write `description_zh` + `description_en` (one architecture-level sentence each). Leave every other class untouched (its reused description stays).
 - **Re-route only changed classes.** A class is "changed" iff its `path` is in `incremental.json.changed_files`; only those may need a different layer — move them between `classes` arrays. Leave unchanged classes where the merge placed them (their prior override is intentional).
-- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise. Preserve each edge's `kind`/`via`; when recomputing, branch interface-referencing nodes to `project.dispatch` implementors as `kind:"dispatch"` edges (same rule as full build 6b). A flow whose prior `diagram` was stripped by the merge (its referenced decls vanished) arrives as `needs_review` — re-draw the diagram per full-build step 6c or leave it as a DAG flow. Diagrams on untouched flows are reused verbatim; do not regenerate them.
+- **Re-curate only `needs_review` flows** — rewrite `name` / `description`, recompute `nodes` / `edges` (walk `uses`-edges forward from `seed`, treat `hub:true` as leaves, ~6 hops), mark `confidence: "ai-inferred"`. Leave other flows verbatim. Drop a `needs_review` flow that is noise. Preserve each edge's `kind`/`via`; when recomputing, branch interface-referencing nodes to `project.dispatch` implementors as `kind:"dispatch"` edges (same rule as full build 6b). A flow whose prior `diagram` was stripped by the merge (its referenced decls vanished) arrives as `needs_review` — re-draw the diagram per full-build step 6c; a flow with no diagram won't render, so drop it if you can't redraw it. Diagrams on untouched flows are reused verbatim; do not regenerate them.
 - **Triage only new unresolved** — apply the unresolved rules (Phase 2 step 3) only to entries whose `path` is in `changed_files`.
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
@@ -181,23 +181,30 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 6. Mark entry points: any class with `MainActivity`, `*Application`, `App`, `main`, or path containing `/cmd/` should have `core: true` and `tags` include `"entry-point"`.
 
-6b. **Discover & name core business flows.** Phase 1 now writes *candidate* `flows[]` seeded at entry points **and** public orchestrators (high-out-degree public classes), each `{id, name, description, seed, seed_kind, nodes, edges, confidence}`; flow `edges` carry `kind` (`"uses"` | `"dispatch"`) and dispatch edges carry `via` (the interface short-name). A `confidence:"candidate"` flow came from a public-orchestrator seed and needs your judgement. Phase 1 also writes `project.dispatch` — a map of `interface short-name → [implementor ids]` for every interface with ≥2 implementors — which tells you exactly where polymorphic dispatch (chain-of-responsibility / strategy / observer / middleware) lives.
+6b. **Discover & name core business flows.** Phase 1 now writes *candidate* `flows[]` seeded at entry points, public orchestrators (high-out-degree public classes), **and one per subsystem** (`seed_kind:"subsystem"` — the highest-importance public decl of each layer, traced INTO that subsystem because same-subsystem hubs are expanded rather than dead-ended). Each is `{id, name, description, seed, seed_kind, nodes, edges, confidence}`; flow `edges` carry `kind` (`"uses"` | `"dispatch"`) and dispatch edges carry `via` (the interface short-name). Any `confidence:"candidate"` flow (orchestrator or subsystem seed) needs your judgement. Phase 1 also writes `project.dispatch` — a map of `interface short-name → [implementor ids]` for every interface with ≥2 implementors — which tells you exactly where polymorphic dispatch (chain-of-responsibility / strategy / observer / middleware) lives.
 
    Phase 1 also emits **focused dispatch flows** (`seed_kind:"dispatch-site"`, one per major polymorphic interface, rooted at the interface's canonical dispatcher and fanning out to all implementors) — these are your ready-made chain candidates; name and keep the meaningful ones (e.g. okhttp's Interceptor → "拦截器链").
 
    Your job is to turn the candidates into named **business capabilities**:
    - **Use `project.dispatch` to find the framework's signature chains** (e.g. okhttp's `Interceptor` → the interceptor chain) and make sure a flow surfaces each important one — the dispatch edges already wire the interface's using-node to its implementors.
    - For each flow worth surfacing: rewrite `name` to a business capability name ("拦截器链" / "Interceptor Chain", "建立连接" / "Establish Connection", "请求执行" / "Request Execution", "缓存读写" / "Cache Read/Write"), write a one-sentence `description` (left-sidebar subtitle), and mark `confidence: "ai-inferred"`. **Keep each edge's `kind`/`via`** (do not flatten dispatch edges to uses).
+   - **Cover every core subsystem (vertical depth).** Keep one deep flow per important subsystem — the `seed_kind:"subsystem"` candidates are already traced into the subsystem (through its hubs). Name it for the capability the subsystem provides, and in 6c draw it going INTO that subsystem, not stopping at its entry class.
+   - **Surface 2–4 end-to-end main chains (horizontal).** Make sure a flow threads the whole system across subsystems (e.g. "一次请求的完整生命周期 · full request lifecycle", "一次构建的端到端贯穿 · end-to-end build pass"). If no single seed reaches end-to-end, author one (next bullet).
    - **Prune** noise candidates (omit from `flows[]`): a trivial one-node flow, or a generic utility that orchestrates nothing meaningful.
    - **Merge** near-duplicate candidates and **split** an over-broad one.
-   - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves, cap ~6 hops, cap fan-out ~8).
-   Aim for a handful of high-signal business flows, not one per seed.
+   - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves UNLESS the hub is inside the subsystem you're tracing, cap ~8 hops, cap fan-out ~8).
+   Aim for a focused set of high-signal flows: the end-to-end chains plus one deep flow per core subsystem — not one per seed, but don't under-cover the subsystems either.
 
-6c. **Draw the flow diagrams（绘制流程图）.** For each flow you keep, you SHOULD attach an
-   optional `diagram` object — the viewer renders it as a stage-pipeline or a sequence
-   diagram and falls back to the plain DAG when absent or structurally invalid. Pick the
-   type by the story: build/transform/data-processing flows → `"pipeline"`; request-response
-   / component-interaction flows → `"sequence"`; if neither reads clearly, attach nothing.
+6c. **Draw a diagram for every surfaced flow（每条流程都必须出图）.** The viewer renders
+   ONLY flows that carry a valid `diagram` — an undiagrammed flow is invisible (the old
+   left→right DAG fallback was removed). So every flow you keep in `flows[]` MUST attach a
+   `diagram` that is a `"pipeline"` or a `"sequence"`. Pick the type by the story:
+   build/transform/data-processing flows → `"pipeline"`; request-response /
+   component-interaction flows → `"sequence"`. **Go deep:** read the actual code, trace the
+   real call sequence, include non-`core` helper decls as stage nodes / participants, and
+   walk THROUGH the subsystem's hubs rather than stopping at them — a shallow "A → service"
+   stub is not worth surfacing. If a candidate genuinely can't be drawn as either, drop it
+   from `flows[]` (don't leave it diagram-less).
 
    **Pipeline** (`{"type":"pipeline","stages":[…],"extra_nodes":[…],"links":[…]}`):
    - 3–6 `stages`, each `{id, name_zh, name_en, nodes:[decl ids]}`; every staged decl id
@@ -214,8 +221,10 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
      never invent type names.
 
    **Sequence** (`{"type":"sequence","participants":[…],"steps":[…]}`):
-   - 3–7 `participants`, each `{id:"p:…", name_zh, name_en, kind?: "code"|"actor"|"artifact",
-     nodes?:[decl ids]}`; a `code` participant aggregates 1+ decls into one lifeline.
+   - 3–8 `participants`, each `{id:"p:…", name_zh, name_en, kind?: "code"|"actor"|"artifact",
+     nodes?:[decl ids]}`; a `code` participant aggregates 1+ decls into one lifeline. Use the
+     extra room (vs the old cap of 7) to reach into a subsystem's collaborators when the story
+     warrants it, but keep it readable.
    - `steps` in TEMPORAL order (array order is the timeline): `{from, to, label_zh, label_en,
      kind?: "call"|"return"|"self"}`; `self` requires `from === to`.
 

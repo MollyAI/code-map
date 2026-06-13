@@ -25,7 +25,7 @@ function parseArgs(argv) {
   const a = {
     root: '.', out: '.code-map/raw_structure.json',
     core_percentile: 0.3, core_max_per_layer: 40, core_min_per_layer: 4,
-    flow_hub_percentile: 0.05, flow_max_depth: 6, flow_seed_max: 12, flow_max_nodes: 25,
+    flow_hub_percentile: 0.05, flow_max_depth: 8, flow_seed_max: 12, flow_max_nodes: 60,
     skip: [], name: null, detect_only: false,
   };
   for (let i = 0; i < argv.length; i++) {

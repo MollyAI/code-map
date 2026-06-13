@@ -166,3 +166,40 @@ test('buildDispatchIndex: 单 decl 自我重复不足以成桶（<2 唯一实现
   const decls = [mk('Solo', ['Bar.Thing', 'Thing'])]; // 2 supertypes, same shortName, 1 unique impl
   assert.equal(buildDispatchIndex(decls).has('Thing'), false);
 });
+
+test('selectFlowSeeds: 每个非 uncategorized 子系统播一颗 subsystem 种子（取该层最高重要度公共声明）', () => {
+  const mk = (name, layer, vis = 'public', imp = 0.5) => {
+    const d = Declaration({ name, namespace: 'p', kind: 'class', path: 'p/' + name + '.kt', line: 1 });
+    d._layer = layer; d.visibility = vis; d._importance = imp; d._out_degree = 0;
+    return d;
+  };
+  const decls = [
+    mk('Top', 'service', 'public', 0.9),
+    mk('Low', 'service', 'public', 0.2),
+    mk('Repo', 'data', 'public', 0.7),
+    mk('Junk', 'uncategorized', 'public', 0.9),
+  ];
+  const { seeds, seedKind } = selectFlowSeeds(decls, { maxSeeds: 0 });
+  assert.equal(seedKind.get('p.Top'), 'subsystem');   // layer 'service' top
+  assert.equal(seedKind.get('p.Repo'), 'subsystem');  // layer 'data' top
+  assert.ok(!seeds.includes('p.Low'));                // only the layer's top decl
+  assert.ok(!seeds.includes('p.Junk'));               // uncategorized excluded
+});
+
+test('traceFlow: 同子系统的 hub 被穿透展开，跨子系统的 hub 仍是叶子', () => {
+  // seed S (layer X) -> H (hub, layer X) -> deep (layer X);  S -> K (hub, layer Y) -> z (layer Y)
+  const adjacency = new Map([
+    ['S', ['H', 'K']],
+    ['H', ['deep']],
+    ['K', ['z']],
+  ]);
+  const hubIds = new Set(['H', 'K']);
+  const ctx = {
+    dispatchIndex: null,
+    layerOf: new Map([['S', 'X'], ['H', 'X'], ['deep', 'X'], ['K', 'Y'], ['z', 'Y']]),
+    seedLayer: 'X',
+  };
+  const [order] = traceFlow('S', adjacency, hubIds, 6, ctx, Infinity);
+  assert.ok(order.includes('deep'));   // same-subsystem hub H expanded → reaches deep
+  assert.ok(!order.includes('z'));     // cross-subsystem hub K stays a leaf
+});

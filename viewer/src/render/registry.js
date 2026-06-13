@@ -11,12 +11,10 @@ import { t } from '../i18n.js';
 import { countLabel } from '../data/counts.js';
 import { layoutLayers } from '../layout/layers.js';
 import { layoutGrouped } from '../layout/groups.js';
-import { layoutFlow } from '../layout/flow.js';
 import { layoutPipeline } from '../layout/pipeline.js';
 import { layoutSequence } from '../layout/sequence.js';
 import { diagramOf } from '../data/diagram.js';
 import { makeNodeEl } from './node.js';
-import { buildFlowEdgePath, flowEdgeClass } from './edges.js';
 import { buildPipelineContent, buildSequenceContent } from './diagrams.js';
 import { renderScene } from './scene.js';
 import { NS } from './backend.js';
@@ -69,13 +67,6 @@ const NO_DECOR = () => [];
 // Pipeline-diagram decl nodes: uniform "card on tinted stage" look — the
 // flow-core/flow-hub accents read as noise inside stage containers.
 const IN_STAGE = () => ['in-stage'];
-/** @param {any} datum */
-function flowDecorate(datum) {
-  const out = [];
-  if (datum.hub) out.push('flow-hub');
-  if (datum.core) out.push('flow-core');
-  return out;
-}
 
 /** @type {import('./scene.js').ViewDef} */
 const layerView = {
@@ -192,8 +183,8 @@ const flowView = {
       const lay = layoutSequence(flow, st.LAYOUT);
       return { width: Math.max(lay.width, canvasWidth), height: Math.max(lay.height, 200), kind: 'sequence', lay };
     }
-    const lay = layoutFlow(flow, st.classById, st.LAYOUT);
-    return { width: Math.max(lay.width, canvasWidth), height: Math.max(lay.height, 200), kind: 'flow', lay };
+    // No DAG fallback — flowsById only holds flows with a valid diagram.
+    return { width: Math.max(canvasWidth, 200), height: 200, kind: 'empty' };
   },
   buildContent(backend, layout, ctx) {
     const st = ctx.state;
@@ -215,39 +206,8 @@ const flowView = {
       buildSequenceContent(backend, layout.lay, ctx, { appendNode, flowDecorate: NO_DECOR });
       return;
     }
-    const lay = layout.lay;
-    const gEdges = document.createElementNS(NS, 'g');
-    gEdges.setAttribute('id', 'edges');
-    const pos = new Map(lay.nodes.map((/** @type {any} */ n) => [n.datum.id, n]));
-    for (const e of lay.edges) {
-      const a = pos.get(e.from), b = pos.get(e.to);
-      if (a && b) {
-        const path = document.createElementNS(NS, 'path');
-        // resting flow edge; selection re-styles it active/dimmed by endpoint
-        // (interact/selection drawEdges) via the data-from/data-to ids.
-        path.setAttribute('class', flowEdgeClass(e.kind));
-        path.setAttribute('data-from', e.from);
-        path.setAttribute('data-to', e.to);
-        path.setAttribute('data-kind', e.kind || 'uses');
-        if (e.via) path.setAttribute('data-via', e.via);
-        path.setAttribute('d', buildFlowEdgePath(a, b));
-        gEdges.appendChild(path);
-      }
-    }
-    const gNodes = document.createElementNS(NS, 'g');
-    for (const node of lay.nodes) appendNode(st, gNodes, node, ctx, flowDecorate);
-    for (const o of lay.omitted || []) {
-      const n = pos.get(o.from);
-      if (!n) continue;
-      const more = document.createElementNS(NS, 'text');
-      more.setAttribute('class', 'dispatch-more');
-      more.setAttribute('x', String(n.x + n.w + 6));
-      more.setAttribute('y', String(n.y + n.h - 2));
-      more.textContent = '+' + o.count + ' more';
-      gNodes.appendChild(more);
-    }
-    backend.add(gEdges);   // edges under nodes (flow)
-    backend.add(gNodes);
+    // No other kinds: computeLayout only emits 'empty' (handled above) /
+    // 'pipeline' / 'sequence'. The DAG ('flow') renderer was removed in v1.19.
   },
 };
 
