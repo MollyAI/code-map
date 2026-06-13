@@ -53,3 +53,10 @@ test('buildLinkPath: forward delegates to right→left, backward mirrors', () =>
   assert.match(back, /^M 200 14 C /);          // 从 b 左边缘出发
   assert.match(back, / 100 14$/);              // 到 a 右边缘
 });
+
+test('buildEdgePath: 侧排 peer 节点(Δy>6)产出竖直三次曲线,不抛错', () => {
+  const from = { x: 50, y: 100, w: 80, h: 28 };
+  const to   = { x: 400, y: 140, w: 80, h: 28 };  // 不同子带、横向远离
+  const d = buildEdgePath(from, to, 28);
+  assert.ok(d.startsWith('M') && d.includes('C'), `应为合法竖直曲线: ${d}`);
+});

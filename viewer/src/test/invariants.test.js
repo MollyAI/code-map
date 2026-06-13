@@ -128,3 +128,22 @@ test('formatDiagnostics renders the INV-U1 block', () => {
   assert.match(out, /reason: box narrower than label/);
   assert.match(out, /fix: 检查 nodeWidth/);
 });
+
+test('INV-1: group 模型按叶层判唯一(同名跨叶层不算冲突)', () => {
+  const model = { layer_groups: [{ id: 'g', layout: 'row', children: ['file', 'blob'] }],
+    layers: [
+      { id: 'file', name: 'File', group: 'g', classes: [cls({ id: 'a', name: 'Store' })] },
+      { id: 'blob', name: 'Blob', group: 'g', classes: [cls({ id: 'b', name: 'Store' })] },
+    ] };
+  // 同名 "Store" 分处两个不同叶层 → INV-1 不报(逐叶层判定)
+  assert.equal(assertInv1(model).length, 0);
+});
+
+test('INV-1: 同一叶层内重复标签仍然报', () => {
+  const model = { layers: [
+    { id: 'file', name: 'File', classes: [
+      cls({ id: 'a', name: 'Store' }), cls({ id: 'b', name: 'Store' }),
+    ] },
+  ] };
+  assert.equal(assertInv1(model).length, 1);
+});

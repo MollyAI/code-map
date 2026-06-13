@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutSequence, SELF_LOOP } from '../layout/sequence.js';
+import { layoutSequence, SELF_LOOP, SEQ_FONT_MULT } from '../layout/sequence.js';
 import { LAYOUT_BASE, labelWidth } from '../layout/metrics.js';
 
 const flow = {
@@ -70,6 +70,12 @@ test('相邻生命线距离随长标签加宽（标签不压参与者盒）', ()
   const lay = layoutSequence(f, LAYOUT_BASE);
   const d = lay.lifelines[1].x - lay.lifelines[0].x;
   assert.ok(d >= labelWidth(f.diagram.steps[0].label_en, LAYOUT_BASE), `distance ${d}`);
+});
+
+test('layoutSequence: 字体倍率放大参与者盒高（按 SEQ_FONT_MULT 缩放）', () => {
+  const lay = layoutSequence(flow, LAYOUT_BASE);
+  assert.ok(SEQ_FONT_MULT > 1);
+  assert.equal(lay.participants[0].h, Math.round(LAYOUT_BASE.nodeH * SEQ_FONT_MULT));
 });
 
 test('末位参与者的 self 长标签计入总宽（不被裁掉）', () => {

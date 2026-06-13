@@ -405,3 +405,41 @@ test('applyAdjustment: enforces the ±10% bound and bilingual reasons', () => {
   assert.throws(() => applyAdjustment(s, 2.5, '理由', 'reason'), /integer/);
   assert.throws(() => applyAdjustment(s, 0, '理由', 'reason'), /integer/);
 });
+
+test('scoreLayering: row peers 同 order → 互相依赖中性,不计违规', () => {
+  const mk = (p, n) => Array.from({ length: n }, (_, i) => decl(`${p}.C${i}`));
+  const model = mkModel({
+    layers: [
+      { id: 'app', name: 'App', order: 0, classes: mk('app', 6) },
+      { id: 'file', name: 'File', order: 1, group: 'g', classes: mk('file', 6) },
+      { id: 'blob', name: 'Blob', order: 1, group: 'g', classes: mk('blob', 6) },
+    ],
+    edges: [
+      ...Array.from({ length: 6 }, (_, i) => ({ from: `app.C${i}`, to: `file.C${i}`, kind: 'uses' })),
+      ...Array.from({ length: 6 }, (_, i) => ({ from: `file.C${i}`, to: `blob.C${i}`, kind: 'uses' })),
+    ],
+  });
+  const L = scoreLayering(model);
+  // file→blob 全是 order 1↔1 → 中性;app→file 下行不违规 → 无 layer_violations 罚分
+  assert.equal(L.penalties.find((p) => p.id === 'layer_violations'), undefined);
+});
+
+test('scoreLayering: column 子层向上的边计违规', () => {
+  const mk = (p, n) => Array.from({ length: n }, (_, i) => decl(`${p}.C${i}`));
+  // net order 1.333, os order 1.667;os→net 即向上(b=1.333<a=1.667)
+  const model = mkModel({
+    layers: [
+      { id: 'app', name: 'App', order: 0, classes: mk('app', 6) },
+      { id: 'net', name: 'Net', order: 1 + 1 / 3, group: 'infra', classes: mk('net', 6) },
+      { id: 'os', name: 'OS', order: 1 + 2 / 3, group: 'infra', classes: mk('os', 6) },
+    ],
+    edges: [
+      ...Array.from({ length: 6 }, (_, i) => ({ from: `app.C${i}`, to: `net.C${i}`, kind: 'uses' })),
+      ...Array.from({ length: 6 }, (_, i) => ({ from: `os.C${i}`, to: `net.C${i}`, kind: 'uses' })),
+    ],
+  });
+  const L = scoreLayering(model);
+  const v = L.penalties.find((p) => p.id === 'layer_violations');
+  assert.ok(v, '应检测到向上违规');
+  assert.ok(v.points > 0);
+});

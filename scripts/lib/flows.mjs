@@ -87,7 +87,12 @@ export function traceFlow(seed, adjacency, hubIds, maxDepth = 6, ctx = null, max
   while (head < q.length) {
     if (order.length >= maxNodes) break;
     const u = q[head++];
-    if (u !== seed && hubIds.has(u)) continue; // hub: leaf
+    if (u !== seed && hubIds.has(u)) {
+      // Hub is a leaf — UNLESS it sits in the seed's own subsystem, in which
+      // case we penetrate inward (the whole point of a per-subsystem flow).
+      const sameSub = ctx && ctx.seedLayer != null && ctx.layerOf && ctx.layerOf.get(u) === ctx.seedLayer;
+      if (!sameSub) continue;
+    }
     if (depth.get(u) >= maxDepth) continue;
     // 1. resolved uses-edges
     for (const v of adjacency.get(u) || []) {
@@ -142,14 +147,11 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opt
     }
   }
   const byQname = new Map(declarations.map((d) => [qualifiedName(d), d]));
+  // layerOf drives same-subsystem hub penetration (traceFlow); built once and
+  // carried in every per-seed ctx so penetration works even without a dispatchIndex.
+  const layerOf = new Map(declarations.map((d) => [qualifiedName(d), d._layer]));
   const dispatchIndex = opts.dispatchIndex || null;
-  const ctx = dispatchIndex
-    ? {
-        dispatchIndex,
-        maxFanout: opts.maxFanout || 8,
-        refsByQname: new Map(declarations.map((d) => [qualifiedName(d), d.refs || []])),
-      }
-    : null;
+  const refsByQname = new Map(declarations.map((d) => [qualifiedName(d), d.refs || []]));
   const seedKind = opts.seedKind || new Map();
   const out = [];
   const seenSeeds = new Set();
@@ -158,6 +160,13 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opt
     seenSeeds.add(seed);
     const decl = byQname.get(seed);
     if (decl == null) continue;
+    const ctx = {
+      dispatchIndex,
+      maxFanout: opts.maxFanout || 8,
+      refsByQname,
+      layerOf,
+      seedLayer: layerOf.get(seed),
+    };
     const [nodes, fedges, omitted] = traceFlow(seed, adjacency, hubIds, maxDepth, ctx, opts.maxNodes ?? Infinity);
     const kind = seedKind.get(seed) || 'entry-point';
     const flow = {
@@ -168,7 +177,7 @@ export function buildFlows(seeds, declarations, edges, hubIds, maxDepth = 6, opt
       seed_kind: kind,
       nodes,
       edges: fedges,
-      confidence: kind === 'public-orchestrator' ? 'candidate' : 'high',
+      confidence: kind === 'entry-point' ? 'high' : 'candidate',
     };
     if (omitted.length) flow.dispatch_omitted = omitted;
     out.push(flow);
@@ -210,6 +219,31 @@ export function selectFlowSeeds(declarations, { maxSeeds = 12 } = {}) {
     seeds.push(q);
     seedKind.set(q, 'public-orchestrator');
     taken++;
+  }
+  // Per-subsystem seeds: guarantee each real layer gets a candidate to deepen
+  // (vertical coverage). Seed = the layer's highest-importance public decl, if
+  // not already a seed. 'subsystem' seeds are confidence:'candidate' (Phase 2
+  // curates). Deterministic: layers iterated in sorted id order, decls by
+  // (_importance desc, qname asc).
+  const byLayer = new Map();
+  for (const d of declarations) {
+    const L = d._layer;
+    if (!L || L === 'uncategorized') continue;
+    if ((d.visibility ?? 'public') === 'private') continue;
+    if (!byLayer.has(L)) byLayer.set(L, []);
+    byLayer.get(L).push(d);
+  }
+  for (const [, ds] of [...byLayer.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    ds.sort((a, b) => {
+      const ia = a._importance || 0, ib = b._importance || 0;
+      if (ib !== ia) return ib - ia;
+      const qa = qualifiedName(a), qb = qualifiedName(b);
+      return qa < qb ? -1 : qa > qb ? 1 : 0;
+    });
+    const q = qualifiedName(ds[0]);
+    if (seedKind.has(q)) continue;
+    seeds.push(q);
+    seedKind.set(q, 'subsystem');
   }
   return { seeds, seedKind };
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { round3, isEntryPoint, buildGraph, markCore } from '../scripts/lib/core.mjs';
+import { round3, isEntryPoint, buildGraph, markCore, toJsonShape } from '../scripts/lib/core.mjs';
 import { Declaration } from '../scripts/lib/extractors/base.mjs';
 
 test('round3 matches Python round(x,3) banker rounding', () => {
@@ -70,4 +70,22 @@ test('buildGraph: private decls are downweighted by PRIVATE_PENALTY (R2)', () =>
   assert.ok(pubImp > 0, 'public decl should have nonzero importance');
   assert.ok(privImp < pubImp, `private (${privImp}) should be below public (${pubImp})`);
   assert.ok(Math.abs(privImp - pubImp * 0.3) < 0.001, `private should be ~0.3× public: ${privImp} vs ${pubImp}*0.3`);
+});
+
+test('toJsonShape: 无 layerGroups 时不输出 layer_groups 键(扁平不变)', () => {
+  const layers = [{ id: 'a', name: 'A', order: 0 }];
+  const out = toJsonShape([], [], layers, { name: 'p' });
+  assert.equal('layer_groups' in out, false);
+  assert.equal(out.layers[0].id, 'a');
+});
+
+test('toJsonShape: 传入 layerGroups 时输出 layer_groups,层 spec 透传 group', () => {
+  const layers = [
+    { id: 'file', name: 'File', order: 1, group: 'storage-tier' },
+    { id: 'blob', name: 'Blob', order: 1, group: 'storage-tier' },
+  ];
+  const groups = [{ id: 'storage-tier', name: 'Storage', order: 1, layout: 'row', children: ['file', 'blob'] }];
+  const out = toJsonShape([], [], layers, { name: 'p' }, [], groups);
+  assert.deepEqual(out.layer_groups, groups);
+  assert.equal(out.layers[0].group, 'storage-tier');
 });

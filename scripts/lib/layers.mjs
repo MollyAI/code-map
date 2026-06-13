@@ -111,6 +111,56 @@ export function applyTo(declarations, layers) {
   for (const d of declarations) d._layer = assignLayer(d, layers);
 }
 
+/**
+ * Expand a (possibly grouped) layer config into flat leaf layers + a group
+ * descriptor list. A config entry with a `children` array is a GROUP: it holds
+ * no declarations, only arranges its child leaf layers. Groups nest ONE level
+ * only — a child's own `children` is flattened (its grandchildren are promoted).
+ *
+ * `order` encoding (drives the deterministic arch score, which treats
+ * same-`order` `uses` edges as neutral — see lib/score.mjs scoreLayering):
+ *   top-level rank t = entry.order (if numeric) else its array index
+ *     standalone leaf           -> unchanged (no order/group stamped → byte-identical)
+ *     row-group child           -> order = t              (peers: neutral edges)
+ *     column-group child j of m -> order = t + (j+1)/(m+1)  (ordered, strictly in (t,t+1))
+ *
+ * Backward compatible: a flat config returns leaves byte-identical to input
+ * (no `group` key added) and `groups: []`.
+ *
+ * @param {Array<object>} config
+ * @returns {{ leaves: Array<object>, groups: Array<object> }}
+ */
+export function expandGroups(config) {
+  const leaves = [];
+  const groups = [];
+  (config || []).forEach((entry, i) => {
+    if (!Array.isArray(entry.children)) {
+      leaves.push(entry);                       // standalone leaf — untouched
+      return;
+    }
+    const t = typeof entry.order === 'number' ? entry.order : i;
+    // one-level rule: promote any grandchildren, drop intermediate containers
+    const children = entry.children.flatMap((c) =>
+      Array.isArray(c.children) ? c.children : [c]);
+    const layout = entry.layout === 'column' ? 'column' : 'row';
+    const m = children.length;
+    children.forEach((child, j) => {
+      const order = layout === 'column' ? t + (j + 1) / (m + 1) : t;
+      const { children: _drop, ...rest } = child;
+      leaves.push({ ...rest, order, group: entry.id });
+    });
+    groups.push({
+      id: entry.id,
+      ...(entry.name ? { name: entry.name } : {}),
+      ...(entry.summary ? { summary: entry.summary } : {}),
+      order: t,
+      layout,
+      children: children.map((c) => c.id),
+    });
+  });
+  return { leaves, groups };
+}
+
 const round3 = (x) => Math.round(x * 1000) / 1000;
 
 /** Deterministic, advisory measure of how well the chosen template's layers
