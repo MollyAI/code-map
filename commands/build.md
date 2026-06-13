@@ -55,9 +55,34 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
 4. Pick the best-fitting template, weighing the README's stated intent + the directory shape + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — list them with `ls "$("$CM" root)/templates"` and `Read` the chosen one at `<root>/templates/<name>.yml` (where `<root>` is what `"$CM" root` printed). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
 
+   **2D layering — peer layers & sub-layers (`children` / `layout`).** A layer that carries a `children:` list is a **group**: it holds no declarations, only arranges its child leaf layers. Use it when the architecture is not a single vertical stack:
+   - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level; the arch score treats edges between them as neutral (same `order`).
+   - **Ordered sub-layers within a layer** (e.g. Infrastructure = Network over an OS-abstraction) → a group with `layout: column`. Children stack top→bottom and keep dependency direction (upward edges still count as violations).
+   - A group's `name` may be omitted/empty → a **bare peer** row with no umbrella title. Give a group a `name` (+ optional `summary`) to draw a titled container.
+   - A group entry does **not** take `path_segments` / `name_suffixes` (only its children do, since only leaves hold declarations). **Nesting is one level only** — a child must not itself have `children` (Phase 1 flattens it with a warning). `analyze` expands groups into flat leaf layers + a `layer_groups[]` descriptor in `code-map.json`; a flat (group-free) `architecture.yml` is byte-identical to before.
+
+   ```yaml
+   layers:
+     - { id: presentation, name: Presentation, order: 0, path_segments: [ui], name_suffixes: [Screen] }
+     - id: storage-tier            # group: side-by-side peers
+       name: Storage Subsystem     # omit for a bare (untitled) peer row
+       order: 1
+       layout: row
+       children:
+         - { id: file,    name: File,    path_segments: [file] }
+         - { id: storage, name: Storage, path_segments: [storage] }
+     - id: infra                   # group: ordered sub-layers
+       name: Infrastructure
+       order: 2
+       layout: column
+       children:
+         - { id: network, name: Network, path_segments: [network, net] }
+         - { id: os,      name: OS,      path_segments: [os, platform] }
+   ```
+
    **Mark the API surface of libraries.** When the project is a library/SDK (consumed as a dependency, not run as an app) and one layer holds its published API types (e.g. `public-api`), add `api: true` to that layer. Internals referencing their own API types is the norm for a library, so the arch score exempts upward `uses` edges into `api: true` layers from `layer_violations` (`analyze` passes the flag through to `code-map.json`). Never mark an app's UI/entry layer — this is for published contract surfaces only.
 
-   **No Test / Mock / Sample layers — hard rule.** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed.
+   **No Test / Mock / Sample layers — hard rule.** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed. This rule applies equally to **groups and sub-layers** — never create a group or child leaf for test/mock/sample code.
 
 **A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
 

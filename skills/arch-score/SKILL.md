@@ -40,7 +40,7 @@ Martin ADP、MacCormack 传播成本):
 | 分层 L | `uncategorized` | 未分类层成员占比 ×150 | 40 |
 | | `monolayer` | 最大层占比 >50% 起罚 (s−0.5)×100 | 30 |
 | | `empty_layers` | 每个空层 −5 | 15 |
-| | `layer_violations` | 跨层 uses 边逆 layers[] 顺序(目标层 order 更小=向上调用)比例 ×60;跨层边 <10 不评;**指向 `api: true` 层的向上边整条豁免**(库内部引用自家 API 类型是常态) | 30 |
+| | `layer_violations` | 跨层 uses 边逆 layers[] 顺序(目标层 order 更小=向上调用)比例 ×60;跨层边 <10 不评;**指向 `api: true` 层的向上边整条豁免**(库内部引用自家 API 类型是常态);**二维分层**:row group 的 peer 兄弟共享同一 `order` → 彼此间的边同序中性、不计违规;column group 子层取递增子序号(`t+(j+1)/(m+1)`)→ 子层间向上的边仍计违规(与顶层规则一致) | 30 |
 | 依赖 Dq | `cycles` | Tarjan 强连通,只计 size≥3 的 SCC(2 节点互引=单条双向关系,豁免);(90·最大SCC占比 + 30·其余SCC成员占比) | 30 |
 | | `propagation` | 可达密度 >0.2 起罚 ×80;声明 <50 不评 | 20 |
 | | `god_node` | 单节点度数占边端点比 >15% 起罚;边 <20 不评 | 15 |
