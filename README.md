@@ -44,6 +44,8 @@ To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall 
 
 `build` 执行分析，`run` 打开可视化页面，`stop` 关闭后台服务。`chat` 让你用自然语言改造地图——例如 `/code-map:chat 加一张登录注册流程图` 或 `/code-map:chat Presentation 分层增加 SettingScreen`。
 
+When you exit Claude Code, the `run` server is stopped automatically; create an empty `.code-map/keep-alive` file (or set `CODE_MAP_KEEP_ALIVE=1`) to keep it alive. 退出 Claude Code 时 `run` 启动的服务会自动关闭;若想保留(继续看地图),在项目里建一个空的 `.code-map/keep-alive` 文件,或设置环境变量 `CODE_MAP_KEEP_ALIVE=1`。
+
 ---
 
 ## Features / 功能简介
