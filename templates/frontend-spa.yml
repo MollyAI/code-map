@@ -7,31 +7,36 @@ layers:
   - id: pages
     name: Pages
     order: 0
-    summary: "Top-level route components"
+    summary_zh: "顶层路由组件"
+    summary_en: "Top-level route components"
     path_segments: [pages, routes, views, app]
     name_suffixes: [Page, Route, Screen]
   - id: components
     name: Components
     order: 1
-    summary: "Reusable UI building blocks"
+    summary_zh: "可复用的 UI 构件"
+    summary_en: "Reusable UI building blocks"
     path_segments: [components, ui, widgets]
     name_suffixes: [Component, Card, Button, Modal, Dialog, List, Item]
   - id: state
     name: Hooks & State
     order: 2
-    summary: "Custom hooks, stores, contexts, state management"
+    summary_zh: "自定义 hook、store、context、状态管理"
+    summary_en: "Custom hooks, stores, contexts, state management"
     path_segments: [hooks, stores, store, state, context, contexts, atoms, slices]
     name_suffixes: [Store, Provider, Context, Atom, Slice, Reducer]
   - id: api
     name: API & Services
     order: 3
-    summary: "Network calls, API clients, data services"
+    summary_zh: "网络调用、API 客户端、数据服务"
+    summary_en: "Network calls, API clients, data services"
     path_segments: [api, services, queries, fetchers, lib]
     name_suffixes: [Client, Service, Api, Query, Fetcher]
   - id: utils
     name: Utils
     order: 4
-    summary: "Helpers, formatters, types"
+    summary_zh: "辅助函数、格式化器、类型"
+    summary_en: "Helpers, formatters, types"
     path_segments: [utils, util, helpers, types, constants]
     name_suffixes: [Helper, Util, Formatter]
 

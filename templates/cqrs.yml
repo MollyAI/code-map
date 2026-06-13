@@ -8,37 +8,43 @@ layers:
   - id: messages
     name: Commands & Queries
     order: 0
-    summary: "Command and query messages"
+    summary_zh: "命令与查询消息"
+    summary_en: "Command and query messages"
     path_segments: [command, commands, query, queries, cqrs, messages]
     name_suffixes: [Command, Query]
   - id: handlers
     name: Handlers
     order: 1
-    summary: "Command/query handlers and dispatchers"
+    summary_zh: "命令/查询处理器与派发器"
+    summary_en: "Command/query handlers and dispatchers"
     path_segments: [handler, handlers, dispatchers]
     name_suffixes: [Handler, CommandHandler, QueryHandler, Dispatcher]
   - id: domain
     name: Domain / Aggregates
     order: 2
-    summary: "Aggregates, entities, value objects"
+    summary_zh: "聚合、实体、值对象"
+    summary_en: "Aggregates, entities, value objects"
     path_segments: [domain, aggregate, aggregates]
     name_suffixes: [Aggregate, AggregateRoot, Entity, ValueObject]
   - id: events
     name: Events
     order: 3
-    summary: "Domain and integration events, event handlers"
+    summary_zh: "领域事件与集成事件、事件处理器"
+    summary_en: "Domain and integration events, event handlers"
     path_segments: [event, events, eventbus, subscribers]
     name_suffixes: [Event, DomainEvent, IntegrationEvent, EventHandler, Subscriber]
   - id: readmodels
     name: Read Models / Projections
     order: 4
-    summary: "Projections, read models, query views"
+    summary_zh: "投影、读模型、查询视图"
+    summary_en: "Projections, read models, query views"
     path_segments: [projection, projections, readmodel, readmodels, readstore]
     name_suffixes: [Projection, ReadModel]
   - id: infrastructure
     name: Infrastructure
     order: 5
-    summary: "Buses, config, wiring"
+    summary_zh: "总线、配置、装配"
+    summary_en: "Buses, config, wiring"
     path_segments: [infra, infrastructure, config, bus, messaging, store]
     name_suffixes: [Bus, Config, Store]
 

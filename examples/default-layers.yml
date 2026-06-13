@@ -23,7 +23,8 @@ layers:
   - id: presentation
     name: Presentation
     order: 0
-    summary: "UI, navigation, view models, controllers"
+    summary_zh: "UI、导航、视图模型、控制器"
+    summary_en: "UI, navigation, view models, controllers"
     path_segments:
       - presentation
       - ui
@@ -50,7 +51,8 @@ layers:
   - id: domain
     name: Domain
     order: 1
-    summary: "Business rules, use cases, entities"
+    summary_zh: "业务规则、用例、实体"
+    summary_en: "Business rules, use cases, entities"
     path_segments:
       - domain
       - usecase
@@ -72,7 +74,8 @@ layers:
   - id: data
     name: Data
     order: 2
-    summary: "Repositories, data sources, persistence, APIs"
+    summary_zh: "仓储、数据源、持久化、API"
+    summary_en: "Repositories, data sources, persistence, APIs"
     path_segments:
       - data
       - repository
@@ -99,7 +102,8 @@ layers:
   - id: infrastructure
     name: Infrastructure
     order: 3
-    summary: "DI, network, utilities, build/runtime plumbing"
+    summary_zh: "DI、网络、工具、构建/运行时支撑"
+    summary_en: "DI, network, utilities, build/runtime plumbing"
     path_segments:
       - di
       - ioc
@@ -130,6 +134,7 @@ layers:
   - id: uncategorized
     name: Uncategorized
     order: 99
-    summary: "Could not be auto-assigned — review and override here"
+    summary_zh: "无法自动归类 —— 在此审阅并覆盖"
+    summary_en: "Could not be auto-assigned — review and override here"
     path_segments: []
     name_suffixes: []

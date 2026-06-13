@@ -9,31 +9,36 @@ layers:
   - id: view
     name: View
     order: 0
-    summary: "Activities, fragments, composables, screens — the UI"
+    summary_zh: "Activity、Fragment、Composable、屏幕 —— 即 UI"
+    summary_en: "Activities, fragments, composables, screens — the UI"
     path_segments: [view, views, ui, screen, screens, page, pages, activity, activities, fragment, fragments, compose, widget, widgets]
     name_suffixes: [Activity, Fragment, View, Screen, Page, Widget, Dialog]
   - id: viewmodel
     name: ViewModel
     order: 1
-    summary: "ViewModels exposing observable UI state"
+    summary_zh: "暴露可观察 UI 状态的 ViewModel"
+    summary_en: "ViewModels exposing observable UI state"
     path_segments: [viewmodel, viewmodels, vm, presentation]
     name_suffixes: [ViewModel, VM]
   - id: model
     name: Model / Repository
     order: 2
-    summary: "Repositories and domain model backing the view state"
+    summary_zh: "支撑视图状态的仓储与领域模型"
+    summary_en: "Repositories and domain model backing the view state"
     path_segments: [model, models, repository, repositories, repo, domain]
     name_suffixes: [Repository, Model, Entity, UseCase, Interactor]
   - id: data
     name: Data / Services
     order: 3
-    summary: "Remote/local data sources, network, persistence"
+    summary_zh: "远端/本地数据源、网络、持久化"
+    summary_en: "Remote/local data sources, network, persistence"
     path_segments: [data, datasource, remote, local, network, net, api, db, service, services]
     name_suffixes: [DataSource, Service, Api, Client, Dao]
   - id: infrastructure
     name: Infrastructure
     order: 4
-    summary: "DI, utilities, app wiring"
+    summary_zh: "DI、工具、应用装配"
+    summary_en: "DI, utilities, app wiring"
     path_segments: [di, ioc, inject, util, utils, common, shared, core]
     name_suffixes: [Module, Provider, Factory, Util, Helper]
 

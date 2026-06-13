@@ -8,31 +8,36 @@ layers:
   - id: components
     name: Components
     order: 0
-    summary: "Data components attached to entities"
+    summary_zh: "附加到实体上的数据组件"
+    summary_en: "Data components attached to entities"
     path_segments: [component, components, comp]
     name_suffixes: [Component]
   - id: systems
     name: Systems
     order: 1
-    summary: "Systems running logic over entities each tick"
+    summary_zh: "每帧对实体运行逻辑的系统"
+    summary_en: "Systems running logic over entities each tick"
     path_segments: [system, systems]
     name_suffixes: [System]
   - id: entities
     name: Entities
     order: 2
-    summary: "Entity definitions, archetypes, bundles, prefabs"
+    summary_zh: "实体定义、原型、bundle、预制件"
+    summary_en: "Entity definitions, archetypes, bundles, prefabs"
     path_segments: [entity, entities, archetype, archetypes, prefab, prefabs, bundle, bundles]
     name_suffixes: [Entity, Archetype, Bundle, Prefab]
   - id: world
     name: Resources / World
     order: 3
-    summary: "Shared resources, world, registry, scheduler"
+    summary_zh: "共享资源、world、注册表、调度器"
+    summary_en: "Shared resources, world, registry, scheduler"
     path_segments: [resource, resources, world, registry, scheduler]
     name_suffixes: [Resource, World, Registry, Scheduler]
   - id: engine
     name: Core / Engine
     order: 4
-    summary: "Engine plumbing, ECS core, runtime"
+    summary_zh: "引擎支撑、ECS 核心、运行时"
+    summary_en: "Engine plumbing, ECS core, runtime"
     path_segments: [engine, core, ecs, runtime, common]
     name_suffixes: [Engine, Dispatcher]
 

@@ -9,31 +9,36 @@ layers:
   - id: api
     name: API / Controllers
     order: 0
-    summary: "HTTP controllers, REST endpoints, request handling"
+    summary_zh: "HTTP 控制器、REST 端点、请求处理"
+    summary_en: "HTTP controllers, REST endpoints, request handling"
     path_segments: [controllers, controller, api, rest, web, resources, endpoints, routes, http]
     name_suffixes: [Controller, Resource, Endpoint, Rest, Api]
   - id: service
     name: Service
     order: 1
-    summary: "Business logic, application services, orchestration"
+    summary_zh: "业务逻辑、应用服务、编排"
+    summary_en: "Business logic, application services, orchestration"
     path_segments: [services, service, application, usecases, business, logic]
     name_suffixes: [Service, ServiceImpl, Manager, Facade, UseCase, Orchestrator]
   - id: repository
     name: Repository / Persistence
     order: 2
-    summary: "Data access — repositories, DAOs, ORM mappers"
+    summary_zh: "数据访问 —— 仓储、DAO、ORM 映射器"
+    summary_en: "Data access — repositories, DAOs, ORM mappers"
     path_segments: [repository, repositories, repo, dao, persistence, mapper, mappers, datasource]
     name_suffixes: [Repository, RepositoryImpl, Dao, Mapper, Store, DataSource]
   - id: domain
     name: Domain / Model
     order: 3
-    summary: "Entities, DTOs, value objects, domain model"
+    summary_zh: "实体、DTO、值对象、领域模型"
+    summary_en: "Entities, DTOs, value objects, domain model"
     path_segments: [domain, model, models, entity, entities, dto, dtos, vo, pojo, bean, beans]
     name_suffixes: [Entity, Model, Dto, Vo, Pojo, Bean]
   - id: infrastructure
     name: Infrastructure / Config
     order: 4
-    summary: "Configuration, security, cross-cutting, utilities"
+    summary_zh: "配置、安全、横切关注点、工具"
+    summary_en: "Configuration, security, cross-cutting, utilities"
     path_segments: [config, configuration, infra, infrastructure, security, common, shared, util, utils, exception, exceptions, filter, interceptor]
     name_suffixes: [Config, Configuration, Properties, Filter, Interceptor, Exception, Aspect, Util, Helper]
 
