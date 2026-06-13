@@ -54,6 +54,7 @@ const els = {
   layout: /** @type {any} */ (document.querySelector('.layout')),
   menuToggle: $('menu-toggle'),
   controlsOverflow: $('controls-overflow'),
+  detailClose: $('detail-close'),
 };
 
 const backend = createSvgBackend(els.svg, els.canvasWrap);
@@ -155,6 +156,7 @@ const zoom = initZoom(backend, els.canvasWrap);
 initTouchZoom({ canvasWrap: els.canvasWrap, zoomTo: zoom.zoomTo });
 initPan(els.canvasWrap, backend.getSvg(), deselect);
 initKeyboard(deselect);
+els.detailClose?.addEventListener('click', deselect);
 initExport({ svg: backend.getSvg(), exportBtn: els.exportBtn, projectNameEl: els.projectName });
 
 load({ onModel, onError: showError });
