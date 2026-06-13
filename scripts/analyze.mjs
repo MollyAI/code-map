@@ -91,6 +91,7 @@ export async function main(argv) {
 
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || join(HERE, '..');
   const [layerConfig, detection] = layers.loadConfig(root, pluginRoot);
+  const { leaves: layerLeaves, groups: layerGroups } = layers.expandGroups(layerConfig);
 
   if (args.detect_only) {
     const detectPath = join(dirname(outPath), 'detection.json');
@@ -141,8 +142,8 @@ export async function main(argv) {
 
   const resolution = resolveProject(allDecls, importsByFile, reexportsByFile, { root });
   const [decls, edges] = core.buildGraph(allDecls);
-  layers.applyTo(decls, layerConfig);
-  detection.fit = layers.templateFit(decls, layerConfig);
+  layers.applyTo(decls, layerLeaves);
+  detection.fit = layers.templateFit(decls, layerLeaves);
   core.markCore(decls, args.core_percentile, args.core_max_per_layer, args.core_min_per_layer);
   assignDisplayNames(decls); // R3: write _display_name on cross-module name collisions
 
@@ -207,9 +208,11 @@ export async function main(argv) {
 
   const data = core.toJsonShape(
     decls, edges,
-    layerConfig.map((l) => ({ id: l.id, name: l.name, order: l.order, summary: l.summary,
-      ...(l.api === true ? { api: true } : {}) })),
-    projectMeta, flowList);
+    layerLeaves.map((l) => ({ id: l.id, name: l.name, order: l.order, summary: l.summary,
+      ...(l.api === true ? { api: true } : {}),
+      ...(l.group ? { group: l.group } : {}) })),
+    projectMeta, flowList,
+    layerGroups);
 
   writeFileSync(outPath, JSON.stringify(data, null, 2));
 
