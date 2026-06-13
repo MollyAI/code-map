@@ -77,3 +77,28 @@ test('INV-U1: only core nodes are checked', () => {
   const capped = () => 220;
   assert.deepEqual(assertInvU1(model, L, { nodeWidth: capped, labelWidth }), []);
 });
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+test('static guard: render/node.js renders the full label, never truncates', () => {
+  const src = readFileSync(join(HERE, '../render/node.js'), 'utf8');
+  assert.ok(src.includes('n.datum.display_name || n.datum.name'),
+    'node label must be the full display_name||name');
+  for (const bad of ['truncate(', '…', 'text-overflow', 'maxNodeW']) {
+    assert.ok(!src.includes(bad), `render/node.js must not clip node labels (found ${JSON.stringify(bad)})`);
+  }
+});
+
+test('static guard: the .node .nlabel CSS rule has no clip/ellipsis', () => {
+  const css = readFileSync(join(HERE, '../../style.css'), 'utf8');
+  const start = css.indexOf('.node .nlabel {');
+  assert.ok(start >= 0, '.node .nlabel rule must exist');
+  const block = css.slice(start, css.indexOf('}', start));
+  for (const bad of ['text-overflow', 'overflow', 'white-space']) {
+    assert.ok(!block.includes(bad), `.node .nlabel must not clip (found ${bad})`);
+  }
+});
