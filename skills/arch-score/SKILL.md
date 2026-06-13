@@ -3,75 +3,78 @@ name: arch-score
 description: Score the architecture of the current project's code map (架构评分). Use when the user asks to score / rate / re-score the architecture, asks what the arch score means, or after /code-map:build needs its scoring step. Runs `code-map score` on .code-map/code-map.json, reviews the deterministic penalty breakdown, and only with documented evidence applies a bounded ±10% adjustment with bilingual reasons.
 ---
 
-# 架构评分 / Architecture Score (rubric v2)
+# Architecture Score (rubric v2)
 
-对 `.code-map/code-map.json` 计算一个 **0~135(+有界修正)** 的架构评分,展示在
-viewer 顶栏时间后(`架构评分：124` / `Arch Score: 124`)。计分是**确定性**的
-(`scripts/lib/score.mjs`,同一份 JSON 永远得到同一个分);你的职责是审查扣分
-明细、在有据可查时施加有界修正。
+Compute a **0–135 (+bounded adjustment)** architecture score over `.code-map/code-map.json`, shown in the
+viewer top bar after the time (`架构评分：124` / `Arch Score: 124`). Scoring is **deterministic**
+(`scripts/lib/score.mjs` — the same JSON always yields the same score); your job is to review the penalty
+breakdown and, where documented evidence exists, apply a bounded adjustment.
 
-## 计分模型(难度是门槛不是奖励:D 封顶,过门槛后纯拼执行质量)
+## Scoring model (difficulty is a gate, not a reward: D is capped; past the gate it's pure execution quality)
 
 ```
-总分 = round(D × E) + AI修正
-D(难度门槛,封顶 90) = min(90, 10·ln(1+加权声明数) + 6·ln(1+加权边数) + 4·ln(1+文件数) + 5·(有效语言数−1))
-E(执行系数,0.5~1.5) = 0.5 + (0.4·分层 + 0.4·依赖 + 0.2·整洁) / 100
+total = round(D × E) + AI adjustment
+D (difficulty gate, capped at 90) = min(90, 10·ln(1+weighted decls) + 6·ln(1+weighted edges) + 4·ln(1+files) + 5·(effective languages − 1))
+E (execution coefficient, 0.5–1.5) = 0.5 + (0.4·layering + 0.4·dependency + 0.2·cleanliness) / 100
 ```
 
-D 的唯一职责是**滤掉过于简单的仓库**(玩具/脚本堆),不是给规模发奖——任何
-中型以上真实项目都会触顶 90,之后排名只由 E 决定,"大而糙"永远跑不赢"小而精"。
-`difficulty_raw` 保留未封顶值供排查。
+D's sole job is to **filter out repos that are too simple** (toys / script piles), not to reward scale — any
+real project of medium size or larger hits the 90 cap, after which ranking is decided by E alone, and
+"big but sloppy" never beats "small but sharp". `difficulty_raw` keeps the uncapped value for diagnostics.
 
-**粒度加权**(抽取器粒度跨语言不可比 — JVM 出类型级声明,Python/TS/C 出函数级):
-type 类 kind 权重 1、`function/method` 1/3、`type_alias/typedef` 1/6;
-加权边数 = 边数 × (加权声明数/声明数);**有效语言** = 声明占比 ≥10% 的语言
-(1.7% 的零星语言不构成第二套架构)。原始与加权计数都写进 `inputs`。
+**Granularity weighting** (extractor granularity is not comparable across languages — JVM emits type-level
+declarations, Python/TS/C emit function-level): type-like kinds weight 1, `function/method` 1/3,
+`type_alias/typedef` 1/6; weighted edges = edges × (weighted decls / decls); **effective languages** =
+languages whose declaration share is ≥10% (a 1.7% scattering of a language doesn't constitute a second
+architecture). Both raw and weighted counts are written into `inputs`.
 
-**test 层剔除**:计分前先把 id/name 命中 test/mock/fake/stub/fixture/sample/
-demo/example 的层**连同其全部声明与边**从视图中剔除——build.md A3.5 本就禁止
-这些层入图,评分对违规地图保持免疫(既不因测试体量虚增 D,也不因
-testing→api 的边误扣 layer_violations)。
+**Test-layer removal**: before scoring, layers whose id/name hit test/mock/fake/stub/fixture/sample/
+demo/example are removed from the view **together with all their declarations and edges** — build.md A3.5
+already forbids these layers from entering the map, and scoring stays immune to violating maps (neither
+inflating D from test volume nor mis-penalizing layer_violations from testing→api edges).
 
-三个质量维度各 0~100、从 100 起扣(出处:ISO/IEC 25010 可维护性、SIG 可维护性模型、
-Martin ADP、MacCormack 传播成本):
+Three quality dimensions, each 0–100, deducting from 100 (sources: ISO/IEC 25010 maintainability, SIG
+maintainability model, Martin ADP, MacCormack propagation cost):
 
-| 维度 | 扣分项 id | 规则 | 封顶 |
+| Dimension | Penalty id | Rule | Cap |
 |---|---|---|---|
-| 分层 L | `uncategorized` | 未分类层成员占比 ×150 | 40 |
-| | `monolayer` | 最大层占比 >50% 起罚 (s−0.5)×100 | 30 |
-| | `empty_layers` | 每个空层 −5 | 15 |
-| | `layer_violations` | 跨层 uses 边逆 layers[] 顺序(目标层 order 更小=向上调用)比例 ×60;跨层边 <10 不评;**指向 `api: true` 层的向上边整条豁免**(库内部引用自家 API 类型是常态);**二维分层**:row group 的 peer 兄弟共享同一 `order` → 彼此间的边同序中性、不计违规;column group 子层取递增子序号(`t+(j+1)/(m+1)`)→ 子层间向上的边仍计违规(与顶层规则一致) | 30 |
-| 依赖 Dq | `cycles` | Tarjan 强连通,只计 size≥3 的 SCC(2 节点互引=单条双向关系,豁免);(90·最大SCC占比 + 30·其余SCC成员占比) | 30 |
-| | `propagation` | 可达密度 >0.2 起罚 ×80;声明 <50 不评 | 20 |
-| | `god_node` | 单节点度数占边端点比 >15% 起罚;边 <20 不评 | 15 |
-| | `resolution` | TS/JS 解析覆盖率缺口 ×30(无该字段则跳过) | 15 |
-| | `opacity` | 动态语言(python/javascript/lua)声明占比 >50% 时 max(8×占比, 将 Dq 压至 85 所需) — 静态图看不见运行时耦合,不可验证的依赖不能近满分 | 15 |
-| 整洁 H | `parse_failures` | 解析失败文件比例 ×200 | 25 |
-| | `vendored` | 每条 vendored 混入 advisory −8 | 16 |
-| | `isolated` | 零度数声明**加权**占比 ×80(孤立 alias 是噪声,孤立 class 是信号) | 20 |
-| | `oversized` | 函数 >300 行 / 类型 >800 行占比 ×60 | 15 |
+| Layering L | `uncategorized` | uncategorized-layer member share ×150 | 40 |
+| | `monolayer` | largest-layer share >50% starts penalizing (s−0.5)×100 | 30 |
+| | `empty_layers` | −5 per empty layer | 15 |
+| | `layer_violations` | cross-layer uses edges against `layers[]` order (target layer has smaller order = upward call) share ×60; not evaluated if cross-layer edges <10; **upward edges into an `api: true` layer are entirely exempt** (a library referencing its own API types internally is normal); **2D layering**: peer siblings of a row group share the same `order` → edges between them are same-order-neutral and not counted as violations; column-group sub-layers take increasing sub-orders (`t+(j+1)/(m+1)`) → upward edges between sub-layers still count as violations (consistent with the top-level rule) | 30 |
+| Dependency Dq | `cycles` | Tarjan strongly-connected components, counting only SCCs of size≥3 (a 2-node mutual reference = a single bidirectional relation, exempt); (90·largest-SCC share + 30·share of members in the rest) | 30 |
+| | `propagation` | reachability density >0.2 starts penalizing ×80; not evaluated if decls <50 | 20 |
+| | `god_node` | a single node's degree share of edge endpoints >15% starts penalizing; not evaluated if edges <20 | 15 |
+| | `resolution` | TS/JS resolution-coverage gap ×30 (skipped if the field is absent) | 15 |
+| | `opacity` | when dynamic-language (python/javascript/lua) declaration share >50%: max(8×share, the amount needed to push Dq down to 85) — a static graph can't see runtime coupling, and unverifiable dependencies can't score near-perfect | 15 |
+| Cleanliness H | `parse_failures` | parse-failure file share ×200 | 25 |
+| | `vendored` | −8 per vendored-mixed advisory | 16 |
+| | `isolated` | zero-degree declaration **weighted** share ×80 (an isolated alias is noise, an isolated class is signal) | 20 |
+| | `oversized` | share of functions >300 lines / types >800 lines ×60 | 15 |
 
-**api 层标记**:库形项目在 `.code-map/architecture.yml` 的发布 API 层上写 `api: true`
-(Phase 0/2 的职责,见 build.md);`analyze` 会透传到 code-map.json 供计分豁免。
+**api-layer marker**: library-shaped projects mark `api: true` on their published API layer in
+`.code-map/architecture.yml` (Phase 0/2's job, see build.md); `analyze` passes it through to
+code-map.json for the scoring exemption.
 
-## 工作流
+## Workflow
 
-启动器解析(与 build.md 相同,逐字执行):
+Resolve the launcher (same as build.md, execute verbatim):
 
 ```bash
 CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"
 ```
 
-1. **计算并落盘基线分**:
+1. **Compute and persist the baseline score**:
 
    ```bash
    "$CM" score --data .code-map/code-map.json --write
    ```
 
-2. **审查每条扣分**(命令已打印 `id / points / detail`)。对照下方"正当修正理由"
-   逐条判断:这条扣分是真实的架构问题,还是检测器盲区?
+2. **Review each penalty** (the command already prints `id / points / detail`). Against the "legitimate
+   adjustment reasons" below, judge each one: is this penalty a real architectural problem, or a
+   detector blind spot?
 
-3. **仅在有据可查时修正**(CLI 强制 |delta| ≤ 10%·基线,中英理由必填):
+3. **Adjust only with documented evidence** (the CLI enforces |delta| ≤ 10%·baseline; bilingual reasons mandatory):
 
    ```bash
    "$CM" score --data .code-map/code-map.json --write \
@@ -80,26 +83,29 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
      --reason-en "Parser AST mutual recursion is domain-normal; cycles penalty overweights it"
    ```
 
-4. **向用户汇报**:总分、三维度分、最重的 2~3 条扣分(中文一句+英文一句),
-   以及是否修正与为何。刷新浏览器即见新分(Phase 3 不缓存)。
+4. **Report to the user**: total score, the three dimension scores, the heaviest 2–3 penalties (one
+   sentence in Chinese + one in English), and whether/why you adjusted. Refresh the browser to see the
+   new score (Phase 3 does not cache).
 
-## 正当修正理由(白名单 — 不在此列的不修正)
+## Legitimate adjustment reasons (whitelist — anything not listed is not adjusted)
 
-- **模板误判**:`project.template_detection.fit.fits === false` 或 `reason ≠ "ai-phase0"`,
-  且人工核对发现层划分对该仓库(常见:库被套了应用模板)其实合理 → `layer_violations`/
-  `monolayer` 可部分豁免,向上修正。
-- **领域常态环**:`cycles` 命中的强连通分量经核对是该领域的固有结构
-  (递归下降解析器、双向领域模型、状态机),不是失控耦合 → 向上修正。
-- **生成代码偏差**:`isolated`/`oversized` 主要命中生成代码或 vendored 残留,
-  且已建议用户加 skip-dirs → 向上修正。
-- **图谱失真**:抽取确有大面积漏边(如大量 ai-inferred 节点零度数挂着),
-  分数虚高 → 向下修正。
+- **Template misdetection**: `project.template_detection.fit.fits === false` or `reason ≠ "ai-phase0"`,
+  and manual review finds the layer division actually reasonable for this repo (common: a library wrapped
+  in an app template) → `layer_violations`/`monolayer` can be partly exempted, adjust upward.
+- **Domain-normal cycles**: the strongly-connected component that `cycles` hit, on review, is an inherent
+  structure of the domain (recursive-descent parser, bidirectional domain model, state machine), not
+  runaway coupling → adjust upward.
+- **Generated-code skew**: `isolated`/`oversized` mostly hit generated code or vendored leftovers, and
+  you've already advised the user to add skip-dirs → adjust upward.
+- **Graph distortion**: extraction does drop edges at scale (e.g. many ai-inferred nodes hanging at zero
+  degree), inflating the score → adjust downward.
 
-**禁止**:凭感觉调分、为凑整数调分、无具体扣分项对应的笼统修正。
-修正不是复评 — 一次 build 至多一次 `--adjust`。
+**Forbidden**: adjusting on a hunch, adjusting to round a number, a vague adjustment with no specific
+penalty item it maps to. An adjustment is not a re-review — at most one `--adjust` per build.
 
-## 落盘契约
+## Persistence contract
 
-分数写在 `project.score`(rubric/total/base/difficulty/execution/dimensions/inputs/
-adjustment?),viewer 的 `ui/buildinfo.js` 读 `score.total` 渲染徽章、读明细渲染
-tooltip。无 `project.score` 时徽章不显示 — 不要手编辑该字段,永远通过 `code-map score` 写。
+The score is written to `project.score` (rubric/total/base/difficulty/execution/dimensions/inputs/
+adjustment?); the viewer's `ui/buildinfo.js` reads `score.total` to render the badge and reads the
+breakdown to render the tooltip. When there's no `project.score` the badge doesn't show — don't
+hand-edit this field, always write it via `code-map score`.
