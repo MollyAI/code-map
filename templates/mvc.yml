@@ -8,25 +8,29 @@ layers:
   - id: controller
     name: Controllers
     order: 0
-    summary: "Request dispatch, action handlers"
+    summary_zh: "请求派发、动作处理器"
+    summary_en: "Request dispatch, action handlers"
     path_segments: [controllers, controller, actions]
     name_suffixes: [Controller, Action]
   - id: model
     name: Models
     order: 1
-    summary: "Domain models, ActiveRecord, ORM entities"
+    summary_zh: "领域模型、ActiveRecord、ORM 实体"
+    summary_en: "Domain models, ActiveRecord, ORM entities"
     path_segments: [models, model, entities, entity]
     name_suffixes: [Model, Entity, Record]
   - id: view
     name: Views
     order: 2
-    summary: "Templates, view helpers, presenters"
+    summary_zh: "模板、视图辅助、展示器"
+    summary_en: "Templates, view helpers, presenters"
     path_segments: [views, view, templates, presenters, helpers]
     name_suffixes: [View, Template, Presenter, Helper]
   - id: infrastructure
     name: Infrastructure
     order: 3
-    summary: "Middleware, config, lib"
+    summary_zh: "中间件、配置、库"
+    summary_en: "Middleware, config, lib"
     path_segments: [middleware, config, lib, initializers, support]
     name_suffixes: [Middleware, Config, Initializer]
 

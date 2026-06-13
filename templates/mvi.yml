@@ -9,31 +9,36 @@ layers:
   - id: view
     name: View
     order: 0
-    summary: "UI rendering state — activities, composables, screens"
+    summary_zh: "渲染状态的 UI —— Activity、Composable、屏幕"
+    summary_en: "UI rendering state — activities, composables, screens"
     path_segments: [view, views, ui, screen, screens, compose, activity, fragment, page, pages]
     name_suffixes: [Activity, Fragment, Screen, View, Page]
   - id: intent
     name: Intent / Action
     order: 1
-    summary: "User intents and actions"
+    summary_zh: "用户意图与动作"
+    summary_en: "User intents and actions"
     path_segments: [intent, intents, action, actions]
     name_suffixes: [Intent, Action]
   - id: state
     name: State / Reducer
     order: 2
-    summary: "View state, reducers, stores, side-effect processors"
+    summary_zh: "视图状态、reducer、store、副作用处理器"
+    summary_en: "View state, reducers, stores, side-effect processors"
     path_segments: [state, states, reducer, reducers, store, stores, mvi]
     name_suffixes: [State, ViewState, UiState, Reducer, Store]
   - id: model
     name: Model / Domain
     order: 3
-    summary: "Use cases, repositories, domain model"
+    summary_zh: "用例、仓储、领域模型"
+    summary_en: "Use cases, repositories, domain model"
     path_segments: [model, models, domain, usecase, usecases, repository, repositories, data, interactor]
     name_suffixes: [UseCase, Repository, Model, Interactor]
   - id: infrastructure
     name: Infrastructure
     order: 4
-    summary: "DI, utilities"
+    summary_zh: "DI、工具"
+    summary_en: "DI, utilities"
     path_segments: [di, inject, util, utils, common]
     name_suffixes: [Module, Provider, Util]
 

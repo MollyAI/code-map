@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { assertInv1, assertInvU1, renderedLabel, collectViolations, formatDiagnostics } from '../data/invariants.js';
+import { assertInv1, assertInvU1, assertInvB1, renderedLabel, collectViolations, formatDiagnostics } from '../data/invariants.js';
 import { makeLayout, labelWidth } from '../layout/metrics.js';
 
 const layer = (name, classes) => ({ id: name.toLowerCase().replace(/\s+/g, '-'), name, classes });
@@ -146,4 +146,47 @@ test('INV-1: 同一叶层内重复标签仍然报', () => {
     ] },
   ] };
   assert.equal(assertInv1(model).length, 1);
+});
+
+test('INV-B1: layer 裸 summary(无配对)判红', () => {
+  const v = assertInvB1({ layers: [{ id: 'fs', name: 'FileSystem', summary: '文件系统 · FileSystem', classes: [] }] });
+  assert.equal(v.length, 1);
+  assert.equal(v[0].inv, 'INV-B1');
+  assert.match(v[0].field, /summary/);
+});
+
+test('INV-B1: layer 完整配对通过', () => {
+  const v = assertInvB1({ layers: [{ id: 'fs', name: 'FileSystem', summary_zh: '文件系统', summary_en: 'FileSystem', classes: [] }] });
+  assert.equal(v.length, 0);
+});
+
+test('INV-B1: layer 缺 summary(可选)放行', () => {
+  const v = assertInvB1({ layers: [{ id: 'x', name: 'X', classes: [] }] });
+  assert.equal(v.length, 0);
+});
+
+test('INV-B1: 只缺一半判红', () => {
+  const v = assertInvB1({ layers: [{ id: 'x', name: 'X', summary_zh: '只有中文', classes: [] }] });
+  assert.equal(v.length, 1);
+});
+
+test('INV-B1: 有 diagram 的 flow 名必须双语,缺则判红', () => {
+  const v = assertInvB1({ layers: [], flows: [
+    { id: 'f1', name: 'Init Flow', diagram: { type: 'pipeline' } },
+    { id: 'f2', name_zh: '初始化', name_en: 'Init', diagram: { type: 'pipeline' } },
+  ] });
+  assert.equal(v.length, 1);
+  assert.match(v[0].subject, /f1/);
+});
+
+test('INV-B1: 无 diagram 的候选 flow 不校验(Phase1 raw 不被误伤)', () => {
+  const v = assertInvB1({ layers: [], flows: [{ id: 'cand', name: 'auto seed' }] });
+  assert.equal(v.length, 0);
+});
+
+test('INV-B1: group 裸 summary 判红;无名无 summary 的 bare peer 放行', () => {
+  const bad = assertInvB1({ layers: [], layer_groups: [{ id: 'g', name: 'IO', summary: 'x · y' }] });
+  assert.equal(bad.length, 1);
+  const ok = assertInvB1({ layers: [], layer_groups: [{ id: 'g2', children: ['a', 'b'] }] });
+  assert.equal(ok.length, 0);
 });

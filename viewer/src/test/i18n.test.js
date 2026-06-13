@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { t, I18N, pickLangText } from '../i18n.js';
+import { t, I18N, pickLangText, pickBilingual } from '../i18n.js';
 
 test('t 按语言取值、缺失回退 key', () => {
   const anyKey = Object.keys(I18N.en)[0];
@@ -32,4 +32,29 @@ test('pickLangText 对单语/歧义串原样返回', () => {
   assert.equal(pickLangText('', 'zh'), '');
   assert.equal(pickLangText(null, 'en'), '');
   assert.equal(pickLangText(undefined, 'zh'), '');
+});
+
+test('pickBilingual: 配对优先,按语言挑', () => {
+  const o = { name_zh: '初始化', name_en: 'Init' };
+  assert.equal(pickBilingual(o, 'name', 'zh'), '初始化');
+  assert.equal(pickBilingual(o, 'name', 'en'), 'Init');
+});
+
+test('pickBilingual: 只有一半时回退另一半', () => {
+  assert.equal(pickBilingual({ name_zh: '初始化' }, 'name', 'en'), '初始化');
+  assert.equal(pickBilingual({ name_en: 'Init' }, 'name', 'zh'), 'Init');
+});
+
+test('pickBilingual: 旧拼接串经 pickLangText 拆分', () => {
+  const o = { summary: '文件系统 · FileSystem' };
+  assert.equal(pickBilingual(o, 'summary', 'zh'), '文件系统');
+  assert.equal(pickBilingual(o, 'summary', 'en'), 'FileSystem');
+});
+
+test('pickBilingual: 单语裸串原样返回(无法拆)', () => {
+  assert.equal(pickBilingual({ summary: '只有中文' }, 'summary', 'en'), '只有中文');
+});
+
+test('pickBilingual: 字段缺省返回空串', () => {
+  assert.equal(pickBilingual({}, 'summary', 'zh'), '');
 });

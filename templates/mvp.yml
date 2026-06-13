@@ -9,31 +9,36 @@ layers:
   - id: view
     name: View
     order: 0
-    summary: "Passive views — activities, fragments, UI"
+    summary_zh: "被动视图 —— Activity、Fragment、UI"
+    summary_en: "Passive views — activities, fragments, UI"
     path_segments: [view, views, ui, screen, screens, activity, activities, fragment, fragments, page, pages]
     name_suffixes: [Activity, Fragment, View, Screen, Page]
   - id: presenter
     name: Presenter
     order: 1
-    summary: "Presenters mediating between view and model"
+    summary_zh: "在视图与模型间斡旋的 Presenter"
+    summary_en: "Presenters mediating between view and model"
     path_segments: [presenter, presenters, presentation]
     name_suffixes: [Presenter]
   - id: contract
     name: Contract
     order: 2
-    summary: "View/Presenter interface contracts"
+    summary_zh: "View/Presenter 接口契约"
+    summary_en: "View/Presenter interface contracts"
     path_segments: [contract, contracts]
     name_suffixes: [Contract]
   - id: model
     name: Model
     order: 3
-    summary: "Domain model, repositories, interactors"
+    summary_zh: "领域模型、仓储、交互器"
+    summary_en: "Domain model, repositories, interactors"
     path_segments: [model, models, data, repository, repositories, domain, entity, entities, interactor, interactors]
     name_suffixes: [Model, Repository, Entity, Interactor, UseCase]
   - id: infrastructure
     name: Infrastructure
     order: 4
-    summary: "DI, networking, utilities"
+    summary_zh: "DI、网络、工具"
+    summary_en: "DI, networking, utilities"
     path_segments: [di, inject, network, net, util, utils, common]
     name_suffixes: [Module, Provider, Util, Helper]
 

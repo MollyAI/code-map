@@ -7,25 +7,29 @@ layers:
   - id: entry
     name: Entry
     order: 0
-    summary: "Argument parsing, top-level dispatch"
+    summary_zh: "参数解析、顶层派发"
+    summary_en: "Argument parsing, top-level dispatch"
     path_segments: [cmd, bin, main]
     name_suffixes: [Main, Cli, Entry]
   - id: commands
     name: Commands
     order: 1
-    summary: "Subcommand handlers"
+    summary_zh: "子命令处理器"
+    summary_en: "Subcommand handlers"
     path_segments: [commands, command, subcommands, cli]
     name_suffixes: [Command, Cmd, Subcommand]
   - id: core
     name: Core
     order: 2
-    summary: "Business logic invoked by commands"
+    summary_zh: "命令调用的业务逻辑"
+    summary_en: "Business logic invoked by commands"
     path_segments: [core, internal, lib, services, logic]
     name_suffixes: [Service, Runner, Engine]
   - id: util
     name: Util
     order: 3
-    summary: "Output formatting, IO helpers, shared utilities"
+    summary_zh: "输出格式化、IO 辅助、共享工具"
+    summary_en: "Output formatting, IO helpers, shared utilities"
     path_segments: [util, utils, helpers, output, format, io]
     name_suffixes: [Helper, Util, Formatter, Writer]
 

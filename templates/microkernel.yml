@@ -8,26 +8,30 @@ layers:
   - id: core
     name: Core / Host
     order: 0
-    summary: "The kernel/host that loads and coordinates plugins (incl. RTOS kernel/arch/HAL)"
+    summary_zh: "加载并协调插件的内核/宿主(含 RTOS 内核/架构/HAL)"
+    summary_en: "The kernel/host that loads and coordinates plugins (incl. RTOS kernel/arch/HAL)"
     path_segments: [core, host, kernel, engine, runtime, arch, kal, hal, bsp]
     name_suffixes: [Kernel, Host, Engine, Runtime]
   - id: contracts
     name: Contracts / API
     order: 1
-    summary: "Extension points, SPIs, plugin-facing interfaces"
+    summary_zh: "扩展点、SPI、面向插件的接口"
+    summary_en: "Extension points, SPIs, plugin-facing interfaces"
     path_segments: [api, contract, contracts, spi, interfaces, extensionpoint, extensionpoints]
     name_suffixes: [Api, Spi, Contract, ExtensionPoint]
   - id: plugins
     name: Plugins / Extensions
     order: 2
-    summary: "Plugins, extensions, components, drivers, subsystems implementing the contracts"
+    summary_zh: "实现契约的插件、扩展、组件、驱动、子系统"
+    summary_en: "Plugins, extensions, components, drivers, subsystems implementing the contracts"
     path_segments: [plugin, plugins, extension, extensions, addon, addons, modules, integrations,
                     component, components, driver, drivers, subsystem, subsystems]
     name_suffixes: [Plugin, Extension, Addon, Integration, Driver]
   - id: infrastructure
     name: Infrastructure
     order: 3
-    summary: "Plugin loading, registry, config, utilities"
+    summary_zh: "插件加载、注册表、配置、工具"
+    summary_en: "Plugin loading, registry, config, utilities"
     path_segments: [loader, registry, config, util, utils, common, internal]
     name_suffixes: [Loader, Registry, Manager, Config, Util]
 

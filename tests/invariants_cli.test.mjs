@@ -33,3 +33,17 @@ test('gate exits 1 and reports the duplicate on a colliding map', () => {
   assert.equal(r.code, 1);
   assert.match(r.out, /INV-1 FAIL — category "Cocoa Bindings"/);
 });
+
+test('gate exits 1 on a monolingual layer summary', () => {
+  const r = runGate({ layers: [{ id: 'fs', name: 'FileSystem', summary: '文件系统 · FileSystem',
+    classes: [core('a', 'alpha')] }] });
+  assert.equal(r.code, 1);
+  assert.match(r.out, /INV-B1 FAIL/);
+});
+
+test('gate exits 0 on a bilingual layer summary', () => {
+  const r = runGate({ layers: [{ id: 'fs', name: 'FileSystem', summary_zh: '文件系统', summary_en: 'FileSystem',
+    classes: [core('a', 'alpha')] }] });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /invariants OK/);
+});

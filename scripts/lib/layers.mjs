@@ -6,26 +6,26 @@ import { loadTemplates, detectTemplate } from './templates.mjs';
 
 const EMBEDDED_FALLBACK = [
   { id: 'presentation', name: 'Presentation', order: 0,
-    summary: 'UI, navigation, view models, controllers',
+    summary_zh: 'UI、导航、视图模型、控制器', summary_en: 'UI, navigation, view models, controllers',
     path_segments: ['presentation', 'ui', 'view', 'screen', 'compose', 'components', 'pages', 'handlers', 'controllers', 'routes', 'endpoints'],
     name_suffixes: ['Activity', 'Fragment', 'ViewModel', 'Screen', 'Controller', 'View', 'Page', 'Handler', 'Route'] },
   { id: 'domain', name: 'Domain', order: 1,
-    summary: 'Business rules, use cases, entities',
+    summary_zh: '业务规则、用例、实体', summary_en: 'Business rules, use cases, entities',
     path_segments: ['domain', 'usecase', 'use_case', 'model', 'entity', 'service', 'logic', 'core'],
     name_suffixes: ['UseCase', 'Service', 'Model', 'Entity', 'Aggregate', 'DomainEvent', 'Policy'] },
   { id: 'data', name: 'Data', order: 2,
-    summary: 'Repositories, data sources, persistence, APIs',
+    summary_zh: '仓储、数据源、持久化、API', summary_en: 'Repositories, data sources, persistence, APIs',
     path_segments: ['data', 'repository', 'repo', 'dao', 'datasource', 'db', 'store', 'persistence', 'api', 'client', 'gateway', 'remote', 'local'],
     name_suffixes: ['Repository', 'Dao', 'DataSource', 'Store', 'Client', 'Gateway', 'Api'] },
   { id: 'infrastructure', name: 'Infrastructure', order: 3,
-    summary: 'DI, network, utilities, build/runtime plumbing',
+    summary_zh: 'DI、网络、工具、构建/运行时支撑', summary_en: 'DI, network, utilities, build/runtime plumbing',
     path_segments: ['di', 'ioc', 'inject', 'network', 'net', 'util', 'utils', 'common', 'shared', 'internal', 'pkg', 'cmd', 'lib', 'bin', 'config', 'infra'],
     name_suffixes: ['Factory', 'Module', 'Provider', 'Container', 'Helper', 'Util', 'Config', 'Bootstrap'] },
 ];
 
 const UNCATEGORIZED = {
   id: 'uncategorized', name: 'Uncategorized', order: 99,
-  summary: 'Could not be assigned automatically',
+  summary_zh: '无法自动归类', summary_en: 'Could not be assigned automatically',
   path_segments: [], name_suffixes: [],
 };
 
@@ -152,6 +152,8 @@ export function expandGroups(config) {
     groups.push({
       id: entry.id,
       ...(entry.name ? { name: entry.name } : {}),
+      ...(entry.summary_zh ? { summary_zh: entry.summary_zh } : {}),
+      ...(entry.summary_en ? { summary_en: entry.summary_en } : {}),
       ...(entry.summary ? { summary: entry.summary } : {}),
       order: t,
       layout,

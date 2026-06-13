@@ -8,31 +8,36 @@ layers:
   - id: application
     name: Application
     order: 0
-    summary: "Use cases, application services orchestrating the domain"
+    summary_zh: "用例、编排领域的应用服务"
+    summary_en: "Use cases, application services orchestrating the domain"
     path_segments: [application, app, usecase, use_case]
     name_suffixes: [UseCase, ApplicationService, CommandHandler, QueryHandler]
   - id: domain
     name: Domain
     order: 1
-    summary: "Entities, value objects, domain services"
+    summary_zh: "实体、值对象、领域服务"
+    summary_en: "Entities, value objects, domain services"
     path_segments: [domain, model]
     name_suffixes: [Entity, Aggregate, ValueObject, DomainEvent, DomainService]
   - id: ports
     name: Ports
     order: 2
-    summary: "Interfaces the domain expects of the world"
+    summary_zh: "领域对外界期望的接口(端口)"
+    summary_en: "Interfaces the domain expects of the world"
     path_segments: [ports, port, interfaces]
     name_suffixes: [Port, Gateway]
   - id: adapters
     name: Adapters
     order: 3
-    summary: "Concrete implementations of ports — HTTP, DB, message bus"
+    summary_zh: "端口的具体实现 —— HTTP、数据库、消息总线"
+    summary_en: "Concrete implementations of ports — HTTP, DB, message bus"
     path_segments: [adapters, adapter, infrastructure, infra, persistence, http, rest, grpc]
     name_suffixes: [Adapter, Repository, Controller, HttpClient]
   - id: infrastructure
     name: Infrastructure
     order: 4
-    summary: "Wiring, config, cross-cutting"
+    summary_zh: "装配、配置、横切关注点"
+    summary_en: "Wiring, config, cross-cutting"
     path_segments: [config, wiring, bootstrap, di]
     name_suffixes: [Config, Module, Bootstrap]
 
