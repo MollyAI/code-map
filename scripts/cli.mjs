@@ -12,6 +12,7 @@ const routes = {
   serve: () => import('./serve.mjs').then((m) => m.runServer(rest)),
   score: () => import('./score.mjs').then((m) => m.main(rest)),
   invariants: () => import('./invariants.mjs').then((m) => m.main(rest)),
+  overlay: () => import('./overlay.mjs').then((m) => m.main(rest)),
 };
 
 (async () => {

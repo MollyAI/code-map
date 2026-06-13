@@ -53,7 +53,7 @@ const hasDesc = (c) => !!(c.description_zh || c.description_en || c.description)
 
 // A Phase-2-authored flow.diagram stays valid only while every decl it
 // references still exists; unknown types fail closed (stripped).
-function diagramRefsAlive(dg, liveIds) {
+export function diagramRefsAlive(dg, liveIds) {
   if (dg.type === 'pipeline') {
     for (const s of dg.stages || []) {
       for (const id of s.nodes || []) if (!liveIds.has(id)) return false;

@@ -8,9 +8,10 @@ A Claude Code plugin that builds an interactive architectural map of a target pr
 
 **Runtime: Node ≥18 (or Bun) — no Python, no install step.** Grammars are bundled WASM: 8 committed under `grammars/bundled/`, 6 large ones fetched once on first use, sha256-pinned in `grammars/manifest.json`, cached under `${CLAUDE_PLUGIN_DATA}` (offline miss → that language's files go to `unresolved`, never a crash). When adjusting an extractor, target the vendored WASM grammar's actual node names — the community grammars (kotlin, lua, objc, dart, swift) are a different dialect than the old PyPI ones.
 
-Three slash commands, all thin wrappers over the `bin/code-map` launcher:
+Four slash commands, all thin wrappers over the `bin/code-map` launcher:
 
 - `/code-map:build` — Phase 1 (extraction) + Phase 2 (semantic refinement); produces `.code-map/code-map.json`. The exact Phase 0/2 contract lives in `commands/build.md`.
+- `/code-map:chat` — grounded natural-language customization of the map (move a decl to a layer, author a flow, override a description); persists user edits to `.code-map/overlay.json` and re-applies them on every rebuild (`commands/chat.md`).
 - `/code-map:run` / `/code-map:stop` — server lifecycle via `mapctl.mjs` (`commands/run.md` / `stop.md`).
 
 ## Releasing / versioning
@@ -22,15 +23,15 @@ Three slash commands, all thin wrappers over the `bin/code-map` launcher:
 ```
 .claude-plugin/   plugin.json  marketplace.json
 bin/              code-map        # POSIX-sh launcher: detect node>=18/bun, exec scripts/cli.mjs
-commands/         build.md  run.md  stop.md
+commands/         build.md  chat.md  run.md  stop.md
 skills/           arch-score/SKILL.md   # 架构评分 rubric(确定性 D×E + AI 有界修正)
 examples/         default-layers.yml
 grammars/         manifest.json + vendored web-tree-sitter + bundled/ *.wasm
 templates/        # 13 architectural shapes (clean-architecture, mvc, mvvm, …)
 tools/            fetch-grammars.sh     # dev-only
-scripts/          cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs  score.mjs
+scripts/          cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs  score.mjs  overlay.mjs
   lib/            core.mjs  layers.mjs  templates.mjs  skipdirs.mjs  flows.mjs  gitmeta.mjs
-                  vendoring.mjs  score.mjs  ts.mjs  grammars.mjs  yaml.mjs  labels.mjs
+                  vendoring.mjs  score.mjs  ts.mjs  grammars.mjs  yaml.mjs  labels.mjs  overlay.mjs
     extractors/   index.mjs  base.mjs  _common.mjs  + one .mjs per language
 viewer/           index.html  src/...   # modular native ESM, no build step
 tests/            # node --test for pure logic; test_external_harness.py (eval harness only)
@@ -99,6 +100,7 @@ Non-obvious rules that hold across files (rationale in git history):
 - **Incremental builds.** Only Phase 2 is incremental — **Phase 1 always runs full**. `plan` picks full/incremental; any uncertainty → full. `merge` reuses prior annotations, flags `stale` decls and `needs_review` flows, strips diagrams whose decls vanished.
 - **Phase 3 is intentionally dumb.** `serve.mjs` re-reads `code-map.json` every request — don't add caching.
 - **Server lifecycle is owned by `mapctl.mjs`.** `run.md`/`stop.md` stay one-shot relays — no shell-side PID files or polling. `serve.mjs --state` writes/cleans `.code-map/server.json`; `mapctl` reuses a live pid, never starts a second instance.
+- **User overlay / chat persistence (`scripts/lib/overlay.mjs`, `commands/chat.md`).** `/code-map:chat` records grounded user edits in `.code-map/overlay.json` — the one `.code-map/` file no rebuild ever wipes (Path A's `rm` skips it; Phase 2 only overwrites `code-map.json`; a plugin upgrade touches `~/.claude/plugins/` not the target project). `code-map overlay apply` re-applies it onto the freshly-built map at the END of Phase 2, **before** `score` (layer moves change `layer_violations`), on **both** full and incremental — this is what survives a plugin upgrade, since the incremental `merge` does NOT run on the forced full rebuild. Entries are GROUNDED (reference real decl/flow ids only) and reconciled by id-existence: a vanished ref → entry `inactive` + reported, a returned ref → reactivated. Dedup is done IN apply (class by `id`, flow by `id` + same-seed/high-overlap suppression) — never left to the INV-1 gate (which hard-fails, not dedups). **Empty/absent overlay → `apply` is identity**, so eval golden fixtures (no overlay) stay byte-identical. `apply` is idempotent. Plugin-behavior requests (§B in `chat.md`) are NOT stored in the overlay — they're guided toward an upstream PR (local edits vanish on upgrade). Reuses `diagramRefsAlive` (exported from `incremental.mjs`) for flow liveness.
 
 ## Sources
 

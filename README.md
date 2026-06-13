@@ -34,14 +34,15 @@ To update: `/plugin marketplace update code-map`. To remove: `/plugin uninstall 
 ## Usage / 如何使用
 
 ```
-/code-map:build   # extract + AI refinement → .code-map/code-map.json
-/code-map:run     # start the local server and open the browser
-/code-map:stop    # stop the background server
+/code-map:build              # extract + AI refinement → .code-map/code-map.json
+/code-map:chat <request>     # customize the map in natural language (persisted)
+/code-map:run                # start the local server and open the browser
+/code-map:stop               # stop the background server
 ```
 
-`build` runs the analysis, `run` opens the visualization, and `stop` shuts down the server.
+`build` runs the analysis, `run` opens the visualization, and `stop` shuts down the server. `chat` lets you reshape the map in plain language — e.g. `/code-map:chat add a login & registration flow` or `/code-map:chat put SettingScreen in the Presentation layer`.
 
-`build` 执行分析，`run` 打开可视化页面，`stop` 关闭后台服务。
+`build` 执行分析，`run` 打开可视化页面，`stop` 关闭后台服务。`chat` 让你用自然语言改造地图——例如 `/code-map:chat 加一张登录注册流程图` 或 `/code-map:chat Presentation 分层增加 SettingScreen`。
 
 ---
 
@@ -51,11 +52,15 @@ Scans your project, picks a fitting architectural template (Clean Architecture, 
 
 **Arch score:** every build also stamps a deterministic architecture score (0–135: a capped difficulty gate that filters out toy repos × execution quality — past the gate, only quality ranks) into the map, shown in the topbar after the build time (`Arch Score: 124`) with a penalty-by-penalty tooltip breakdown.
 
+**Chat customization:** `/code-map:chat` reshapes the map in natural language — move a declaration into a layer, author a business flow diagram, or rewrite a description. Edits are **grounded** (only real declarations, never invented nodes), **deduplicated** (no duplicate class or flow), and **persisted** to `.code-map/overlay.json`, so they survive every rebuild — including the full rebuild a plugin upgrade forces. An edit only pauses if the code it references is deleted or renamed, and auto-revives if that code returns.
+
 **Supported languages:** Kotlin, Java, Python, Go, Rust, TypeScript / JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua.
 
 扫描项目并自动匹配合适的架构模板（整洁架构、MVC、MVVM、MVP、MVI、分层 / N-Tier、六边形架构、CQRS / 事件驱动、前端 SPA、CLI 工具、流水线、ECS 或微内核 / 插件），提取核心的类 / 结构体 / trait 及其依赖关系，并以蓝图风格的 HTML 可视化呈现——点击任意节点即可查看其源码路径、角色与依赖，并可在**分层**视图与**流程**视图之间切换。流程视图以左→右流水线方式从入口点沿 `uses` 边向前追踪，将高入度的枢纽节点作为不可展开的叶子节点剪枝；可从左侧可收起的侧边栏选择流程。
 
 **架构评分：** 每次构建还会向地图写入一个确定性的架构评分（0~135：难度只是过滤玩具仓库的封顶门槛 × 执行质量——过了门槛只比质量），展示在顶栏构建时间之后（`架构评分：124`），悬停可查看逐项扣分明细。
+
+**对话式定制：** `/code-map:chat` 让你用自然语言改造地图——把某个声明移入分层、著一张业务流程图、或重写描述。所有编辑都是**接地的**（只操作真实声明，绝不凭空造节点）、**去重的**（不出现重复的类或流程），并**持久化**到 `.code-map/overlay.json`，因此每次重建都会保留——包括插件升级强制触发的全量重建。仅当引用的代码被删除或重命名时该编辑才会暂停，代码重现时自动恢复。
 
 **支持语言：** Kotlin、Java、Python、Go、Rust、TypeScript / JavaScript、C、C++、C#、Swift、Objective-C、Dart、Lua。
 

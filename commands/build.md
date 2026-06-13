@@ -134,7 +134,8 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
 - `project.git` (fresh HEAD) and `project.architecture` (carried) are already correct in the draft — do not overwrite them.
-- **Score the architecture** — the merge dropped the prior `project.score` on purpose (the graph changed); after writing the final `code-map.json`, run full-build Phase 2 step 8 (`"$CM" score --data .code-map/code-map.json --write`, plus a whitelisted `--adjust` only with evidence) to re-stamp it.
+- **Apply the persisted user overlay** — after writing the final `code-map.json`, run full-build Phase 2 step 7.5 (`"$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json`) so any `/code-map:chat` edits are re-applied and deduped **before** scoring. No `overlay.json` → no-op.
+- **Score the architecture** — the merge dropped the prior `project.score` on purpose (the graph changed); after writing the final `code-map.json` (and applying the overlay), run full-build Phase 2 step 8 (`"$CM" score --data .code-map/code-map.json --write`, plus a whitelisted `--adjust` only with evidence) to re-stamp it.
 
 ---
 
@@ -242,6 +243,14 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    missing half — re-run it on the final `code-map.json` and fix any INV-B1 report before done.
 
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them. The `project`-level Phase 1 provenance fields — `git`, `code_map_version`, `generated_at`, `files_scanned` — pass through to `code-map.json` unchanged too; never hand-edit `code_map_version` (the plan step relies on it to detect the next upgrade).
+
+7.5. **Apply the persisted user overlay (chat edits).** Users curate the map via `/code-map:chat`, which records *grounded* edits (layer moves, authored flows, description overrides) in `.code-map/overlay.json`. Re-apply them deterministically onto the freshly-written map so they survive **every** rebuild — including the full rebuild a plugin upgrade forces (the incremental `merge` does **not** run then, so this is the only thing that preserves them across an upgrade):
+
+   ```bash
+   CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json
+   ```
+
+   This reconciles each entry against the fresh structure (a decl/flow whose code vanished is suspended and reported; it auto-revives if the code returns), applies the active ones, and dedups (no duplicate class per layer, no duplicate flow). **No `overlay.json` → it is a no-op** and the map is untouched (so eval golden stays byte-identical). If it reports `suspended` entries, mention them in the final summary so the user knows which edits paused. This runs **before** scoring (step 8) because layer moves change `layer_violations`.
 
 8. **Score the architecture (arch-score).** The rubric of record is the plugin's `skills/arch-score/SKILL.md` — follow its workflow. Minimum: stamp the deterministic baseline:
 
