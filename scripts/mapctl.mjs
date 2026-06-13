@@ -125,6 +125,53 @@ export function shouldAutoStop({ reason, keepAliveEnv, keepAliveFile, serverAliv
   return true;
 }
 
+// Truthy-ish env value: unset / "" / "0" / "false" / "no" / "off" → false.
+function isTruthy(v) {
+  if (v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  return s !== '' && s !== '0' && s !== 'false' && s !== 'no' && s !== 'off';
+}
+
+// Best-effort read of the SessionEnd JSON payload from stdin. TTY (manual
+// invocation) → resolve empty immediately so we never hang the 1.5s budget.
+function readStdin() {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) return resolve('');
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => { data += c; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', () => resolve(data));
+  });
+}
+
+// Invoked by the plugin's SessionEnd hook (hooks/hooks.json) — not for manual
+// use. Reads the SessionEnd payload, decides via shouldAutoStop, stops quietly.
+export async function sessionEndMain() {
+  let payload = {};
+  try { payload = JSON.parse(await readStdin()) || {}; } catch { payload = {}; }
+  const reason = typeof payload.session_end_reason === 'string' ? payload.session_end_reason : '';
+
+  // Efficiency early-out: skip all filesystem work for non-exit reasons.
+  if (CONTINUE_REASONS.has(reason)) return 0;
+
+  const projectDir = resolvePath(
+    process.env.CLAUDE_PROJECT_DIR
+    || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd(),
+  );
+  const statePath = join(projectDir, '.code-map', 'server.json');
+
+  const state = readState(statePath);
+  const serverAlive = !!(state && Number.isInteger(state.pid) && pidAlive(state.pid));
+  const keepAliveEnv = isTruthy(process.env.CODE_MAP_KEEP_ALIVE);
+  const keepAliveFile = existsSync(join(projectDir, '.code-map', 'keep-alive'));
+
+  if (shouldAutoStop({ reason, keepAliveEnv, keepAliveFile, serverAlive })) {
+    await stopServer(statePath, { wait: 1000 });
+  }
+  return 0; // SessionEnd ignores exit codes; stay silent regardless.
+}
+
 export async function stopMain(argv) {
   const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
   const r = await stopServer(statePath);
