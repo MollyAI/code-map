@@ -30,5 +30,5 @@ export function main(argv) {
     console.error(`\ninvariants FAILED: ${violations.length} violation(s)`);
     return 1;
   }
-  console.log('invariants OK: INV-1 + INV-U1 clean');
+  console.log('invariants OK: INV-1 + INV-U1 + INV-B1 clean');
 }
