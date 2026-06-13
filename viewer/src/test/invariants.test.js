@@ -49,3 +49,31 @@ test('INV-1: same label across DIFFERENT categories is allowed', () => {
   ] };
   assert.deepEqual(assertInv1(model), []);
 });
+
+import { assertInvU1 } from '../data/invariants.js';
+import { makeLayout, labelWidth } from '../layout/metrics.js';
+
+const LONG = 'AVeryLongDeclarationNameThatWouldHaveBeenTruncatedBeforeAdaptiveWidth';
+
+test('INV-U1: green under real geometry (boxes always fit the full label)', () => {
+  const L = makeLayout(1);
+  const model = { layers: [layer('L', [cls({ id: 'a', name: LONG })])] };
+  assert.deepEqual(assertInvU1(model, L), []);
+});
+
+test('INV-U1: a reintroduced width cap is caught (injected nodeWidth)', () => {
+  const L = makeLayout(1);
+  const model = { layers: [layer('L', [cls({ id: 'a', name: LONG })])] };
+  const capped = () => 220; // pretend nodeWidth re-added the old maxNodeW=220 cap
+  const v = assertInvU1(model, L, { nodeWidth: capped, labelWidth });
+  assert.equal(v.length, 1);
+  assert.equal(v[0].inv, 'INV-U1');
+  assert.equal(v[0].node, LONG);
+});
+
+test('INV-U1: only core nodes are checked', () => {
+  const L = makeLayout(1);
+  const model = { layers: [layer('L', [cls({ id: 'a', name: LONG, core: false })])] };
+  const capped = () => 220;
+  assert.deepEqual(assertInvU1(model, L, { nodeWidth: capped, labelWidth }), []);
+});

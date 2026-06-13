@@ -6,6 +6,8 @@
 // the renderer uses — single source of truth for the CLI gate and unit tests.
 // --------------------------------------------------------------------
 
+import { nodeWidth as realNodeWidth, labelWidth as realLabelWidth } from '../layout/metrics.js';
+
 /** Rendered label for a class datum — exactly what render/node.js draws. */
 export function renderedLabel(c) {
   return c.display_name || c.name;
@@ -37,6 +39,40 @@ export function assertInv1(model) {
           category: layer.name || layer.id,
           label,
           sources: nodes.map((c) => ({ path: c.path, signature: c.signature || '' })),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * INV-U1 — every rendered node's box is wide enough for its full label.
+ * Compares the box width the layout WILL use (`nodeWidth`) against an
+ * INDEPENDENT lower bound (`labelWidth(fullLabel) + 2·nodePadX`); a width cap
+ * reintroduced inside `nodeWidth` shrinks the box below that bound and fires.
+ * `deps` is injectable so the regression can be exercised in tests; production
+ * passes the real metrics functions.
+ * @param {{ layers?: Array }} model
+ * @param {import('../layout/metrics.js').Layout} LAYOUT
+ * @param {{ nodeWidth?: Function, labelWidth?: Function, eps?: number }} [deps]
+ * @returns {Array<object>} violations
+ */
+export function assertInvU1(model, LAYOUT, deps = {}) {
+  const nodeWidth = deps.nodeWidth || realNodeWidth;
+  const labelWidth = deps.labelWidth || realLabelWidth;
+  const EPS = deps.eps ?? 1;
+  const out = [];
+  for (const layer of model.layers || []) {
+    for (const c of (layer.classes || []).filter((x) => x.core)) {
+      const label = renderedLabel(c);
+      const boxW = nodeWidth(c, LAYOUT);
+      const needW = labelWidth(label, LAYOUT) + LAYOUT.nodePadX * 2;
+      if (boxW + EPS < needW) {
+        out.push({
+          inv: 'INV-U1',
+          node: label,
+          reason: `box narrower than label (nodeWidth ${boxW | 0}px < label ${needW | 0}px)`,
         });
       }
     }
