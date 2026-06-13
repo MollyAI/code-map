@@ -11,6 +11,7 @@ const routes = {
   stop: () => import('./mapctl.mjs').then((m) => m.stopMain(rest)),
   serve: () => import('./serve.mjs').then((m) => m.runServer(rest)),
   score: () => import('./score.mjs').then((m) => m.main(rest)),
+  invariants: () => import('./invariants.mjs').then((m) => m.main(rest)),
 };
 
 (async () => {

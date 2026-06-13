@@ -108,21 +108,45 @@ def _read_json(path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
 
 
+def _run_js_gate(map_path):
+    """Run `code-map invariants --data <map>`; return (ok, combined_output)."""
+    proc = subprocess.run([str(LAUNCHER), "invariants", "--data", str(map_path)],
+                          capture_output=True, text=True)
+    return proc.returncode == 0, (proc.stdout + proc.stderr)
+
+
 def cmd_invariants(args):
     out_dir = OUT / args.name
     raw = _read_json(out_dir / "raw_structure.json")
+    if raw is None:
+        sys.exit(f"error: run prepare first; missing raw_structure.json under {out_dir}")
     cm = _read_json(out_dir / "code-map.json")
-    if raw is None or cm is None:
-        sys.exit(f"error: run prepare + Phase 2 first; missing files under {out_dir}")
-    unr = _read_json(out_dir / "unresolved.json", {})
-    rep = harness.check_invariants(raw, cm, unr)
-    for m in rep["soft"]:
-        print(f"  [soft] {m}")
-    for m in rep["hard"]:
-        print(f"  [HARD] {m}")
-    if rep["hard"]:
-        sys.exit(f"invariants FAILED: {len(rep['hard'])} hard issue(s)")
-    print(f"[invariants] {args.name}: OK ({len(rep['soft'])} soft note(s))")
+
+    hard = []
+    # Phase-2 structural checks need code-map.json (post-Claude); skip if absent.
+    if cm is not None:
+        unr = _read_json(out_dir / "unresolved.json", {})
+        rep = harness.check_invariants(raw, cm, unr)
+        for m in rep["soft"]:
+            print(f"  [soft] {m}")
+        for m in rep["hard"]:
+            print(f"  [HARD] {m}")
+        hard += rep["hard"]
+    else:
+        print("  [note] no code-map.json — INV-1/INV-U1 gate runs on raw_structure.json")
+
+    # INV-1 / INV-U1 gate (JS, single source of truth). code-map.json when it
+    # exists, else the Phase-1 raw_structure.json (labels/core/layers already set).
+    gate_map = (out_dir / "code-map.json") if cm is not None else (out_dir / "raw_structure.json")
+    ok, output = _run_js_gate(gate_map)
+    if output.strip():
+        print(output.rstrip())
+    if not ok:
+        hard.append("INV-1/INV-U1 gate failed")
+
+    if hard:
+        sys.exit(f"invariants FAILED: {len(hard)} hard issue(s)")
+    print(f"[invariants] {args.name}: OK")
 
 
 def _phase1_raw(name):

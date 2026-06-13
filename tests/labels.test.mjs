@@ -70,3 +70,26 @@ test('all display labels are globally unique', () => {
   const lbl = decls.map((d) => d._display_name ?? d.name);
   assert.equal(new Set(lbl).size, lbl.length, JSON.stringify(lbl));
 });
+
+test('R3b: same qualifiedName overloads split by distinct signature', () => {
+  const decls = [
+    { name: 'observeWeaklyKeyPathFor', namespace: 'RxCocoa.Foundation.NSObject+Rx',
+      path: 'Foundation/NSObject+Rx.swift', signature: 'func observeWeaklyKeyPathFor(_:options:) -> Observable<T?>' },
+    { name: 'observeWeaklyKeyPathFor', namespace: 'RxCocoa.Foundation.NSObject+Rx',
+      path: 'Foundation/NSObject+Rx.swift', signature: 'func observeWeaklyKeyPathFor(_:options:) -> Observable<T>' },
+  ];
+  assignDisplayNames(decls);
+  const lbl = decls.map((d) => d._display_name ?? d.name);
+  assert.equal(new Set(lbl).size, 2, `labels must be distinct: ${JSON.stringify(lbl)}`);
+  assert.ok(lbl.every((s) => s.includes('observeWeaklyKeyPathFor')));
+});
+
+test('R3b: truly identical decls (same qname + same signature) stay equal (assertion catches them)', () => {
+  const decls = [
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+  ];
+  assignDisplayNames(decls);
+  const lbl = decls.map((d) => d._display_name ?? d.name);
+  assert.equal(lbl[0], lbl[1], 'genuine duplicates are left for a human to merge');
+});
