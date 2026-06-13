@@ -104,6 +104,20 @@ export function assignDisplayNames(declarations) {
     if (counts.get(labelOf(d)) > 1) d._display_name = qualifiedName(d);
   }
 
+  // Repair 3: still colliding after qualifiedName means same-qname overloads
+  // (e.g. Swift return-type-only overloads). Append the full `signature` — it
+  // captures the return type, so it differs when the overloads differ. If the
+  // signatures are also identical the decls are genuine duplicates: leave them
+  // equal so the INV-1 gate fires and a human merges. (Cosmetic slimming of the
+  // resulting long label is out of scope — INV-U1 guarantees no truncation.)
+  counts = tally(declarations.map(labelOf));
+  for (const d of declarations) {
+    if (counts.get(labelOf(d)) > 1) {
+      const sig = (d.signature || '').trim();
+      if (sig) d._display_name = `${qualifiedName(d)} ${sig}`;
+    }
+  }
+
   // Drop no-op labels so JSON stays clean and the viewer falls back to name.
   for (const d of declarations) if (d._display_name === d.name) delete d._display_name;
 }
