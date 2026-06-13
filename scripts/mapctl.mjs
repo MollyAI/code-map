@@ -94,27 +94,102 @@ export async function runMain(argv) {
   return 0;
 }
 
-export async function stopMain(argv) {
-  const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
+// Stop the server recorded in statePath. Pure of console output so both the
+// user-facing `stop` command and the SessionEnd hook can reuse it.
+// Returns { status, pid?, error? } where status is one of:
+//   'no-state' | 'not-running' | 'signal-failed' | 'shutting-down' | 'stopped'
+export async function stopServer(statePath, { wait = 5000 } = {}) {
   const state = readState(statePath);
-  if (!state) {
-    console.log('[code-map:stop] no server state found — nothing to stop.');
-    return 0;
-  }
+  if (!state) return { status: 'no-state' };
   const pid = state.pid;
   if (!Number.isInteger(pid) || !pidAlive(pid)) {
-    console.log('[code-map:stop] server not running (stale state cleared).');
     try { unlinkSync(statePath); } catch { /* gone */ }
-    return 0;
+    return { status: 'not-running', pid };
   }
   try { process.kill(pid, 'SIGTERM'); }
-  catch (e) { console.log(`[code-map:stop] failed to signal PID ${pid}: ${e.message}`); return 1; }
-
-  const deadline = Date.now() + 5000;
+  catch (e) { return { status: 'signal-failed', pid, error: e }; }
+  const deadline = Date.now() + wait;
   while (Date.now() < deadline && pidAlive(pid)) await sleep(100);
   try { unlinkSync(statePath); } catch { /* gone */ }
+  return { status: pidAlive(pid) ? 'shutting-down' : 'stopped', pid };
+}
 
-  if (pidAlive(pid)) console.log(`[code-map:stop] sent SIGTERM to PID ${pid} (still shutting down).`);
-  else console.log(`[code-map:stop] stopped server (PID ${pid}).`);
-  return 0;
+// Reasons where the session continues rather than truly ending — never stop.
+const CONTINUE_REASONS = new Set(['clear', 'resume', 'bypass_permissions_disabled']);
+
+// Pure decision for the SessionEnd hook. No IO — inputs are pre-resolved.
+export function shouldAutoStop({ reason, keepAliveEnv, keepAliveFile, serverAlive }) {
+  if (CONTINUE_REASONS.has(reason)) return false; // session keeps going
+  if (!serverAlive) return false;                  // nothing to stop
+  if (keepAliveEnv || keepAliveFile) return false; // user opted out
+  return true;
+}
+
+// Truthy-ish env value: unset / "" / "0" / "false" / "no" / "off" → false.
+function isTruthy(v) {
+  if (v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  return s !== '' && s !== '0' && s !== 'false' && s !== 'no' && s !== 'off';
+}
+
+// Best-effort read of the SessionEnd JSON payload from stdin. TTY (manual
+// invocation) → resolve empty immediately so we never hang the 1.5s budget.
+function readStdin() {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) return resolve('');
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => { data += c; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', () => resolve(data));
+  });
+}
+
+// Invoked by the plugin's SessionEnd hook (hooks/hooks.json) — not for manual
+// use. Reads the SessionEnd payload, decides via shouldAutoStop, stops quietly.
+export async function sessionEndMain() {
+  let payload = {};
+  try { payload = JSON.parse(await readStdin()) || {}; } catch { payload = {}; }
+  const reason = typeof payload.session_end_reason === 'string' ? payload.session_end_reason : '';
+
+  // Efficiency early-out: skip all filesystem work for non-exit reasons.
+  if (CONTINUE_REASONS.has(reason)) return 0;
+
+  const projectDir = resolvePath(
+    process.env.CLAUDE_PROJECT_DIR
+    || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd(),
+  );
+  const statePath = join(projectDir, '.code-map', 'server.json');
+
+  const state = readState(statePath);
+  const serverAlive = !!(state && Number.isInteger(state.pid) && pidAlive(state.pid));
+  const keepAliveEnv = isTruthy(process.env.CODE_MAP_KEEP_ALIVE);
+  const keepAliveFile = existsSync(join(projectDir, '.code-map', 'keep-alive'));
+
+  if (shouldAutoStop({ reason, keepAliveEnv, keepAliveFile, serverAlive })) {
+    await stopServer(statePath, { wait: 1000 });
+  }
+  return 0; // SessionEnd ignores exit codes; stay silent regardless.
+}
+
+export async function stopMain(argv) {
+  const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
+  const r = await stopServer(statePath);
+  switch (r.status) {
+    case 'no-state':
+      console.log('[code-map:stop] no server state found — nothing to stop.');
+      return 0;
+    case 'not-running':
+      console.log('[code-map:stop] server not running (stale state cleared).');
+      return 0;
+    case 'signal-failed':
+      console.log(`[code-map:stop] failed to signal PID ${r.pid}: ${r.error.message}`);
+      return 1;
+    case 'shutting-down':
+      console.log(`[code-map:stop] sent SIGTERM to PID ${r.pid} (still shutting down).`);
+      return 0;
+    default: // 'stopped'
+      console.log(`[code-map:stop] stopped server (PID ${r.pid}).`);
+      return 0;
+  }
 }
