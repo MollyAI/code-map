@@ -23,6 +23,7 @@ import { createBuildPopover } from './ui/buildpopover.js';
 import { createDetail } from './ui/detail.js';
 import { renderLangStats } from './ui/langstats.js';
 import { initControls, populateFlowList } from './ui/controls.js';
+import { initMenu } from './interact/menu.js';
 import { formatBuildInfo } from './ui/buildinfo.js';
 import { initExport } from './export/png.js';
 import { t } from './i18n.js';
@@ -51,6 +52,8 @@ const els = {
   buildPopover: $('build-popover'),
   langStats: $('lang-stats'),
   layout: /** @type {any} */ (document.querySelector('.layout')),
+  menuToggle: $('menu-toggle'),
+  controlsOverflow: $('controls-overflow'),
 };
 
 const backend = createSvgBackend(els.svg, els.canvasWrap);
@@ -146,6 +149,7 @@ function onModel(json) {
 // --- boot, in explicit order ---
 registerBuiltinViews();
 initControls(els);                       // applies persisted settings + sets state.LAYOUT (before first render)
+initMenu({ menuToggle: els.menuToggle, overflow: els.controlsOverflow });
 subscribe(() => { renderBuildInfo(); renderApp(backend, ctx); }); // register the renderer
 const zoom = initZoom(backend, els.canvasWrap);
 initTouchZoom({ canvasWrap: els.canvasWrap, zoomTo: zoom.zoomTo });
