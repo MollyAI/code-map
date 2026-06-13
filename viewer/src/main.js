@@ -15,6 +15,7 @@ import { createSvgBackend, CANVAS_PAD_L } from './render/backend.js';
 import { registerBuiltinViews, renderApp } from './render/registry.js';
 import { createSelection } from './interact/selection.js';
 import { initZoom } from './interact/zoom.js';
+import { initTouchZoom } from './interact/touch.js';
 import { initPan } from './interact/pan.js';
 import { initKeyboard } from './interact/keyboard.js';
 import { createTooltip } from './ui/tooltip.js';
@@ -146,7 +147,8 @@ function onModel(json) {
 registerBuiltinViews();
 initControls(els);                       // applies persisted settings + sets state.LAYOUT (before first render)
 subscribe(() => { renderBuildInfo(); renderApp(backend, ctx); }); // register the renderer
-initZoom(backend, els.canvasWrap);
+const zoom = initZoom(backend, els.canvasWrap);
+initTouchZoom({ canvasWrap: els.canvasWrap, zoomTo: zoom.zoomTo });
 initPan(els.canvasWrap, backend.getSvg(), deselect);
 initKeyboard(deselect);
 initExport({ svg: backend.getSvg(), exportBtn: els.exportBtn, projectNameEl: els.projectName });
