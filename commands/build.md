@@ -53,7 +53,7 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
 2. List the top-level directories (`Glob` `*/` or `ls`).
 3. `Read` `.code-map/detection.json` — the detector's `chosen`, `scores`, and `evidence`.
 4. Pick the best-fitting template, weighing the README's stated intent + the directory shape + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — list them with `ls "$("$CM" root)/templates"` and `Read` the chosen one at `<root>/templates/<name>.yml` (where `<root>` is what `"$CM" root` printed). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
-5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary`, `path_segments`, `name_suffixes`.
+5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary_zh` + `summary_en` (bilingual, one short phrase each — **never** a single `summary` or a "中文 · English" concat string; INV-B1 hard-fails the build on a missing half), `path_segments`, `name_suffixes`. A group's `summary` (when titled) is likewise authored as `summary_zh`/`summary_en`.
 
    **2D layering — peer layers & sub-layers (`children` / `layout`).** A layer that carries a `children:` list is a **group**: it holds no declarations, only arranges its child leaf layers. Use it when the architecture is not a single vertical stack:
    - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level; the arch score treats edges between them as neutral (same `order`).
@@ -187,9 +187,9 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
    Your job is to turn the candidates into named **business capabilities**:
    - **Use `project.dispatch` to find the framework's signature chains** (e.g. okhttp's `Interceptor` → the interceptor chain) and make sure a flow surfaces each important one — the dispatch edges already wire the interface's using-node to its implementors.
-   - For each flow worth surfacing: rewrite `name` to a business capability name ("拦截器链" / "Interceptor Chain", "建立连接" / "Establish Connection", "请求执行" / "Request Execution", "缓存读写" / "Cache Read/Write"), write a one-sentence `description` (left-sidebar subtitle), and mark `confidence: "ai-inferred"`. **Keep each edge's `kind`/`via`** (do not flatten dispatch edges to uses).
+   - For each flow worth surfacing: write a business-capability name as the bilingual pair `name_zh` + `name_en` (e.g. `name_zh: "拦截器链"`, `name_en: "Interceptor Chain"`; also 建立连接/Establish Connection, 请求执行/Request Execution, 缓存读写/Cache Read/Write), write a one-sentence `description_zh` + `description_en` (left-sidebar subtitle), and mark `confidence: "ai-inferred"`. **Do not** author a single concatenated `name`/`description` ("中文 · English") — INV-B1 hard-fails any diagrammed flow whose `name`/`description` isn't a complete `_zh`/`_en` pair. **Keep each edge's `kind`/`via`** (do not flatten dispatch edges to uses).
    - **Cover every core subsystem (vertical depth).** Keep one deep flow per important subsystem — the `seed_kind:"subsystem"` candidates are already traced into the subsystem (through its hubs). Name it for the capability the subsystem provides, and in 6c draw it going INTO that subsystem, not stopping at its entry class.
-   - **Surface 2–4 end-to-end main chains (horizontal).** Make sure a flow threads the whole system across subsystems (e.g. "一次请求的完整生命周期 · full request lifecycle", "一次构建的端到端贯穿 · end-to-end build pass"). If no single seed reaches end-to-end, author one (next bullet).
+   - **Surface 2–4 end-to-end main chains (horizontal).** Make sure a flow threads the whole system across subsystems (e.g. `name_zh: "一次请求的完整生命周期"`, `name_en: "full request lifecycle"`; or 一次构建的端到端贯穿 / end-to-end build pass). If no single seed reaches end-to-end, author one (next bullet).
    - **Prune** noise candidates (omit from `flows[]`): a trivial one-node flow, or a generic utility that orchestrates nothing meaningful.
    - **Merge** near-duplicate candidates and **split** an over-broad one.
    - You **may author new flows** for a capability no single seed reaches (e.g. a cache subgraph): pick the capability's orchestrator as `seed`, recompute `nodes`/`edges` by walking `uses`-edges forward and, at a node that references an interface listed in `project.dispatch`, branching to that interface's implementors as `{from, to, kind:"dispatch", via}` edges (treat `hub:true` nodes as leaves UNLESS the hub is inside the subsystem you're tracing, cap ~8 hops, cap fan-out ~8).
@@ -216,9 +216,11 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
      that stage; without it, after the last stage.
    - `links`: `{from, to, label_zh, label_en, kind?: "data"|"control"|"dispatch"}` where
      `from`/`to` are stage ids, staged decl ids, or extra-node ids. **Every link carries a
-     bilingual label naming the thing that flows** (e.g. "Declaration[]", "源文件 · source
-     files"); when unsure of a type name use a verb phrase ("写入磁盘 · write to disk") —
-     never invent type names.
+     bilingual label naming the thing that flows** as the pair `label_zh`/`label_en` (e.g.
+     `label_zh: "源文件"`, `label_en: "source files"`; a pure type name like `"Declaration[]"`
+     may repeat in both halves); when unsure of a type name use a verb phrase
+     (`label_zh: "写入磁盘"`, `label_en: "write to disk"`) — never invent type names, and never
+     concat the two languages into one string.
 
    **Sequence** (`{"type":"sequence","participants":[…],"steps":[…]}`):
    - 3–8 `participants`, each `{id:"p:…", name_zh, name_en, kind?: "code"|"actor"|"artifact",
@@ -231,6 +233,13 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    **Self-check before writing** (the viewer falls back SILENTLY on any violation, so
    verify yourself): every referenced decl id exists in the map; staged ids ⊆ `flow.nodes`;
    stage/participant/extra ids unique; every link/step label has BOTH `_zh` and `_en`.
+
+   **Bilingual hard rule (INV-B1).** Every rendered descriptive string must be a complete
+   `_zh`/`_en` pair — layer & group `summary_zh`/`summary_en`, each diagrammed flow's
+   `name_zh`/`name_en` (+ `description_zh`/`description_en` when set), and every diagram
+   `name_zh`/`name_en` / `label_zh`/`label_en`. Never a single concat string ("中文 · English")
+   or one-language-only. `code-map invariants` (run after the build) **hard-fails** on a
+   missing half — re-run it on the final `code-map.json` and fix any INV-B1 report before done.
 
 7. `Write` the final `.code-map/code-map.json`. Same shape as `raw_structure.json` but with `description_zh` / `description_en` populated for core declarations, the `project.architecture` field set, and any manual overrides applied. Per-declaration deterministic fields from Phase 1 — `display_name` (R3 cross-module label disambiguation; present only when it differs from `name`), `importance`, `core`, `hub`, `in_degree`/`out_degree` — are Phase-1-owned: pass them through unchanged, don't hand-edit them. The `project`-level Phase 1 provenance fields — `git`, `code_map_version`, `generated_at`, `files_scanned` — pass through to `code-map.json` unchanged too; never hand-edit `code_map_version` (the plan step relies on it to detect the next upgrade).
 
