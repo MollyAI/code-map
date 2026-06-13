@@ -10,6 +10,7 @@ import { state } from '../store.js';
 import { t } from '../i18n.js';
 import { countLabel } from '../data/counts.js';
 import { layoutLayers } from '../layout/layers.js';
+import { layoutGrouped } from '../layout/groups.js';
 import { layoutFlow } from '../layout/flow.js';
 import { layoutPipeline } from '../layout/pipeline.js';
 import { layoutSequence } from '../layout/sequence.js';
@@ -83,21 +84,62 @@ const layerView = {
   computeLayout(st, ctx) {
     const layers = visibleLayers(st);
     const canvasWidth = ctx.canvasWidth();
+    const groups = st.raw.layer_groups;
+    if (groups && groups.length) {
+      const { bands, frames, totalHeight } = layoutGrouped(layers, groups, canvasWidth, st.LAYOUT);
+      return { width: canvasWidth, height: Math.max(totalHeight, 200), bands, frames };
+    }
     const { bands, totalHeight } = layoutLayers(layers, canvasWidth, st.LAYOUT);
-    return { width: canvasWidth, height: Math.max(totalHeight, 200), bands };
+    return { width: canvasWidth, height: Math.max(totalHeight, 200), bands, frames: [] };
   },
   buildContent(backend, layout, ctx) {
     const st = ctx.state;
     // edges group is created here but appended LAST so it paints on top.
     const gEdges = document.createElementNS(NS, 'g');
     gEdges.setAttribute('id', 'edges');
+
+    // Group umbrella frames (2D layering) — drawn FIRST so bands paint on top.
+    // A frame whose group has no `name` (bare peer) renders no title text.
+    for (const f of layout.frames || []) {
+      const gGroup = document.createElementNS(NS, 'g');
+      gGroup.setAttribute('class', 'layer-group');
+
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('class', 'bg');
+      rect.setAttribute('x', String(f.x));
+      rect.setAttribute('y', String(f.y));
+      rect.setAttribute('width', String(f.width));
+      rect.setAttribute('height', String(f.height));
+      rect.setAttribute('rx', '4');
+      gGroup.appendChild(rect);
+
+      if (f.group.name) {
+        const glabel = document.createElementNS(NS, 'text');
+        glabel.setAttribute('class', 'glabel');
+        glabel.setAttribute('x', String(f.x + st.LAYOUT.bandLabelX));
+        glabel.setAttribute('y', String(f.y + 22));
+        glabel.textContent = f.group.name;
+        gGroup.appendChild(glabel);
+
+        if (f.group.summary) {
+          const gsum = document.createElementNS(NS, 'text');
+          gsum.setAttribute('class', 'gsummary');
+          gsum.setAttribute('x', String(f.x + st.LAYOUT.bandLabelX));
+          gsum.setAttribute('y', String(f.y + 38));
+          gsum.textContent = f.group.summary;
+          gGroup.appendChild(gsum);
+        }
+      }
+      backend.add(gGroup);
+    }
+
     for (const b of layout.bands) {
       const gBand = document.createElementNS(NS, 'g');
       gBand.setAttribute('class', 'layer-band');
 
       const rect = document.createElementNS(NS, 'rect');
       rect.setAttribute('class', 'bg');
-      rect.setAttribute('x', '0');
+      rect.setAttribute('x', String(b.x));
       rect.setAttribute('y', String(b.y));
       rect.setAttribute('width', String(b.width));
       rect.setAttribute('height', String(b.height));
@@ -106,21 +148,21 @@ const layerView = {
 
       const label = document.createElementNS(NS, 'text');
       label.setAttribute('class', 'label');
-      label.setAttribute('x', String(st.LAYOUT.bandLabelX));
+      label.setAttribute('x', String(b.x + st.LAYOUT.bandLabelX));
       label.setAttribute('y', String(b.y + 26));
       label.textContent = b.layer.name;
       gBand.appendChild(label);
 
       const summary = document.createElementNS(NS, 'text');
       summary.setAttribute('class', 'summary');
-      summary.setAttribute('x', String(st.LAYOUT.bandLabelX));
+      summary.setAttribute('x', String(b.x + st.LAYOUT.bandLabelX));
       summary.setAttribute('y', String(b.y + 44));
       summary.textContent = b.layer.summary || '';
       gBand.appendChild(summary);
 
       const count = document.createElementNS(NS, 'text');
       count.setAttribute('class', 'count');
-      count.setAttribute('x', String(b.width - 16));
+      count.setAttribute('x', String(b.x + b.width - 16));
       count.setAttribute('y', String(b.y + 26));
       count.textContent = countLabel(b.layer.classes, st.lang);
       gBand.appendChild(count);
