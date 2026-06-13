@@ -41,6 +41,7 @@ export function pinchZoom(startZoom, startDist, curDist) {
  * @param {(z: number, anchorX: number, anchorY: number) => void} deps.zoomTo
  */
 export function initTouchZoom({ canvasWrap, zoomTo }) {
+  if (!canvasWrap) return;
   let startDist = 0;
   let startZoom = 1;
   let pinching = false;
