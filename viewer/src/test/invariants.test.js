@@ -1,9 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertInv1, renderedLabel } from '../data/invariants.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { assertInv1, assertInvU1, renderedLabel, collectViolations, formatDiagnostics } from '../data/invariants.js';
+import { makeLayout, labelWidth } from '../layout/metrics.js';
 
 const layer = (name, classes) => ({ id: name.toLowerCase().replace(/\s+/g, '-'), name, classes });
 const cls = (o) => ({ core: true, ...o });
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LONG = 'AVeryLongDeclarationNameThatWouldHaveBeenTruncatedBeforeAdaptiveWidth';
 
 test('renderedLabel prefers display_name, falls back to name', () => {
   assert.equal(renderedLabel({ name: 'x' }), 'x');
@@ -50,11 +57,6 @@ test('INV-1: same label across DIFFERENT categories is allowed', () => {
   assert.deepEqual(assertInv1(model), []);
 });
 
-import { assertInvU1 } from '../data/invariants.js';
-import { makeLayout, labelWidth } from '../layout/metrics.js';
-
-const LONG = 'AVeryLongDeclarationNameThatWouldHaveBeenTruncatedBeforeAdaptiveWidth';
-
 test('INV-U1: green under real geometry (boxes always fit the full label)', () => {
   const L = makeLayout(1);
   const model = { layers: [layer('L', [cls({ id: 'a', name: LONG })])] };
@@ -78,12 +80,6 @@ test('INV-U1: only core nodes are checked', () => {
   assert.deepEqual(assertInvU1(model, L, { nodeWidth: capped, labelWidth }), []);
 });
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-
 test('static guard: render/node.js renders the full label, never truncates', () => {
   const src = readFileSync(join(HERE, '../render/node.js'), 'utf8');
   assert.ok(src.includes('n.datum.display_name || n.datum.name'),
@@ -102,8 +98,6 @@ test('static guard: the .node .nlabel CSS rule has no clip/ellipsis', () => {
     assert.ok(!block.includes(bad), `.node .nlabel must not clip (found ${bad})`);
   }
 });
-
-import { collectViolations, formatDiagnostics } from '../data/invariants.js';
 
 test('collectViolations merges INV-1 + INV-U1', () => {
   const L = makeLayout(1);

@@ -64,7 +64,7 @@ export function assertInvU1(model, LAYOUT, deps = {}) {
   const EPS = deps.eps ?? 1;
   const out = [];
   for (const layer of model.layers || []) {
-    for (const c of (layer.classes || []).filter((x) => x.core)) {
+    for (const c of renderedClasses(layer)) {
       const label = renderedLabel(c);
       const boxW = nodeWidth(c, LAYOUT);
       const needW = labelWidth(label, LAYOUT) + LAYOUT.nodePadX * 2;
@@ -72,7 +72,7 @@ export function assertInvU1(model, LAYOUT, deps = {}) {
         out.push({
           inv: 'INV-U1',
           node: label,
-          reason: `box narrower than label (nodeWidth ${boxW | 0}px < label ${needW | 0}px)`,
+          reason: `box narrower than label (nodeWidth ${Math.round(boxW)}px < label ${Math.round(needW)}px)`,
         });
       }
     }
@@ -95,6 +95,7 @@ export function formatDiagnostics(violations) {
         + `  sources:\n${srcs}\n`
         + `  fix: R3b 按签名消歧, 或合并(若真重复)`;
     }
+    // else: currently only INV-U1 reaches here
     return `INV-U1 FAIL — node "${v.node}"\n`
       + `  reason: ${v.reason}\n`
       + `  fix: 检查 nodeWidth 是否重新引入了截断帽`;
