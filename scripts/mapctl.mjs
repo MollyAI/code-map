@@ -114,6 +114,17 @@ export async function stopServer(statePath, { wait = 5000 } = {}) {
   return { status: pidAlive(pid) ? 'shutting-down' : 'stopped', pid };
 }
 
+// Reasons where the session continues rather than truly ending — never stop.
+const CONTINUE_REASONS = new Set(['clear', 'resume', 'bypass_permissions_disabled']);
+
+// Pure decision for the SessionEnd hook. No IO — inputs are pre-resolved.
+export function shouldAutoStop({ reason, keepAliveEnv, keepAliveFile, serverAlive }) {
+  if (CONTINUE_REASONS.has(reason)) return false; // session keeps going
+  if (!serverAlive) return false;                  // nothing to stop
+  if (keepAliveEnv || keepAliveFile) return false; // user opted out
+  return true;
+}
+
 export async function stopMain(argv) {
   const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
   const r = await stopServer(statePath);

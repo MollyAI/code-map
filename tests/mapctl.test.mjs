@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { stopServer } from '../scripts/mapctl.mjs';
+import { stopServer, shouldAutoStop } from '../scripts/mapctl.mjs';
 
 function tmpStatePath() {
   return join(mkdtempSync(join(tmpdir(), 'codemap-mapctl-')), 'server.json');
@@ -35,4 +35,25 @@ test('stopServer: live process → SIGTERM, stopped, state cleared', async () =>
   await exited;
   assert.equal(r.status, 'stopped');
   assert.equal(existsSync(sp), false);
+});
+
+test('shouldAutoStop: continue-reasons never stop', () => {
+  for (const reason of ['clear', 'resume', 'bypass_permissions_disabled']) {
+    assert.equal(shouldAutoStop({ reason, serverAlive: true, keepAliveEnv: false, keepAliveFile: false }), false);
+  }
+});
+
+test('shouldAutoStop: exit reason + live server + no opt-out → stop', () => {
+  for (const reason of ['prompt_input_exit', 'logout', 'other', '']) {
+    assert.equal(shouldAutoStop({ reason, serverAlive: true, keepAliveEnv: false, keepAliveFile: false }), true);
+  }
+});
+
+test('shouldAutoStop: no live server → never stop', () => {
+  assert.equal(shouldAutoStop({ reason: 'other', serverAlive: false, keepAliveEnv: false, keepAliveFile: false }), false);
+});
+
+test('shouldAutoStop: opt-out env or file → never stop', () => {
+  assert.equal(shouldAutoStop({ reason: 'other', serverAlive: true, keepAliveEnv: true, keepAliveFile: false }), false);
+  assert.equal(shouldAutoStop({ reason: 'other', serverAlive: true, keepAliveEnv: false, keepAliveFile: true }), false);
 });
