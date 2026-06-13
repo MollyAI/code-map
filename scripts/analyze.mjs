@@ -208,7 +208,10 @@ export async function main(argv) {
 
   const data = core.toJsonShape(
     decls, edges,
-    layerLeaves.map((l) => ({ id: l.id, name: l.name, order: l.order, summary: l.summary,
+    layerLeaves.map((l) => ({ id: l.id, name: l.name, order: l.order,
+      ...(l.summary_zh ? { summary_zh: l.summary_zh } : {}),
+      ...(l.summary_en ? { summary_en: l.summary_en } : {}),
+      ...(l.summary != null ? { summary: l.summary } : {}),
       ...(l.api === true ? { api: true } : {}),
       ...(l.group ? { group: l.group } : {}) })),
     projectMeta, flowList,
