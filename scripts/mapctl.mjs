@@ -94,27 +94,44 @@ export async function runMain(argv) {
   return 0;
 }
 
-export async function stopMain(argv) {
-  const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
+// Stop the server recorded in statePath. Pure of console output so both the
+// user-facing `stop` command and the SessionEnd hook can reuse it.
+// Returns { status, pid?, error? } where status is one of:
+//   'no-state' | 'not-running' | 'signal-failed' | 'shutting-down' | 'stopped'
+export async function stopServer(statePath, { wait = 5000 } = {}) {
   const state = readState(statePath);
-  if (!state) {
-    console.log('[code-map:stop] no server state found — nothing to stop.');
-    return 0;
-  }
+  if (!state) return { status: 'no-state' };
   const pid = state.pid;
   if (!Number.isInteger(pid) || !pidAlive(pid)) {
-    console.log('[code-map:stop] server not running (stale state cleared).');
     try { unlinkSync(statePath); } catch { /* gone */ }
-    return 0;
+    return { status: 'not-running', pid };
   }
   try { process.kill(pid, 'SIGTERM'); }
-  catch (e) { console.log(`[code-map:stop] failed to signal PID ${pid}: ${e.message}`); return 1; }
-
-  const deadline = Date.now() + 5000;
+  catch (e) { return { status: 'signal-failed', pid, error: e }; }
+  const deadline = Date.now() + wait;
   while (Date.now() < deadline && pidAlive(pid)) await sleep(100);
   try { unlinkSync(statePath); } catch { /* gone */ }
+  return { status: pidAlive(pid) ? 'shutting-down' : 'stopped', pid };
+}
 
-  if (pidAlive(pid)) console.log(`[code-map:stop] sent SIGTERM to PID ${pid} (still shutting down).`);
-  else console.log(`[code-map:stop] stopped server (PID ${pid}).`);
-  return 0;
+export async function stopMain(argv) {
+  const statePath = resolvePath(flag(argv, '--state', '.code-map/server.json'));
+  const r = await stopServer(statePath);
+  switch (r.status) {
+    case 'no-state':
+      console.log('[code-map:stop] no server state found — nothing to stop.');
+      return 0;
+    case 'not-running':
+      console.log('[code-map:stop] server not running (stale state cleared).');
+      return 0;
+    case 'signal-failed':
+      console.log(`[code-map:stop] failed to signal PID ${r.pid}: ${r.error.message}`);
+      return 1;
+    case 'shutting-down':
+      console.log(`[code-map:stop] sent SIGTERM to PID ${r.pid} (still shutting down).`);
+      return 0;
+    default: // 'stopped'
+      console.log(`[code-map:stop] stopped server (PID ${r.pid}).`);
+      return 0;
+  }
 }
