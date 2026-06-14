@@ -79,8 +79,58 @@ export function* walkProject(root, skipDirs) {
   yield* walk(root);
 }
 
+// 全树扩展名普查 —— 与 walkProject 同样的遍历/剪枝,但统计所有文件扩展名
+// (含无 extractor 的),供 dominantUnsupportedLanguage 护栏使用。
+function surveyExtensions(root, skipDirs) {
+  const counts = new Map();
+  const walk = (dir) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    const dirnames = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    const filenames = entries.filter((e) => !e.isDirectory()).map((e) => e.name).sort();
+    for (const fn of filenames) {
+      const dot = fn.lastIndexOf('.');
+      const ext = dot >= 0 ? fn.slice(dot) : '';
+      if (ext) counts.set(ext, (counts.get(ext) || 0) + 1);
+    }
+    for (const d of pruneDirnames(dirnames, skipDirs, filenames)) walk(join(dir, d));
+  };
+  walk(root);
+  return counts;
+}
+
 function extOf(p) { const b = basename(p); const i = b.lastIndexOf('.'); return i >= 0 ? b.slice(i) : ''; }
 function rel(root, p) { return relative(root, p).split(sep).join('/'); }
+
+// 常见「代码」扩展 → 语言名,仅收录**没有 extractor** 的语言(用于无支持语言护栏)。
+// 受支持语言的扩展(.py/.go/.ts/.c/... )刻意不在表内。
+const KNOWN_CODE_EXT = {
+  '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell', '.ksh': 'shell',
+  '.rb': 'ruby', '.rake': 'ruby', '.gemspec': 'ruby',
+  '.php': 'php',
+  '.pl': 'perl', '.pm': 'perl',
+  '.scala': 'scala', '.sc': 'scala',
+  '.ex': 'elixir', '.exs': 'elixir',
+  '.hs': 'haskell',
+  '.jl': 'julia',
+};
+
+// 纯判定:给定全树扩展名计数与受支持源文件总数,返回主导的「无支持语言」
+// (其文件数严格大于受支持文件总数)或 null。确定性:按语言名升序遍历,取最大文件数者。
+export function dominantUnsupportedLanguage(extCounts, supportedFileCount) {
+  const byLang = new Map();
+  for (const [ext, n] of extCounts) {
+    const lang = KNOWN_CODE_EXT[ext];
+    if (!lang) continue;
+    byLang.set(lang, (byLang.get(lang) || 0) + n);
+  }
+  let top = null;
+  for (const [language, files] of [...byLang].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    if (!top || files > top.files) top = { language, files };
+  }
+  if (top && top.files > supportedFileCount) return top;
+  return null;
+}
 
 export async function main(argv) {
   const args = parseArgs(argv);
@@ -200,7 +250,19 @@ export async function main(argv) {
         .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
         .map(([k, impls]) => [k, impls.map((d) => qualifiedName(d))]));
   }
-  if (advisories.length) projectMeta.advisories = advisories;
+  const guardAdvisories = [];
+  const dom = dominantUnsupportedLanguage(surveyExtensions(root, skipDirs), files.length);
+  if (dom) {
+    guardAdvisories.push({
+      kind: 'unsupported-dominant-language',
+      language: dom.language,
+      files: dom.files,
+      note: '主体语言无 extractor,地图仅含受支持语言,可能严重不完整',
+    });
+    console.log(`[analyze] advisory: dominant language '${dom.language}' (${dom.files} files) has no extractor — map may be misleading`);
+  }
+  const allAdvisories = [...advisories, ...guardAdvisories];
+  if (allAdvisories.length) projectMeta.advisories = allAdvisories;
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
   const cmVer = pluginVersion(pluginRoot);
