@@ -249,6 +249,24 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
    This reconciles each entry against the fresh structure (a decl/flow whose code vanished is suspended and reported; it auto-revives if the code returns), applies the active ones, and dedups (no duplicate class per layer, no duplicate flow). **No `overlay.json` → it is a no-op** and the map is untouched (so eval golden stays byte-identical). If it reports `suspended` entries, mention them in the final summary so the user knows which edits paused.
 
+### Phase 2 路由与清剪陷阱(画廊实战提炼)
+
+Recurring traps when refining real-world maps. Until the matching Phase 1 fixes land, these are **manual Phase 2 steps**.
+
+- **`assignLayer` segment-collision routing.** `assignLayer` matches `[...pathSegments, ...namespaceSegments]` **right-to-left** (deepest / namespace-leaf first), then `name_suffixes`. So when you author or tweak `architecture.yml` layers:
+  - **Never** give a layer a company-package segment (`com`, `termux`, …) or a small module's namespace **leaf** (`view`, `terminal`) as a `path_segment` — it sits in every class's namespace and swallows unrelated code. Route such modules by their unique **directory** segment (`terminal-view`, `terminal-emulator`).
+  - **Parallel concrete-vs-base modules sharing a filename** (Flask `flask/app.py` *and* `flask/sansio/app.py`): route the **base** by its unique *directory* segment (`sansio`) and give the **concrete** layer **no** colliding `path_segment` — use `name_suffixes` (`Flask`, `Blueprint`) only. The name-suffix loop runs after the whole segment loop, so the base is already captured and the concrete falls through. Do **not** put `app`/`app.py` in the concrete layer's `path_segments`.
+  - A shared `utils`/`config` segment **collides across packages** in a monorepo — don't route it via `path_segment`; move those exact files in the re-route step (step 4) instead.
+  - Never put `__init__`/`__init__.py` in any layer's segments (it steals `json/__init__.py` into the wrong layer).
+
+- **Prune short-name false edges (Python / Go / Swift).** These extractors resolve calls by **short name**, so generic names mis-resolve across modules (`dict.get` → some `*.get`; Go `Join`/`Stat` → a same-named hub; Swift `.next`/`.events` → a test-product factory). They flood `edges` and poison `flows`. **Rule:** for a high-in-degree short-named target, the **source file's text must mention the target's module/namespace** — if it doesn't, delete that edge. Sample the worst hubs (`get`/`load`/`run`/`send`/`handle_*`/`Join`/`Stat`/`next`) and prune; then re-derive any affected flow from the real code.
+
+- **Strip mis-tagged entry points.** Phase 1's `isEntryPoint` over-fires: any path containing `/cmd/` (a cobra `internal/cmd/` handler package → thousands of force-core decls) and any name ending `Container`/`App` (`prvNotifyQueueSetContainer`) get `entry-point` + `core`. Clear the spurious tag/`core` and re-core the layer's top decls by importance; mark only the real `cmd/<bin>/main.go` `main` as an entry point.
+
+- **C macro-prefixed functions parse as `void`.** A `STATIC BaseType_t prvFoo(...)` (a MISRA-style macro before the return type) is mis-extracted as a function literally named `void`. Detect by scanning for decls named `void` (or another type keyword); rename to the real name and reconnect their edges.
+
+- **Keeping a representative subdir of an otherwise-skipped tree** (e.g. FreeRTOS `portable/` — one port per arch): `skip-dirs.txt` un-skip is name-level only, so list the *sibling* dirs to exclude via `--skip` (or accept the flood). There is no path-level un-skip.
+
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 
 ---
