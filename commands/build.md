@@ -177,7 +177,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 5. Apply the focus hint if `$1` was provided. Surface relevant classes by marking `core: true` and writing emphatic descriptions.
 
-6. Mark entry points: any class with `MainActivity`, `*Application`, `App`, `main`, or path containing `/cmd/` should have `core: true` and `tags` include `"entry-point"`.
+6. **Verify & supplement entry points.** Phase 1 auto-tags entry points *conservatively*: **exact names only** (`MainActivity`, `Application`, `main`, `Main`, `App`) — no name *suffixes* and no path heuristics (a path merely *containing* `/cmd/` used to flood cobra `internal/cmd/` packages; a Go binary's real `func main` is caught by the exact name `main` regardless of path). So your job is to **add** the entry points Phase 1 can't see by name — e.g. a Spring Boot `*Application` main class (its `main` method isn't a separate decl), a framework bootstrap/launcher class — by setting `core: true` and adding `"entry-point"` to `tags`. Don't strip Phase 1's entry-point tags wholesale; it no longer over-fires.
 
 6b. **Discover & name core business flows.** Phase 1 now writes *candidate* `flows[]` seeded at entry points, public orchestrators (high-out-degree public classes), **and one per subsystem** (`seed_kind:"subsystem"` — the highest-importance public decl of each layer, traced INTO that subsystem because same-subsystem hubs are expanded rather than dead-ended). Each is `{id, name, description, seed, seed_kind, nodes, edges, confidence}`; flow `edges` carry `kind` (`"uses"` | `"dispatch"`) and dispatch edges carry `via` (the interface short-name). Any `confidence:"candidate"` flow (orchestrator or subsystem seed) needs your judgement. Phase 1 also writes `project.dispatch` — a map of `interface short-name → [implementor ids]` for every interface with ≥2 implementors — which tells you exactly where polymorphic dispatch (chain-of-responsibility / strategy / observer / middleware) lives.
 
@@ -251,7 +251,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 ### Phase 2 路由与清剪陷阱(画廊实战提炼)
 
-Recurring traps when refining real-world maps. Until the matching Phase 1 fixes land, these are **manual Phase 2 steps**.
+Recurring traps when refining real-world maps. Some now have a Phase 1 fix (noted inline — verify rather than redo); the rest remain **manual Phase 2 steps**.
 
 - **`assignLayer` segment-collision routing.** `assignLayer` matches `[...pathSegments, ...namespaceSegments]` **right-to-left** (deepest / namespace-leaf first), then `name_suffixes`. So when you author or tweak `architecture.yml` layers:
   - **Never** give a layer a company-package segment (`com`, `termux`, …) or a small module's namespace **leaf** (`view`, `terminal`) as a `path_segment` — it sits in every class's namespace and swallows unrelated code. Route such modules by their unique **directory** segment (`terminal-view`, `terminal-emulator`).
@@ -261,9 +261,9 @@ Recurring traps when refining real-world maps. Until the matching Phase 1 fixes 
 
 - **Prune short-name false edges (Python / Go / Swift).** These extractors resolve calls by **short name**, so generic names mis-resolve across modules (`dict.get` → some `*.get`; Go `Join`/`Stat` → a same-named hub; Swift `.next`/`.events` → a test-product factory). They flood `edges` and poison `flows`. **Rule:** for a high-in-degree short-named target, the **source file's text must mention the target's module/namespace** — if it doesn't, delete that edge. Sample the worst hubs (`get`/`load`/`run`/`send`/`handle_*`/`Join`/`Stat`/`next`) and prune; then re-derive any affected flow from the real code.
 
-- **Strip mis-tagged entry points.** Phase 1's `isEntryPoint` over-fires: any path containing `/cmd/` (a cobra `internal/cmd/` handler package → thousands of force-core decls) and any name ending `Container`/`App` (`prvNotifyQueueSetContainer`) get `entry-point` + `core`. Clear the spurious tag/`core` and re-core the layer's top decls by importance; mark only the real `cmd/<bin>/main.go` `main` as an entry point.
+- **Entry-point tagging is now precise (Phase 1, FIXED).** `isEntryPoint` no longer over-fires — a decl is an entry **iff its name is exactly one of** `{MainActivity, Application, main, Main, App}` (no `/cmd/` path-contains, no `Container`/`App`/`Application` *suffix*). So a cobra `internal/cmd/` handler (not named `main`) and `prvNotifyQueueSetContainer` are no longer force-cored, while a Go binary's `func main` still is. The residual work is the *inverse* — Phase 1 now **under**-detects framework entry points whose `main` isn't a separate decl (Spring `*Application`); **add** those per step 6.
 
-- **C macro-prefixed functions parse as `void`.** A `STATIC BaseType_t prvFoo(...)` (a MISRA-style macro before the return type) is mis-extracted as a function literally named `void`. Detect by scanning for decls named `void` (or another type keyword); rename to the real name and reconnect their edges.
+- **C macro-prefixed functions are auto-recovered (Phase 1, FIXED).** A `STATIC BaseType_t prvFoo(...)` (a MISRA-style macro before the return type) no longer surfaces as a function literally named `void` — Phase 1 recovers the real name from the AST and emits it with `confidence:"low"` + `tags:["macro-defined"]`; an unrecoverable one goes to `unresolved.json` as `macro_prefixed_misparse`. Just sanity-check these low-confidence recovered functions; no manual rename needed.
 
 - **Keeping a representative subdir of an otherwise-skipped tree** (e.g. FreeRTOS `portable/` — one port per arch): `skip-dirs.txt` un-skip is name-level only, so list the *sibling* dirs to exclude via `--skip` (or accept the flood). There is no path-level un-skip.
 
