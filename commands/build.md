@@ -56,8 +56,8 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
 5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary_zh` + `summary_en` (bilingual, one short phrase each — **never** a single `summary` or a "中文 · English" concat string; INV-B1 hard-fails the build on a missing half), `path_segments`, `name_suffixes`. A group's `summary` (when titled) is likewise authored as `summary_zh`/`summary_en`.
 
    **2D layering — peer layers & sub-layers (`children` / `layout`).** A layer that carries a `children:` list is a **group**: it holds no declarations, only arranges its child leaf layers. Use it when the architecture is not a single vertical stack:
-   - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level; the arch score treats edges between them as neutral (same `order`).
-   - **Ordered sub-layers within a layer** (e.g. Infrastructure = Network over an OS-abstraction) → a group with `layout: column`. Children stack top→bottom and keep dependency direction (upward edges still count as violations).
+   - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level and share the same `order` (no implied dependency direction between them).
+   - **Ordered sub-layers within a layer** (e.g. Infrastructure = Network over an OS-abstraction) → a group with `layout: column`. Children stack top→bottom and keep dependency direction (callers above callees).
    - A group's `name` may be omitted/empty → a **bare peer** row with no umbrella title. Give a group a `name` (+ optional `summary`) to draw a titled container.
    - A group entry does **not** take `path_segments` / `name_suffixes` (only its children do, since only leaves hold declarations). **Nesting is one level only** — a child must not itself have `children` (Phase 1 flattens it with a warning). `analyze` expands groups into flat leaf layers + a `layer_groups[]` descriptor in `code-map.json`; a flat (group-free) `architecture.yml` is byte-identical to before.
 
@@ -79,8 +79,6 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
          - { id: network, name: Network, path_segments: [network, net] }
          - { id: os,      name: OS,      path_segments: [os, platform] }
    ```
-
-   **Mark the API surface of libraries.** When the project is a library/SDK (consumed as a dependency, not run as an app) and one layer holds its published API types (e.g. `public-api`), add `api: true` to that layer. Internals referencing their own API types is the norm for a library, so the arch score exempts upward `uses` edges into `api: true` layers from `layer_violations` (`analyze` passes the flag through to `code-map.json`). Never mark an app's UI/entry layer — this is for published contract surfaces only.
 
    **No Test / Mock / Sample layers — hard rule.** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed. This rule applies equally to **groups and sub-layers** — never create a group or child leaf for test/mock/sample code.
 
@@ -134,8 +132,7 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 - **Entry points / focus hint** apply only to changed files.
 - **Strip the helper flags** (`stale`, `needs_review`) and `Write` the final `.code-map/code-map.json`, then remove the draft: `rm -f .code-map/code-map.draft.json`.
 - `project.git` (fresh HEAD) and `project.architecture` (carried) are already correct in the draft — do not overwrite them.
-- **Apply the persisted user overlay** — after writing the final `code-map.json`, run full-build Phase 2 step 7.5 (`"$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json`) so any `/code-map:chat` edits are re-applied and deduped **before** scoring. No `overlay.json` → no-op.
-- **Score the architecture** — the merge dropped the prior `project.score` on purpose (the graph changed); after writing the final `code-map.json` (and applying the overlay), run full-build Phase 2 step 8 (`"$CM" score --data .code-map/code-map.json --write`, plus a whitelisted `--adjust` only with evidence) to re-stamp it.
+- **Apply the persisted user overlay** — after writing the final `code-map.json`, run full-build Phase 2 step 7.5 (`"$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json`) so any `/code-map:chat` edits are re-applied and deduped. No `overlay.json` → no-op.
 
 ---
 
@@ -250,15 +247,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json
    ```
 
-   This reconciles each entry against the fresh structure (a decl/flow whose code vanished is suspended and reported; it auto-revives if the code returns), applies the active ones, and dedups (no duplicate class per layer, no duplicate flow). **No `overlay.json` → it is a no-op** and the map is untouched (so eval golden stays byte-identical). If it reports `suspended` entries, mention them in the final summary so the user knows which edits paused. This runs **before** scoring (step 8) because layer moves change `layer_violations`.
-
-8. **Score the architecture (arch-score).** The rubric of record is the plugin's `skills/arch-score/SKILL.md` — follow its workflow. Minimum: stamp the deterministic baseline:
-
-   ```bash
-   CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" score --data .code-map/code-map.json --write
-   ```
-
-   Read the printed penalty breakdown. Only if a penalty matches the skill's adjustment whitelist (template misfit, domain-normal cycles, generated-code skew, graph distortion) re-run with `--adjust <int> --reason-zh "…" --reason-en "…"` — the CLI clamps |delta| to 10% of base and requires both reasons. Never adjust without naming the specific penalty being corrected.
+   This reconciles each entry against the fresh structure (a decl/flow whose code vanished is suspended and reported; it auto-revives if the code returns), applies the active ones, and dedups (no duplicate class per layer, no duplicate flow). **No `overlay.json` → it is a no-op** and the map is untouched (so eval golden stays byte-identical). If it reports `suspended` entries, mention them in the final summary so the user knows which edits paused.
 
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 
@@ -273,10 +262,9 @@ After the build completes, print a brief summary:
   Languages: kotlin (7), go (9), typescript (4), rust (3)
   Layers:    Presentation (8) · Domain (5) · Data (8) · Infrastructure (2)
   Edges:     14
-  Score:     架构评分 124 = round(D 109.4 × E 1.13) (+6 adjusted)
   Data:      .code-map/code-map.json
 
 Next: run /code-map:run to open the visualization in your browser.
 ```
 
-Pull the `mode` and changed-file count from `.code-map/incremental.json` (on an incremental build, name the changed files Phase 2 re-described). Pull the Score line from the `score` command's printed total (omit "(+N adjusted)" when no adjustment was applied). If any unresolved entries remain after Phase 2, list them so the user knows what's missing.
+Pull the `mode` and changed-file count from `.code-map/incremental.json` (on an incremental build, name the changed files Phase 2 re-described). If any unresolved entries remain after Phase 2, list them so the user knows what's missing.

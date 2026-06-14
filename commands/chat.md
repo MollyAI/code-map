@@ -69,16 +69,16 @@ For flows: first describe the flow's nodes and direction in words (based on the 
   ```
 - **Rename/redo an auto-generated flow (adopt)**: copy the target auto-flow into a `flow` entry (reuse its current `diagram`, give it a new name, `confidence: "user-authored"`, use a stable `ov-flow-<kebab>` as its id). It will override the original auto-flow via same-source suppression.
 
-`Write` back to `.code-map/overlay.json`, then **apply deterministically + re-score + run the gate**:
+`Write` back to `.code-map/overlay.json`, then **apply deterministically + run the gate**:
 
-!CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json && "$CM" score --data .code-map/code-map.json --write && "$CM" invariants --data .code-map/code-map.json
+!CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" overlay apply --map .code-map/code-map.json --overlay .code-map/overlay.json && "$CM" invariants --data .code-map/code-map.json
 
 If `invariants` reports INV-B1 (missing bilingual), go back and fill in the corresponding `_zh`/`_en`, then rerun.
 
 ### A4. List / undo
 
 - "Which ones did I add?" → `"$CM" overlay list`, and list `id/status/type/request` for the user.
-- "Undo ov-2" → `"$CM" overlay remove ov-2`, then rerun the apply+score+invariants trio above.
+- "Undo ov-2" → `"$CM" overlay remove ov-2`, then rerun the apply+invariants pair above.
 
 ### A5. Report back
 

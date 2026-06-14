@@ -129,18 +129,16 @@ test('merge: strips an unknown-type diagram (fail closed)', () => {
   assert.equal(out.flows[0].needs_review, true);
 });
 
-test('merge: prior project.score is not carried into the merged draft', () => {
+test('merge: prior project.architecture is carried into the merged draft', () => {
   const raw = {
     project: { name: 'p' },
     layers: [{ id: 'm', name: 'M', order: 1, classes: [] }],
     edges: [], flows: [],
   };
   const prev = {
-    project: { name: 'p', architecture: { template: 'layered', customized: false },
-      score: { rubric: 'arch-score-v1', total: 99, base: 99 } },
+    project: { name: 'p', architecture: { template: 'layered', customized: false } },
     layers: [], edges: [], flows: [],
   };
   const out = merge(raw, prev, new Set());
-  assert.equal(out.project.score, undefined);
   assert.deepEqual(out.project.architecture, { template: 'layered', customized: false });
 });

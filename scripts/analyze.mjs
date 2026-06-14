@@ -212,7 +212,6 @@ export async function main(argv) {
       ...(l.summary_zh ? { summary_zh: l.summary_zh } : {}),
       ...(l.summary_en ? { summary_en: l.summary_en } : {}),
       ...(l.summary != null ? { summary: l.summary } : {}),
-      ...(l.api === true ? { api: true } : {}),
       ...(l.group ? { group: l.group } : {}) })),
     projectMeta, flowList,
     layerGroups);
