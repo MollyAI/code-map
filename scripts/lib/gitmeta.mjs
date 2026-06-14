@@ -17,6 +17,17 @@ function run(args, root) {
   }
 }
 
+/** Extract the file path from one `git status --porcelain` line — handles the
+ *  `old -> new` rename form (returns the target) and strips surrounding quotes.
+ *  Returns null for a blank line. */
+function parsePorcelainPath(line) {
+  if (!line.trim()) return null;
+  let rest = line.length > 3 ? line.slice(3) : line.trim();
+  if (rest.includes(' -> ')) rest = rest.split(' -> ')[1]; // rename → target
+  rest = rest.trim().replace(/^"|"$/g, '');
+  return rest || null;
+}
+
 export function isGitRepo(root) {
   const cp = run(['rev-parse', '--is-inside-work-tree'], root);
   return !!(cp && cp.code === 0 && cp.stdout.trim() === 'true');
@@ -32,12 +43,9 @@ export function toplevel(root) {
  *  flag the mapped source as dirty (the viewer would show "uncommitted changes"). */
 export function isDirtyExcludingCodeMap(porcelain) {
   for (const line of String(porcelain).split('\n')) {
-    if (!line.trim()) continue;
-    let rest = line.length > 3 ? line.slice(3) : line.trim();
-    if (rest.includes(' -> ')) rest = rest.split(' -> ')[1]; // rename → target
-    rest = rest.trim().replace(/^"|"$/g, '');
-    if (!rest) continue;
-    if (rest === '.code-map' || rest.startsWith('.code-map/')) continue;
+    const p = parsePorcelainPath(line);
+    if (!p) continue;
+    if (p === '.code-map' || p.startsWith('.code-map/')) continue;
     return true;
   }
   return false;
@@ -67,11 +75,8 @@ export function changedFiles(root, base) {
   const st = run(['status', '--porcelain'], root);
   if (st && st.code === 0) {
     for (const line of st.stdout.split('\n')) {
-      if (!line.trim()) continue;
-      let rest = line.length > 3 ? line.slice(3) : line.trim();
-      if (rest.includes(' -> ')) rest = rest.split(' -> ')[1];
-      rest = rest.trim().replace(/^"|"$/g, '');
-      if (rest) out.add(rest);
+      const p = parsePorcelainPath(line);
+      if (p) out.add(p);
     }
   }
   return out;
