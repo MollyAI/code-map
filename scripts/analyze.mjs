@@ -162,6 +162,7 @@ export async function main(argv) {
   const allDecls = [];
   const allSkipped = [];
   const importsByFile = new Map();
+  const mentionsByFile = new Map();
   const reexportsByFile = new Map();
   let parseFailures = 0;
   const langCounts = new Map();
@@ -174,6 +175,7 @@ export async function main(argv) {
     const relPath = rel(root, path);
     try {
       const src = readFileSync(path, 'utf8');
+      mentionsByFile.set(relPath, core.sourceTokens(src));
       const result = await extractor.parse(relPath, src, root);
       for (const d of result.declarations) { d.language = extractor.name; allDecls.push(d); }
       allSkipped.push(...result.skipped);
@@ -191,7 +193,7 @@ export async function main(argv) {
   }
 
   const resolution = resolveProject(allDecls, importsByFile, reexportsByFile, { root });
-  const [decls, edges] = core.buildGraph(allDecls);
+  const [decls, edges] = core.buildGraph(allDecls, { mentionsByFile });
   layers.applyTo(decls, layerLeaves);
   detection.fit = layers.templateFit(decls, layerLeaves);
   core.markCore(decls, args.core_percentile, args.core_max_per_layer, args.core_min_per_layer);
