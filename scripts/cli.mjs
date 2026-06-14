@@ -11,7 +11,6 @@ const routes = {
   stop: () => import('./mapctl.mjs').then((m) => m.stopMain(rest)),
   'session-end': () => import('./mapctl.mjs').then((m) => m.sessionEndMain(rest)),
   serve: () => import('./serve.mjs').then((m) => m.runServer(rest)),
-  score: () => import('./score.mjs').then((m) => m.main(rest)),
   invariants: () => import('./invariants.mjs').then((m) => m.main(rest)),
   overlay: () => import('./overlay.mjs').then((m) => m.main(rest)),
 };

@@ -117,11 +117,11 @@ export function applyTo(declarations, layers) {
  * no declarations, only arranges its child leaf layers. Groups nest ONE level
  * only — a child's own `children` is flattened (its grandchildren are promoted).
  *
- * `order` encoding (drives the deterministic arch score, which treats
- * same-`order` `uses` edges as neutral — see lib/score.mjs scoreLayering):
+ * `order` encoding (drives the layer band ordering; peer/row-group children
+ * share the same `order`, column-group children take increasing sub-orders):
  *   top-level rank t = entry.order (if numeric) else its array index
  *     standalone leaf           -> unchanged (no order/group stamped → byte-identical)
- *     row-group child           -> order = t              (peers: neutral edges)
+ *     row-group child           -> order = t              (peers: same band rank)
  *     column-group child j of m -> order = t + (j+1)/(m+1)  (ordered, strictly in (t,t+1))
  *
  * Backward compatible: a flat config returns leaves byte-identical to input
