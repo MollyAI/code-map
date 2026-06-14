@@ -45,6 +45,11 @@ test('column group:两个子带竖排(y 递增、x 相同)', () => {
   const os = out.bands.find((b) => b.layer.id === 'os');
   assert.ok(os.y > net.y, '子带竖向堆叠');
   assert.equal(net.x, os.x);
+  // sub-bands are horizontally inset from the frame border (left + right padding)
+  const fr = out.frames[0];
+  assert.ok(net.x > fr.x, '子带从外框左缘内缩');
+  assert.ok(net.x + net.width < fr.x + fr.width, '子带右缘留出 padding');
+  assert.equal(net.x - fr.x, L.bandPadX, '左侧 padding = bandPadX');
 });
 
 test('裸 group(无 name):frame.group.name 为空', () => {
