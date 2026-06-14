@@ -162,3 +162,51 @@ test('c extractor: does not misextract a loop-style macro used inside a function
   const names = res.declarations.map((d) => d.name).sort();
   assert.deepEqual(names, ['run'], `only the real function expected, got ${JSON.stringify(names)}`);
 });
+
+test('c extractor: macro-prefixed fn (STATIC <type> name(void)) recovers real name', async () => {
+  await init();
+  const src = [
+    'STATIC BaseType_t prvCreateIdleTasks( void )',
+    '{',
+    '    BaseType_t xReturn = pdPASS;',
+    '    helperCall();',
+    '    return xReturn;',
+    '}',
+    '',
+  ].join('\n');
+  const res = await c.parse('tasks.c', src, '/proj');
+  assert.ok(!res.declarations.some((d) => d.name === 'void'), 'no decl named void');
+  const fn = res.declarations.find((d) => d.name === 'prvCreateIdleTasks');
+  assert.ok(fn, 'prvCreateIdleTasks recovered');
+  assert.equal(fn.kind, 'function');
+  assert.equal(fn.confidence, 'low');
+  assert.ok(fn.tags.includes('macro-defined'), 'tagged macro-defined');
+  assert.ok(fn.refs.includes('helperCall'), 'body call edge reconnected');
+});
+
+test('c extractor: legit typedef ending _t is not mistaken for a misparse', async () => {
+  await init();
+  const src = [
+    'typedef struct xLIST { int n; } TCB_t;',
+    '',
+  ].join('\n');
+  const res = await c.parse('list.c', src, '/proj');
+  const td = res.declarations.find((d) => d.name === 'TCB_t');
+  assert.ok(td, 'TCB_t typedef present');
+  assert.equal(td.kind, 'typedef');
+});
+
+test('c extractor: unrecoverable macro misparse goes to skipped, no void node', async () => {
+  await init();
+  // 退化形态:无可回收的真名 type_identifier → 进 skipped,绝不发名为 void 的节点
+  const src = [
+    'void( void )',
+    '{',
+    '    helperCall();',
+    '}',
+    '',
+  ].join('\n');
+  const res = await c.parse('weird.c', src, '/proj');
+  assert.ok(!res.declarations.some((d) => d.name === 'void'), 'no decl named void');
+  assert.ok(res.skipped.some((s) => s.reason === 'macro_prefixed_misparse'), 'recorded macro_prefixed_misparse skip');
+});

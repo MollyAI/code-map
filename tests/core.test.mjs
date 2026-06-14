@@ -10,10 +10,23 @@ test('round3 matches Python round(x,3) banker rounding', () => {
   assert.equal(round3(0.2326), 0.233);
 });
 
-test('isEntryPoint recognizes name/suffix/path hints', () => {
+test('isEntryPoint: exact names only, no suffix/path widening (tightened)', () => {
+  // 命中:精确名集合(跨语言入口恒命名)
   assert.ok(isEntryPoint({ name: 'MainActivity', path: 'a.kt' }));
-  assert.ok(isEntryPoint({ name: 'OrderApplication', path: 'a.kt' }));
-  assert.ok(isEntryPoint({ name: 'whatever', path: 'src/cmd/x.go' }));
+  assert.ok(isEntryPoint({ name: 'Application', path: 'a.kt' }));
+  assert.ok(isEntryPoint({ name: 'main', path: 'a.go' }));
+  assert.ok(isEntryPoint({ name: 'Main', path: 'a.cs' }));
+  assert.ok(isEntryPoint({ name: 'App', path: 'a.tsx' }));
+  // 删:后缀宽匹配不再命中
+  assert.ok(!isEntryPoint({ name: 'OrderApplication', path: 'a.kt' }), 'Application suffix dropped');
+  assert.ok(!isEntryPoint({ name: 'MyApp', path: 'a.kt' }), 'App suffix dropped');
+  assert.ok(!isEntryPoint({ name: 'prvNotifyQueueSetContainer', path: 'queue.c' }), 'Container suffix dropped (freertos regression)');
+  // 删:路径不再参与判定——只有真正叫 main 的才是入口(cobra internal/cmd 处理函数不洪泛)
+  assert.ok(!isEntryPoint({ name: 'whatever', path: 'src/cmd/x.go' }), 'cmd path no longer matches non-main');
+  assert.ok(!isEntryPoint({ name: 'NewRootCmd', path: 'internal/cmd/root.go' }), 'gastown internal/cmd handler not core');
+  // 真入口仍命中:cmd/<bin>/main.go 的 func main 经精确名 main 命中,与路径无关
+  assert.ok(isEntryPoint({ name: 'main', path: 'cmd/gt/main.go' }));
+  assert.ok(isEntryPoint({ name: 'main', path: 'main.c' }), 'C/Rust/Python main not Go-path-gated');
   assert.ok(!isEntryPoint({ name: 'Helper', path: 'a.kt' }));
 });
 

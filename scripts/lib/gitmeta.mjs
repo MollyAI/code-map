@@ -17,6 +17,17 @@ function run(args, root) {
   }
 }
 
+/** Extract the file path from one `git status --porcelain` line — handles the
+ *  `old -> new` rename form (returns the target) and strips surrounding quotes.
+ *  Returns null for a blank line. */
+function parsePorcelainPath(line) {
+  if (!line.trim()) return null;
+  let rest = line.length > 3 ? line.slice(3) : line.trim();
+  if (rest.includes(' -> ')) rest = rest.split(' -> ')[1]; // rename → target
+  rest = rest.trim().replace(/^"|"$/g, '');
+  return rest || null;
+}
+
 export function isGitRepo(root) {
   const cp = run(['rev-parse', '--is-inside-work-tree'], root);
   return !!(cp && cp.code === 0 && cp.stdout.trim() === 'true');
@@ -27,6 +38,19 @@ export function toplevel(root) {
   return cp && cp.code === 0 ? cp.stdout.trim() : null;
 }
 
+/** True if `git status --porcelain` shows any change OUTSIDE `.code-map/`.
+ *  `.code-map/` is the analyzer's own scratch dir — an untracked one must not
+ *  flag the mapped source as dirty (the viewer would show "uncommitted changes"). */
+export function isDirtyExcludingCodeMap(porcelain) {
+  for (const line of String(porcelain).split('\n')) {
+    const p = parsePorcelainPath(line);
+    if (!p) continue;
+    if (p === '.code-map' || p.startsWith('.code-map/')) continue;
+    return true;
+  }
+  return false;
+}
+
 export function gitInfo(root) {
   if (!isGitRepo(root)) return null;
   const head = run(['rev-parse', 'HEAD'], root);
@@ -35,7 +59,7 @@ export function gitInfo(root) {
   const br = run(['rev-parse', '--abbrev-ref', 'HEAD'], root);
   const branch = br && br.code === 0 ? br.stdout.trim() : 'HEAD';
   const st = run(['status', '--porcelain'], root);
-  const dirty = !!(st && st.code === 0 && st.stdout.trim());
+  const dirty = st && st.code === 0 ? isDirtyExcludingCodeMap(st.stdout) : false;
   return { branch, commit, short: commit.slice(0, 7), dirty };
 }
 
@@ -51,11 +75,8 @@ export function changedFiles(root, base) {
   const st = run(['status', '--porcelain'], root);
   if (st && st.code === 0) {
     for (const line of st.stdout.split('\n')) {
-      if (!line.trim()) continue;
-      let rest = line.length > 3 ? line.slice(3) : line.trim();
-      if (rest.includes(' -> ')) rest = rest.split(' -> ')[1];
-      rest = rest.trim().replace(/^"|"$/g, '');
-      if (rest) out.add(rest);
+      const p = parsePorcelainPath(line);
+      if (p) out.add(p);
     }
   }
   return out;

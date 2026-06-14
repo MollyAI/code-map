@@ -63,6 +63,11 @@ export function loadSkipDirs(projectRoot = null, extra = null) {
       for (let line of text.split('\n')) {
         line = line.trim();
         if (!line || line.startsWith('#')) continue;
+        // strip a trailing inline comment: whitespace followed by '#'.
+        // (a bare '#' with no preceding space stays part of the name, e.g. "c#proj")
+        const c = line.search(/\s#/);
+        if (c >= 0) line = line.slice(0, c).trim();
+        if (!line) continue;
         if (line.startsWith('-')) dirs.delete(line.slice(1).trim());
         else dirs.add(line);
       }

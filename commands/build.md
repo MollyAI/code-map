@@ -177,7 +177,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
 
 5. Apply the focus hint if `$1` was provided. Surface relevant classes by marking `core: true` and writing emphatic descriptions.
 
-6. Mark entry points: any class with `MainActivity`, `*Application`, `App`, `main`, or path containing `/cmd/` should have `core: true` and `tags` include `"entry-point"`.
+6. **Verify & supplement entry points.** Phase 1 auto-tags entry points *conservatively*: **exact names only** (`MainActivity`, `Application`, `main`, `Main`, `App`) — no name *suffixes* and no path heuristics (a path merely *containing* `/cmd/` used to flood cobra `internal/cmd/` packages; a Go binary's real `func main` is caught by the exact name `main` regardless of path). So your job is to **add** the entry points Phase 1 can't see by name — e.g. a Spring Boot `*Application` main class (its `main` method isn't a separate decl), a framework bootstrap/launcher class — by setting `core: true` and adding `"entry-point"` to `tags`. Don't strip Phase 1's entry-point tags wholesale; it no longer over-fires.
 
 6b. **Discover & name core business flows.** Phase 1 now writes *candidate* `flows[]` seeded at entry points, public orchestrators (high-out-degree public classes), **and one per subsystem** (`seed_kind:"subsystem"` — the highest-importance public decl of each layer, traced INTO that subsystem because same-subsystem hubs are expanded rather than dead-ended). Each is `{id, name, description, seed, seed_kind, nodes, edges, confidence}`; flow `edges` carry `kind` (`"uses"` | `"dispatch"`) and dispatch edges carry `via` (the interface short-name). Any `confidence:"candidate"` flow (orchestrator or subsystem seed) needs your judgement. Phase 1 also writes `project.dispatch` — a map of `interface short-name → [implementor ids]` for every interface with ≥2 implementors — which tells you exactly where polymorphic dispatch (chain-of-responsibility / strategy / observer / middleware) lives.
 
@@ -248,6 +248,24 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    ```
 
    This reconciles each entry against the fresh structure (a decl/flow whose code vanished is suspended and reported; it auto-revives if the code returns), applies the active ones, and dedups (no duplicate class per layer, no duplicate flow). **No `overlay.json` → it is a no-op** and the map is untouched (so eval golden stays byte-identical). If it reports `suspended` entries, mention them in the final summary so the user knows which edits paused.
+
+### Phase 2 路由与清剪陷阱(画廊实战提炼)
+
+Recurring traps when refining real-world maps. Some now have a Phase 1 fix (noted inline — verify rather than redo); the rest remain **manual Phase 2 steps**.
+
+- **`assignLayer` segment-collision routing.** `assignLayer` matches `[...pathSegments, ...namespaceSegments]` **right-to-left** (deepest / namespace-leaf first), then `name_suffixes`. So when you author or tweak `architecture.yml` layers:
+  - **Never** give a layer a company-package segment (`com`, `termux`, …) or a small module's namespace **leaf** (`view`, `terminal`) as a `path_segment` — it sits in every class's namespace and swallows unrelated code. Route such modules by their unique **directory** segment (`terminal-view`, `terminal-emulator`).
+  - **Parallel concrete-vs-base modules sharing a filename** (Flask `flask/app.py` *and* `flask/sansio/app.py`): route the **base** by its unique *directory* segment (`sansio`) and give the **concrete** layer **no** colliding `path_segment` — use `name_suffixes` (`Flask`, `Blueprint`) only. The name-suffix loop runs after the whole segment loop, so the base is already captured and the concrete falls through. Do **not** put `app`/`app.py` in the concrete layer's `path_segments`.
+  - A shared `utils`/`config` segment **collides across packages** in a monorepo — don't route it via `path_segment`; move those exact files in the re-route step (step 4) instead.
+  - Never put `__init__`/`__init__.py` in any layer's segments (it steals `json/__init__.py` into the wrong layer).
+
+- **Prune short-name false edges (Python / Go / Swift).** These extractors resolve calls by **short name**, so generic names mis-resolve across modules (`dict.get` → some `*.get`; Go `Join`/`Stat` → a same-named hub; Swift `.next`/`.events` → a test-product factory). They flood `edges` and poison `flows`. **Rule:** for a high-in-degree short-named target, the **source file's text must mention the target's module/namespace** — if it doesn't, delete that edge. Sample the worst hubs (`get`/`load`/`run`/`send`/`handle_*`/`Join`/`Stat`/`next`) and prune; then re-derive any affected flow from the real code.
+
+- **Entry-point tagging is now precise (Phase 1, FIXED).** `isEntryPoint` no longer over-fires — a decl is an entry **iff its name is exactly one of** `{MainActivity, Application, main, Main, App}` (no `/cmd/` path-contains, no `Container`/`App`/`Application` *suffix*). So a cobra `internal/cmd/` handler (not named `main`) and `prvNotifyQueueSetContainer` are no longer force-cored, while a Go binary's `func main` still is. The residual work is the *inverse* — Phase 1 now **under**-detects framework entry points whose `main` isn't a separate decl (Spring `*Application`); **add** those per step 6.
+
+- **C macro-prefixed functions are auto-recovered (Phase 1, FIXED).** A `STATIC BaseType_t prvFoo(...)` (a MISRA-style macro before the return type) no longer surfaces as a function literally named `void` — Phase 1 recovers the real name from the AST and emits it with `confidence:"low"` + `tags:["macro-defined"]`; an unrecoverable one goes to `unresolved.json` as `macro_prefixed_misparse`. Just sanity-check these low-confidence recovered functions; no manual rename needed.
+
+- **Keeping a representative subdir of an otherwise-skipped tree** (e.g. FreeRTOS `portable/` — one port per arch): `skip-dirs.txt` un-skip is name-level only, so list the *sibling* dirs to exclude via `--skip` (or accept the flood). There is no path-level un-skip.
 
 **Important**: the framework gives you the structural skeleton. Your job is to make it intelligent and human-readable. Be confident about ownership of the semantic layer.
 
