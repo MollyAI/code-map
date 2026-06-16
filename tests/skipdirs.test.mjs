@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkipDirs } from '../scripts/lib/skipdirs.mjs';
+import { loadSkipDirs, DEFAULT_SKIP_DIRS, pruneDirnames } from '../scripts/lib/skipdirs.mjs';
 
 test('loadSkipDirs: strips trailing inline comments from dir entries', () => {
   const root = mkdtempSync(join(tmpdir(), 'cm-skip-'));
@@ -31,4 +31,11 @@ test('loadSkipDirs: a name legitimately containing "#" (no preceding space) is k
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('assets/ is skipped (bundled raw resources, not compiled source)', () => {
+  assert.ok(DEFAULT_SKIP_DIRS.has('assets'));
+  // walk-level prune drops it (it is not an OUTPUT_SKIP_DIRS name)
+  const kept = pruneDirnames(['assets', 'kotlin', 'java'], DEFAULT_SKIP_DIRS, ['build.gradle.kts']);
+  assert.deepEqual(kept.sort(), ['java', 'kotlin']);
 });
