@@ -133,3 +133,56 @@ test('signatureParts: unparseable (name not followed by paren) → null', () => 
   assert.equal(signatureParts('let x: Int = 3', 'x'), null);
   assert.equal(signatureParts('', 'foo'), null);
 });
+
+// --- Task 2: compact overload differentiator (Repair 3/4) -------------------
+
+test('Repair 3: return-type-distinct overloads → "name → ReturnType" (alamofire)', () => {
+  const mk = (ret) => ({ name: 'publishData', namespace: 'Features.Combine',
+    path: 'Source/Features/Combine.swift',
+    signature: `@available(macOS 10.15, *) public func publishData(queue: DispatchQueue = .main) -> ${ret}` });
+  const decls = [mk('DataResponsePublisher<Data>'), mk('DataStreamPublisher<Data>'), mk('DownloadResponsePublisher<Data>')];
+  assert.deepEqual(labels(decls), [
+    'publishData → DataResponsePublisher<Data>',
+    'publishData → DataStreamPublisher<Data>',
+    'publishData → DownloadResponsePublisher<Data>',
+  ]);
+});
+
+test('Repair 3: same return type, distinct params → "name(selector)"', () => {
+  const mk = (params) => ({ name: 'foo', namespace: 'a.b', path: 'a/b.swift',
+    signature: `func foo(${params}) -> Int` });
+  const decls = [mk('x: Int'), mk('x: Int, y: Int')];
+  assert.deepEqual(labels(decls), ['foo(x: Int)', 'foo(x: Int, y: Int)']);
+});
+
+test('Repair 3: differ in both → "name(selector) → ReturnType"', () => {
+  const decls = [
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(x: Int) -> A' },
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(y: Int) -> A' },
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(x: Int) -> B' },
+  ];
+  const out = labels(decls);
+  assert.equal(new Set(out).size, 3, JSON.stringify(out));
+  assert.ok(out.every((s) => s.startsWith('g(')), JSON.stringify(out));
+});
+
+test('Repair 4: truly identical decls stay equal (compact scheme cannot separate)', () => {
+  const decls = [
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+  ];
+  const out = labels(decls);
+  assert.equal(out[0], out[1]);
+});
+
+test('Repair 4: cross-namespace overload clash on same compact label is repaired', () => {
+  // Two namespaces, each with two overloads; one return type collides across them.
+  const decls = [
+    { name: 'foo', namespace: 'A', path: 'A.swift', signature: 'func foo(a: Int) -> Void' },
+    { name: 'foo', namespace: 'A', path: 'A.swift', signature: 'func foo(a: Int) -> Int' },
+    { name: 'foo', namespace: 'B', path: 'B.swift', signature: 'func foo(b: Int) -> Void' },
+    { name: 'foo', namespace: 'B', path: 'B.swift', signature: 'func foo(b: Int) -> Bool' },
+  ];
+  const out = labels(decls);
+  assert.equal(new Set(out).size, 4, `labels must be globally unique: ${JSON.stringify(out)}`);
+});

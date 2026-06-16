@@ -91,6 +91,24 @@ export function signatureParts(rawSig, name) {
   return { selector, returnType };
 }
 
+// Shortest signature component(s) that make every member of a same-qualifiedName
+// overload group unique. Bare `name` keeps the label compact (the full signature
+// stays in the detail panel). Order: return type → params → both. Null when no
+// scheme separates the group (caller falls back to the full signature).
+function compactDifferentiators(group) {
+  const parts = group.map((d) => signatureParts(d.signature, d.name));
+  if (parts.some((p) => p == null)) return null;
+  const name = group[0].name;
+  const rets = parts.map((p) => p.returnType);
+  const sels = parts.map((p) => p.selector);
+  const uniq = (arr) => new Set(arr).size === arr.length;
+  if (rets.every(Boolean) && uniq(rets)) return rets.map((r) => `${name} → ${r}`);
+  if (uniq(sels)) return sels.map((s) => `${name}(${s})`);
+  const pairs = parts.map((p) => `${p.selector} ${p.returnType}`);
+  if (uniq(pairs)) return parts.map((p) => `${name}(${p.selector}) → ${p.returnType}`);
+  return null;
+}
+
 // The disambiguation context for a decl: its namespace path (already path-derived
 // for every extractor, and — after the Go task — receiver-qualified for Go
 // methods), falling back to the file-path stem when there is no namespace.
@@ -178,17 +196,32 @@ export function assignDisplayNames(declarations) {
     if (counts.get(labelOf(d)) > 1) d._display_name = qualifiedName(d);
   }
 
-  // Repair 3: still colliding after qualifiedName means same-qname overloads
-  // (e.g. Swift return-type-only overloads). Append the full `signature` — it
-  // captures the return type, so it differs when the overloads differ. If the
-  // signatures are also identical the decls are genuine duplicates: leave them
-  // equal so the INV-1 gate fires and a human merges. (Cosmetic slimming of the
-  // resulting long label is out of scope — INV-U1 guarantees no truncation.)
+  // Repair 3 (compact): same-qualifiedName overloads → bare name + the MINIMAL
+  // signature component that separates the group (return type, else params, else
+  // both). Keeps the label short for the node box; the full signature stays in
+  // the detail panel. Falls back to Repair 4 when no compact scheme separates it.
+  counts = tally(declarations.map(labelOf));
+  const groups = new Map(); // current label -> [decls]
+  for (const d of declarations) {
+    const l = labelOf(d);
+    if (counts.get(l) > 1) {
+      if (!groups.has(l)) groups.set(l, []);
+      groups.get(l).push(d);
+    }
+  }
+  for (const group of groups.values()) {
+    const compact = compactDifferentiators(group);
+    if (compact) group.forEach((d, i) => { d._display_name = compact[i]; });
+  }
+
+  // Repair 4 (fallback): anything STILL colliding → fully-qualified name + full
+  // signature (the original Repair 3). Genuinely identical decls (same qname +
+  // signature) stay equal so the INV-1 gate fires for a human to merge.
   counts = tally(declarations.map(labelOf));
   for (const d of declarations) {
     if (counts.get(labelOf(d)) > 1) {
       const sig = (d.signature || '').trim();
-      if (sig) d._display_name = `${qualifiedName(d)} ${sig}`;
+      d._display_name = sig ? `${qualifiedName(d)} ${sig}` : qualifiedName(d);
     }
   }
 
