@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assignDisplayNames } from '../scripts/lib/labels.mjs';
+import { assignDisplayNames, signatureParts } from '../scripts/lib/labels.mjs';
 
 const D = (name, namespace, path) => ({ name, namespace, path });
 const labels = (decls) => { assignDisplayNames(decls); return decls.map((d) => d._display_name ?? d.name); };
@@ -92,4 +92,44 @@ test('R3b: truly identical decls (same qname + same signature) stay equal (asser
   assignDisplayNames(decls);
   const lbl = decls.map((d) => d._display_name ?? d.name);
   assert.equal(lbl[0], lbl[1], 'genuine duplicates are left for a human to merge');
+});
+
+// --- Task 1: signatureParts ------------------------------------------------
+
+test('signatureParts: alamofire publishData → return type after stripping attrs/defaults', () => {
+  const sig = '@available(macOS 10.15, iOS 13, watchOS 6, tvOS 13, *) public func publishData(queue: DispatchQueue = .main, preprocessor: any DataPreprocessor = DataResponseSerializer.defaultDataPreprocessor, emptyResponseCodes: Set<Int> = DataResponseSerializer.defaultEmptyResponseCodes, emptyRequestMethods: Set<HTTPMethod> = DataResponseSerializer.defaultEmptyRequestMethods) -> DataResponsePublisher<Data>';
+  const p = signatureParts(sig, 'publishData');
+  assert.equal(p.returnType, 'DataResponsePublisher<Data>');
+  assert.equal(p.selector, 'queue: DispatchQueue, preprocessor: any DataPreprocessor, emptyResponseCodes: Set<Int>, emptyRequestMethods: Set<HTTPMethod>');
+});
+
+test('signatureParts: generics after name and trailing where-clause are skipped', () => {
+  const sig = '@available(macOS 10.15, *) public func publishResponse<Serializer: ResponseSerializer, T>(using serializer: Serializer, on queue: DispatchQueue = .main) -> DataResponsePublisher<T> where Serializer.SerializedObject == T';
+  const p = signatureParts(sig, 'publishResponse');
+  assert.equal(p.returnType, 'DataResponsePublisher<T>');
+  assert.equal(p.selector, 'using serializer: Serializer, on queue: DispatchQueue');
+});
+
+test('signatureParts: nested parens in defaults (JSONDecoder()) balance correctly', () => {
+  const sig = 'public func publishDecodable<T: Decodable>(type: T.Type = T.self, decoder: any DataDecoder = JSONDecoder()) -> DataStreamPublisher<T>';
+  const p = signatureParts(sig, 'publishDecodable');
+  assert.equal(p.returnType, 'DataStreamPublisher<T>');
+  assert.equal(p.selector, 'type: T.Type, decoder: any DataDecoder');
+});
+
+test('signatureParts: selector-style params (RxSwift) preserved, return type split', () => {
+  const p = signatureParts('func observeWeaklyKeyPathFor(_:options:) -> Observable<T?>', 'observeWeaklyKeyPathFor');
+  assert.equal(p.returnType, 'Observable<T?>');
+  assert.equal(p.selector, '_:options:');
+});
+
+test('signatureParts: no return type → empty returnType, selector still parsed', () => {
+  const p = signatureParts('func onCreate(savedInstanceState: Bundle)', 'onCreate');
+  assert.equal(p.returnType, '');
+  assert.equal(p.selector, 'savedInstanceState: Bundle');
+});
+
+test('signatureParts: unparseable (name not followed by paren) → null', () => {
+  assert.equal(signatureParts('let x: Int = 3', 'x'), null);
+  assert.equal(signatureParts('', 'foo'), null);
 });

@@ -17,6 +17,80 @@ import { qualifiedName } from './extractors/base.mjs';
 const GENERIC = new Set(['parse', 'main', 'run', 'load', 'init', 'ensure', 'check', 'handle', 'render']);
 const FANOUT_THRESHOLD = 3;
 
+// --- signature parsing for compact overload disambiguation (Repair 3) -------
+
+function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Index of the bracket matching the opener at `openIdx`, or -1 (handles nesting).
+function matchBracket(s, openIdx, open, close) {
+  let depth = 0;
+  for (let i = openIdx; i < s.length; i++) {
+    if (s[i] === open) depth++;
+    else if (s[i] === close) { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// Strip top-level ` = <default>` segments from a raw param list and collapse
+// whitespace, so two overloads differing only by defaults compare equal.
+function normalizeParams(raw) {
+  let out = '', depth = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if ('([{<'.includes(ch)) depth++;
+    else if (')]}>'.includes(ch)) depth--;
+    if (ch === '=' && depth === 0 && raw[i + 1] !== '=') {
+      let d2 = 0;
+      i++;
+      for (; i < raw.length; i++) {
+        const c2 = raw[i];
+        if ('([{<'.includes(c2)) d2++;
+        else if (')]}>'.includes(c2)) { if (d2 === 0) break; d2--; }
+        else if (c2 === ',' && d2 === 0) break;
+      }
+      i--;            // re-handle the terminator (',' or ')') on the next pass
+      continue;
+    }
+    out += ch;
+  }
+  return out.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
+}
+
+/**
+ * Split a raw declaration signature into the parts used to disambiguate
+ * same-qualifiedName overloads. Best-effort and language-agnostic: the parse
+ * target is `<noise> name<generics?>(params) <-> ret>`. Returns null when the
+ * shape can't be parsed (caller falls back to the full signature).
+ * @param {string} rawSig
+ * @param {string} name
+ * @returns {{ selector: string, returnType: string } | null}
+ */
+export function signatureParts(rawSig, name) {
+  const sig = String(rawSig || '');
+  if (!sig || !name) return null;
+  const idRe = new RegExp(`(^|[^A-Za-z0-9_$])${escapeRe(name)}(?![A-Za-z0-9_$])`, 'g');
+  let m, parenStart = -1;
+  while ((m = idRe.exec(sig))) {
+    let i = m.index + m[0].length;            // just past the name
+    if (sig[i] === '<') {                      // skip a generic clause
+      const j = matchBracket(sig, i, '<', '>');
+      if (j < 0) continue;
+      i = j + 1;
+    }
+    while (i < sig.length && /\s/.test(sig[i])) i++;
+    if (sig[i] === '(') { parenStart = i; break; }
+  }
+  if (parenStart < 0) return null;
+  const parenEnd = matchBracket(sig, parenStart, '(', ')');
+  if (parenEnd < 0) return null;
+  const selector = normalizeParams(sig.slice(parenStart + 1, parenEnd));
+  let tail = sig.slice(parenEnd + 1).replace(/\b(async|throws|rethrows)\b/g, ' ');
+  let returnType = '';
+  const arrow = tail.search(/->|→/);
+  if (arrow >= 0) returnType = tail.slice(arrow).replace(/^(->|→)\s*/, '').replace(/\bwhere\b[\s\S]*$/, '').trim();
+  return { selector, returnType };
+}
+
 // The disambiguation context for a decl: its namespace path (already path-derived
 // for every extractor, and — after the Go task — receiver-qualified for Go
 // methods), falling back to the file-path stem when there is no namespace.
