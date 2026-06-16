@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assignDisplayNames } from '../scripts/lib/labels.mjs';
+import { assignDisplayNames, signatureParts } from '../scripts/lib/labels.mjs';
 
 const D = (name, namespace, path) => ({ name, namespace, path });
 const labels = (decls) => { assignDisplayNames(decls); return decls.map((d) => d._display_name ?? d.name); };
@@ -92,4 +92,123 @@ test('R3b: truly identical decls (same qname + same signature) stay equal (asser
   assignDisplayNames(decls);
   const lbl = decls.map((d) => d._display_name ?? d.name);
   assert.equal(lbl[0], lbl[1], 'genuine duplicates are left for a human to merge');
+});
+
+// --- Task 1: signatureParts ------------------------------------------------
+
+test('signatureParts: alamofire publishData → return type after stripping attrs/defaults', () => {
+  const sig = '@available(macOS 10.15, iOS 13, watchOS 6, tvOS 13, *) public func publishData(queue: DispatchQueue = .main, preprocessor: any DataPreprocessor = DataResponseSerializer.defaultDataPreprocessor, emptyResponseCodes: Set<Int> = DataResponseSerializer.defaultEmptyResponseCodes, emptyRequestMethods: Set<HTTPMethod> = DataResponseSerializer.defaultEmptyRequestMethods) -> DataResponsePublisher<Data>';
+  const p = signatureParts(sig, 'publishData');
+  assert.equal(p.returnType, 'DataResponsePublisher<Data>');
+  assert.equal(p.selector, 'queue: DispatchQueue, preprocessor: any DataPreprocessor, emptyResponseCodes: Set<Int>, emptyRequestMethods: Set<HTTPMethod>');
+});
+
+test('signatureParts: generics after name and trailing where-clause are skipped', () => {
+  const sig = '@available(macOS 10.15, *) public func publishResponse<Serializer: ResponseSerializer, T>(using serializer: Serializer, on queue: DispatchQueue = .main) -> DataResponsePublisher<T> where Serializer.SerializedObject == T';
+  const p = signatureParts(sig, 'publishResponse');
+  assert.equal(p.returnType, 'DataResponsePublisher<T>');
+  assert.equal(p.selector, 'using serializer: Serializer, on queue: DispatchQueue');
+});
+
+test('signatureParts: nested parens in defaults (JSONDecoder()) balance correctly', () => {
+  const sig = 'public func publishDecodable<T: Decodable>(type: T.Type = T.self, decoder: any DataDecoder = JSONDecoder()) -> DataStreamPublisher<T>';
+  const p = signatureParts(sig, 'publishDecodable');
+  assert.equal(p.returnType, 'DataStreamPublisher<T>');
+  assert.equal(p.selector, 'type: T.Type, decoder: any DataDecoder');
+});
+
+test('signatureParts: selector-style params (RxSwift) preserved, return type split', () => {
+  const p = signatureParts('func observeWeaklyKeyPathFor(_:options:) -> Observable<T?>', 'observeWeaklyKeyPathFor');
+  assert.equal(p.returnType, 'Observable<T?>');
+  assert.equal(p.selector, '_:options:');
+});
+
+test('signatureParts: Python trailing block colon stripped from return type', () => {
+  const p = signatureParts('def edit( text: str, editor: str | None = None ) -> str | None:', 'edit');
+  assert.equal(p.returnType, 'str | None');
+  assert.equal(p.selector, 'text: str, editor: str | None');
+});
+
+test('signatureParts: trailing comma in param list (Python style) is dropped from selector', () => {
+  const p = signatureParts('def command(name: str | None, cls: type[CmdType], **attrs: t.Any,) -> None', 'command');
+  assert.equal(p.selector, 'name: str | None, cls: type[CmdType], **attrs: t.Any');
+});
+
+test('signatureParts: no return type → empty returnType, selector still parsed', () => {
+  const p = signatureParts('func onCreate(savedInstanceState: Bundle)', 'onCreate');
+  assert.equal(p.returnType, '');
+  assert.equal(p.selector, 'savedInstanceState: Bundle');
+});
+
+test('signatureParts: unparseable (name not followed by paren) → null', () => {
+  assert.equal(signatureParts('let x: Int = 3', 'x'), null);
+  assert.equal(signatureParts('', 'foo'), null);
+});
+
+// --- Task 2: compact overload differentiator (Repair 3/4) -------------------
+
+test('Repair 3: return-type-distinct overloads → "name → ReturnType" (alamofire)', () => {
+  const mk = (ret) => ({ name: 'publishData', namespace: 'Features.Combine',
+    path: 'Source/Features/Combine.swift',
+    signature: `@available(macOS 10.15, *) public func publishData(queue: DispatchQueue = .main) -> ${ret}` });
+  const decls = [mk('DataResponsePublisher<Data>'), mk('DataStreamPublisher<Data>'), mk('DownloadResponsePublisher<Data>')];
+  assert.deepEqual(labels(decls), [
+    'publishData → DataResponsePublisher<Data>',
+    'publishData → DataStreamPublisher<Data>',
+    'publishData → DownloadResponsePublisher<Data>',
+  ]);
+});
+
+test('Repair 3: same return type, distinct params → "name(selector)"', () => {
+  const mk = (params) => ({ name: 'foo', namespace: 'a.b', path: 'a/b.swift',
+    signature: `func foo(${params}) -> Int` });
+  const decls = [mk('x: Int'), mk('x: Int, y: Int')];
+  assert.deepEqual(labels(decls), ['foo(x: Int)', 'foo(x: Int, y: Int)']);
+});
+
+test('Repair 3: differ in both → "name(selector) → ReturnType"', () => {
+  const decls = [
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(x: Int) -> A' },
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(y: Int) -> A' },
+    { name: 'g', namespace: 'a.b', path: 'a/b.swift', signature: 'func g(x: Int) -> B' },
+  ];
+  const out = labels(decls);
+  assert.equal(new Set(out).size, 3, JSON.stringify(out));
+  assert.ok(out.every((s) => s.startsWith('g(')), JSON.stringify(out));
+});
+
+test('Repair 4: truly identical decls stay equal (compact scheme cannot separate)', () => {
+  const decls = [
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+    { name: 'f', namespace: 'a.b', path: 'a/b.swift', signature: 'func f() -> Int' },
+  ];
+  const out = labels(decls);
+  assert.equal(out[0], out[1]);
+});
+
+test('Repair 4: cross-namespace overload clash on same compact label is repaired', () => {
+  // Two namespaces, each with two overloads; one return type collides across them.
+  const decls = [
+    { name: 'foo', namespace: 'A', path: 'A.swift', signature: 'func foo(a: Int) -> Void' },
+    { name: 'foo', namespace: 'A', path: 'A.swift', signature: 'func foo(a: Int) -> Int' },
+    { name: 'foo', namespace: 'B', path: 'B.swift', signature: 'func foo(b: Int) -> Void' },
+    { name: 'foo', namespace: 'B', path: 'B.swift', signature: 'func foo(b: Int) -> Bool' },
+  ];
+  const out = labels(decls);
+  assert.equal(new Set(out).size, 4, `labels must be globally unique: ${JSON.stringify(out)}`);
+});
+
+// --- Task 3: distinguisher length cap --------------------------------------
+
+test('distinguisher cap: no common prefix/suffix → shortest unique suffix, not full path', () => {
+  const decls = [
+    D('MainActivity', 'com.vibe.app.presentation.ui.main', 'app/.../main/MainActivity.kt'),
+    D('MainActivity', '$packagename', 'assets/.../$packagename/MainActivity.java'),
+  ];
+  assert.deepEqual(labels(decls), ['main:MainActivity', '$packagename:MainActivity']);
+});
+
+test('distinguisher cap: short middle (<=2 segments) is unchanged', () => {
+  const decls = [D('Config', 'app.api', 'app/api/config.ts'), D('Config', 'app.db', 'app/db/config.ts')];
+  assert.deepEqual(labels(decls), ['api:Config', 'db:Config']); // identical to pre-cap behavior
 });

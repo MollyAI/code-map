@@ -17,6 +17,104 @@ import { qualifiedName } from './extractors/base.mjs';
 const GENERIC = new Set(['parse', 'main', 'run', 'load', 'init', 'ensure', 'check', 'handle', 'render']);
 const FANOUT_THRESHOLD = 3;
 
+// --- signature parsing for compact overload disambiguation (Repair 3) -------
+
+function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Index of the bracket matching the opener at `openIdx`, or -1 (handles nesting).
+function matchBracket(s, openIdx, open, close) {
+  let depth = 0;
+  for (let i = openIdx; i < s.length; i++) {
+    if (s[i] === open) depth++;
+    else if (s[i] === close) { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// Strip top-level ` = <default>` segments from a raw param list and collapse
+// whitespace, so two overloads differing only by defaults compare equal.
+function normalizeParams(raw) {
+  let out = '', depth = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if ('([{<'.includes(ch)) depth++;
+    else if (')]}>'.includes(ch)) depth--;
+    if (ch === '=' && depth === 0 && raw[i + 1] !== '=') {
+      let d2 = 0;
+      i++;
+      for (; i < raw.length; i++) {
+        const c2 = raw[i];
+        if ('([{<'.includes(c2)) d2++;
+        else if (')]}>'.includes(c2)) { if (d2 === 0) break; d2--; }
+        else if (c2 === ',' && d2 === 0) break;
+      }
+      i--;            // re-handle the terminator (',' or ')') on the next pass
+      continue;
+    }
+    out += ch;
+  }
+  return out.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim().replace(/,$/, '').trim();
+}
+
+/**
+ * Split a raw declaration signature into the parts used to disambiguate
+ * same-qualifiedName overloads. Best-effort and language-agnostic: the parse
+ * target is `<noise> name<generics?>(params) <-> ret>`. Returns null when the
+ * shape can't be parsed (caller falls back to the full signature).
+ * @param {string} rawSig
+ * @param {string} name
+ * @returns {{ selector: string, returnType: string } | null}
+ */
+export function signatureParts(rawSig, name) {
+  const sig = String(rawSig || '');
+  if (!sig || !name) return null;
+  const idRe = new RegExp(`(^|[^A-Za-z0-9_$])${escapeRe(name)}(?![A-Za-z0-9_$])`, 'g');
+  let m, parenStart = -1;
+  while ((m = idRe.exec(sig))) {
+    let i = m.index + m[0].length;            // just past the name
+    if (sig[i] === '<') {                      // skip a generic clause
+      const j = matchBracket(sig, i, '<', '>');
+      if (j < 0) continue;
+      i = j + 1;
+    }
+    while (i < sig.length && /\s/.test(sig[i])) i++;
+    if (sig[i] === '(') { parenStart = i; break; }
+  }
+  if (parenStart < 0) return null;
+  const parenEnd = matchBracket(sig, parenStart, '(', ')');
+  if (parenEnd < 0) return null;
+  const selector = normalizeParams(sig.slice(parenStart + 1, parenEnd));
+  let tail = sig.slice(parenEnd + 1).replace(/\b(async|throws|rethrows)\b/g, ' ');
+  let returnType = '';
+  const arrow = tail.search(/->|→/);
+  if (arrow >= 0) {
+    returnType = tail.slice(arrow)
+      .replace(/^(->|→)\s*/, '')
+      .replace(/\bwhere\b[\s\S]*$/, '')   // drop a trailing generic where-clause
+      .replace(/[:{\s]+$/, '')            // drop a trailing block opener (Python ':' / brace)
+      .trim();
+  }
+  return { selector, returnType };
+}
+
+// Shortest signature component(s) that make every member of a same-qualifiedName
+// overload group unique. Bare `name` keeps the label compact (the full signature
+// stays in the detail panel). Order: return type → params → both. Null when no
+// scheme separates the group (caller falls back to the full signature).
+function compactDifferentiators(group) {
+  const parts = group.map((d) => signatureParts(d.signature, d.name));
+  if (parts.some((p) => p == null)) return null;
+  const name = group[0].name;
+  const rets = parts.map((p) => p.returnType);
+  const sels = parts.map((p) => p.selector);
+  const uniq = (arr) => new Set(arr).size === arr.length;
+  if (rets.every(Boolean) && uniq(rets)) return rets.map((r) => `${name} → ${r}`);
+  if (uniq(sels)) return sels.map((s) => `${name}(${s})`);
+  const pairs = parts.map((p) => `${p.selector} ${p.returnType}`);
+  if (uniq(pairs)) return parts.map((p) => `${name}(${p.selector}) → ${p.returnType}`);
+  return null;
+}
+
 // The disambiguation context for a decl: its namespace path (already path-derived
 // for every extractor, and — after the Go task — receiver-qualified for Go
 // methods), falling back to the file-path stem when there is no namespace.
@@ -43,16 +141,37 @@ function commonSuffixLen(lists, prefixLen) {
   return s;
 }
 
+// Smallest k such that the last-k segments (joined) are unique across the whole
+// group, or null when even the full lists collide (genuine duplicates).
+function minUniqueSuffixLen(lists) {
+  const max = Math.max(...lists.map((l) => l.length));
+  for (let k = 1; k <= max; k++) {
+    const keys = lists.map((l) => l.slice(-k).join('/'));
+    if (new Set(keys).size === lists.length) return k;
+  }
+  return null;
+}
+
 // For each member of a colliding group, the minimal distinguishing context:
 // the segments left after stripping the prefix/suffix shared by the WHOLE group.
 function distinguishers(group) {
   const lists = group.map(contextSegments);
   const p = commonPrefixLen(lists);
   const s = commonSuffixLen(lists, p);
-  return lists.map((segs) => {
+  const mids = lists.map((segs) => {
     const mid = segs.slice(p, segs.length - s);
-    return (mid.length ? mid : segs.slice(-1)).join('/');
+    return mid.length ? mid : segs.slice(-1);
   });
+  // Cap: a no-common-prefix collision keeps the entire path as the "middle".
+  // When any middle exceeds CAP segments, switch the whole group to the shortest
+  // trailing suffix that still separates it. Short middles (the common case)
+  // stay byte-identical, so existing labels and the eval golden don't churn.
+  const CAP = 2;
+  if (mids.some((m) => m.length > CAP)) {
+    const k = minUniqueSuffixLen(lists);
+    if (k != null) return lists.map((segs) => segs.slice(-k).join('/'));
+  }
+  return mids.map((m) => m.join('/'));
 }
 
 function tally(arr) {
@@ -104,17 +223,32 @@ export function assignDisplayNames(declarations) {
     if (counts.get(labelOf(d)) > 1) d._display_name = qualifiedName(d);
   }
 
-  // Repair 3: still colliding after qualifiedName means same-qname overloads
-  // (e.g. Swift return-type-only overloads). Append the full `signature` — it
-  // captures the return type, so it differs when the overloads differ. If the
-  // signatures are also identical the decls are genuine duplicates: leave them
-  // equal so the INV-1 gate fires and a human merges. (Cosmetic slimming of the
-  // resulting long label is out of scope — INV-U1 guarantees no truncation.)
+  // Repair 3 (compact): same-qualifiedName overloads → bare name + the MINIMAL
+  // signature component that separates the group (return type, else params, else
+  // both). Keeps the label short for the node box; the full signature stays in
+  // the detail panel. Falls back to Repair 4 when no compact scheme separates it.
+  counts = tally(declarations.map(labelOf));
+  const groups = new Map(); // current label -> [decls]
+  for (const d of declarations) {
+    const l = labelOf(d);
+    if (counts.get(l) > 1) {
+      if (!groups.has(l)) groups.set(l, []);
+      groups.get(l).push(d);
+    }
+  }
+  for (const group of groups.values()) {
+    const compact = compactDifferentiators(group);
+    if (compact) group.forEach((d, i) => { d._display_name = compact[i]; });
+  }
+
+  // Repair 4 (fallback): anything STILL colliding → fully-qualified name + full
+  // signature (the original Repair 3). Genuinely identical decls (same qname +
+  // signature) stay equal so the INV-1 gate fires for a human to merge.
   counts = tally(declarations.map(labelOf));
   for (const d of declarations) {
     if (counts.get(labelOf(d)) > 1) {
       const sig = (d.signature || '').trim();
-      if (sig) d._display_name = `${qualifiedName(d)} ${sig}`;
+      d._display_name = sig ? `${qualifiedName(d)} ${sig}` : qualifiedName(d);
     }
   }
 

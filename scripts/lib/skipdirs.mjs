@@ -26,6 +26,12 @@ export const DEFAULT_SKIP_DIRS = new Set([
   // ships them as first-party code.
   'mock', 'mocks', 'sample', 'samples', 'demo', 'demos', 'example', 'examples',
   'fixtures', 'testdata', 'testFixtures',
+  // Android/Flutter/iOS bundle raw resources under assets/ — any source file
+  // there is a scaffold/template/sample, never compiled code (e.g. vibeapp's
+  // assets/templates/.../$packagename/MainActivity.java). Bare-name skip; a
+  // "-assets" line in .code-map/skip-dirs.txt un-skips it for the rare project
+  // that ships first-party code there.
+  'assets',
   '.code-map',
 ]);
 

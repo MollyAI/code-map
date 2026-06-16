@@ -331,12 +331,18 @@ body.light .theme-toggle .icon-moon { display: none; }
 }
 /* When the title holds a full function signature, use mono + a calmer size so
    long signatures stay readable instead of dominating the panel. */
-.class-title.is-signature {
+.signature {
   font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: calc(15px * var(--fs-scale));
-  letter-spacing: 0;
-  line-height: 1.4;
+  font-size: calc(13px * var(--fs-scale));
+  line-height: 1.45;
+  color: var(--text-1);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .class-kind {
