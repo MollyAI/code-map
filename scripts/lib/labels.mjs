@@ -53,7 +53,7 @@ function normalizeParams(raw) {
     }
     out += ch;
   }
-  return out.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
+  return out.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim().replace(/,$/, '').trim();
 }
 
 /**

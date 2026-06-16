@@ -129,6 +129,11 @@ test('signatureParts: Python trailing block colon stripped from return type', ()
   assert.equal(p.selector, 'text: str, editor: str | None');
 });
 
+test('signatureParts: trailing comma in param list (Python style) is dropped from selector', () => {
+  const p = signatureParts('def command(name: str | None, cls: type[CmdType], **attrs: t.Any,) -> None', 'command');
+  assert.equal(p.selector, 'name: str | None, cls: type[CmdType], **attrs: t.Any');
+});
+
 test('signatureParts: no return type → empty returnType, selector still parsed', () => {
   const p = signatureParts('func onCreate(savedInstanceState: Bundle)', 'onCreate');
   assert.equal(p.returnType, '');
