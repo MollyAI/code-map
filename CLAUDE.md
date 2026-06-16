@@ -14,6 +14,10 @@ Four slash commands, all thin wrappers over the `bin/code-map` launcher:
 - `/code-map:chat` — grounded natural-language customization of the map (move a decl to a layer, author a flow, override a description); persists user edits to `.code-map/overlay.json` and re-applies them on every rebuild (`commands/chat.md`).
 - `/code-map:run` / `/code-map:stop` — server lifecycle via `mapctl.mjs` (`commands/run.md` / `stop.md`).
 
+## Development workflow
+
+**Develop directly on `dev`; ship to `main` only via a `dev → main` PR.** Commit work straight onto `dev` — do **not** cut per-feature branches off `dev` (keeping them in sync with `dev`/`main` is more churn than it's worth). When a batch is ready, open a pull request from `dev` to `main`; after it merges, fast-forward `dev` back to `main` so the two stay aligned. `main` is the released/installed line — never commit to it directly.
+
 ## Releasing / versioning
 
 **Before every push to `main`, bump `.claude-plugin/plugin.json`'s `version` if the push changes installed-plugin behavior** — installed copies are keyed on it, so source fixes without a bump are silently inert. Bump for `commands/`, `hooks/`, `bin/`, `scripts/`, `grammars/`, `viewer/`, `templates/`, `examples/`, plugin metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for `README*`, `CLAUDE.md`, `LICENSE`, `docs/`, `tests/`, `eval/`, `tools/`, `.gitignore`.
