@@ -123,6 +123,12 @@ test('signatureParts: selector-style params (RxSwift) preserved, return type spl
   assert.equal(p.selector, '_:options:');
 });
 
+test('signatureParts: Python trailing block colon stripped from return type', () => {
+  const p = signatureParts('def edit( text: str, editor: str | None = None ) -> str | None:', 'edit');
+  assert.equal(p.returnType, 'str | None');
+  assert.equal(p.selector, 'text: str, editor: str | None');
+});
+
 test('signatureParts: no return type → empty returnType, selector still parsed', () => {
   const p = signatureParts('func onCreate(savedInstanceState: Bundle)', 'onCreate');
   assert.equal(p.returnType, '');

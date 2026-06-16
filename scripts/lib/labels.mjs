@@ -87,7 +87,13 @@ export function signatureParts(rawSig, name) {
   let tail = sig.slice(parenEnd + 1).replace(/\b(async|throws|rethrows)\b/g, ' ');
   let returnType = '';
   const arrow = tail.search(/->|→/);
-  if (arrow >= 0) returnType = tail.slice(arrow).replace(/^(->|→)\s*/, '').replace(/\bwhere\b[\s\S]*$/, '').trim();
+  if (arrow >= 0) {
+    returnType = tail.slice(arrow)
+      .replace(/^(->|→)\s*/, '')
+      .replace(/\bwhere\b[\s\S]*$/, '')   // drop a trailing generic where-clause
+      .replace(/[:{\s]+$/, '')            // drop a trailing block opener (Python ':' / brace)
+      .trim();
+  }
   return { selector, returnType };
 }
 
