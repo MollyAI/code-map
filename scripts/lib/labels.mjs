@@ -135,16 +135,37 @@ function commonSuffixLen(lists, prefixLen) {
   return s;
 }
 
+// Smallest k such that the last-k segments (joined) are unique across the whole
+// group, or null when even the full lists collide (genuine duplicates).
+function minUniqueSuffixLen(lists) {
+  const max = Math.max(...lists.map((l) => l.length));
+  for (let k = 1; k <= max; k++) {
+    const keys = lists.map((l) => l.slice(-k).join('/'));
+    if (new Set(keys).size === lists.length) return k;
+  }
+  return null;
+}
+
 // For each member of a colliding group, the minimal distinguishing context:
 // the segments left after stripping the prefix/suffix shared by the WHOLE group.
 function distinguishers(group) {
   const lists = group.map(contextSegments);
   const p = commonPrefixLen(lists);
   const s = commonSuffixLen(lists, p);
-  return lists.map((segs) => {
+  const mids = lists.map((segs) => {
     const mid = segs.slice(p, segs.length - s);
-    return (mid.length ? mid : segs.slice(-1)).join('/');
+    return mid.length ? mid : segs.slice(-1);
   });
+  // Cap: a no-common-prefix collision keeps the entire path as the "middle".
+  // When any middle exceeds CAP segments, switch the whole group to the shortest
+  // trailing suffix that still separates it. Short middles (the common case)
+  // stay byte-identical, so existing labels and the eval golden don't churn.
+  const CAP = 2;
+  if (mids.some((m) => m.length > CAP)) {
+    const k = minUniqueSuffixLen(lists);
+    if (k != null) return lists.map((segs) => segs.slice(-k).join('/'));
+  }
+  return mids.map((m) => m.join('/'));
 }
 
 function tally(arr) {

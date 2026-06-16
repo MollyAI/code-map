@@ -186,3 +186,18 @@ test('Repair 4: cross-namespace overload clash on same compact label is repaired
   const out = labels(decls);
   assert.equal(new Set(out).size, 4, `labels must be globally unique: ${JSON.stringify(out)}`);
 });
+
+// --- Task 3: distinguisher length cap --------------------------------------
+
+test('distinguisher cap: no common prefix/suffix → shortest unique suffix, not full path', () => {
+  const decls = [
+    D('MainActivity', 'com.vibe.app.presentation.ui.main', 'app/.../main/MainActivity.kt'),
+    D('MainActivity', '$packagename', 'assets/.../$packagename/MainActivity.java'),
+  ];
+  assert.deepEqual(labels(decls), ['main:MainActivity', '$packagename:MainActivity']);
+});
+
+test('distinguisher cap: short middle (<=2 segments) is unchanged', () => {
+  const decls = [D('Config', 'app.api', 'app/api/config.ts'), D('Config', 'app.db', 'app/db/config.ts')];
+  assert.deepEqual(labels(decls), ['api:Config', 'db:Config']); // identical to pre-cap behavior
+});
