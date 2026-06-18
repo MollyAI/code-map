@@ -1,12 +1,14 @@
 // scripts/incremental.mjs — git-driven incremental build: decide mode (plan) and
 // merge prior Phase 2 annotations onto a fresh Phase 1 structure (merge).
 // Ports scripts/incremental.py (CLI) + scripts/lib/incremental.py (logic).
-// Phase 1 always re-runs full; only Phase 2 reuse is incremental.
+// Phase 1 always re-runs full; only Phase 2 reuse is incremental. Full rebuilds
+// are gated on the plugin's semantic fingerprints (extract_version/refine_version),
+// not the marketing version — see scripts/lib/version.mjs codeMapFingerprints.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve as resolvePath, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gitmeta from './lib/gitmeta.mjs';
-import { pluginVersion } from './lib/version.mjs';
+import { codeMapFingerprints } from './lib/version.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -17,14 +19,17 @@ function writeJson(path, obj) {
 
 const DEFAULT_MAX_CHANGE_RATIO = 0.4;
 
-export function plan(root, prev, architectureExists, currentVersion = null, maxChangeRatio = DEFAULT_MAX_CHANGE_RATIO) {
+export function plan(root, prev, architectureExists, fingerprints = {}, maxChangeRatio = DEFAULT_MAX_CHANGE_RATIO) {
   const full = (reason) => ({ mode: 'full', base_commit: null, changed_files: [], reason });
   if (prev == null) return full('no-prior-build');
-  // A plugin upgrade may change Phase 1 extraction or the Phase 2 contract, so a
-  // same-source incremental would reuse stale annotations. Any version mismatch
-  // (incl. a pre-upgrade artifact lacking the field) forces a full rebuild.
-  const prevVer = prev.project?.code_map_version;
-  if (currentVersion != null && prevVer !== currentVersion) return full('plugin-version-changed');
+  // Semantic-fingerprint gate (replaces the v1.9.0 marketing-version gate): only a
+  // change in extraction or the Phase-2 contract invalidates annotation reuse — a
+  // viewer/launcher/docs-only upgrade no longer forces a costly full rebuild. A
+  // pre-upgrade artifact lacking either field mismatches → full (fail-safe). Null
+  // fingerprints (unreadable plugin.json) skip the gate, never block.
+  const { extract_version: curEx = null, refine_version: curRf = null } = fingerprints || {};
+  if (curEx != null && prev.project?.extract_version !== curEx) return full('extract-version-changed');
+  if (curRf != null && prev.project?.refine_version !== curRf) return full('refine-version-changed');
   const base = prev.project?.git?.commit;
   if (!base) return full('no-anchor-commit');
   if (!architectureExists) return full('no-architecture-yml');
@@ -149,8 +154,8 @@ export function planMain(argv) {
   const prev = loadJson(flag(argv, '--prev', '.code-map/code-map.json'));
   const arch = flag(argv, '--arch', '.code-map/architecture.yml');
   const out = flag(argv, '--out', '.code-map/incremental.json');
-  const currentVersion = pluginVersion(join(HERE, '..'));
-  const result = plan(root, prev, existsSync(arch) || existsSync(arch.replace(/\.yml$/, '.json')), currentVersion);
+  const fingerprints = codeMapFingerprints(join(HERE, '..'));
+  const result = plan(root, prev, existsSync(arch) || existsSync(arch.replace(/\.yml$/, '.json')), fingerprints);
   writeJson(out, result);
   console.log(`[incremental] mode=${result.mode} reason=${result.reason} changed=${result.changed_files.length}`);
   return 0;

@@ -16,7 +16,7 @@ import * as gitmeta from './lib/gitmeta.mjs';
 import * as vendoring from './lib/vendoring.mjs';
 import { loadSkipDirs, pruneDirnames } from './lib/skipdirs.mjs';
 import { GrammarUnavailable } from './lib/grammars.mjs';
-import { pluginVersion } from './lib/version.mjs';
+import { pluginVersion, codeMapFingerprints } from './lib/version.mjs';
 import { resolveProject } from './lib/resolve/index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -268,7 +268,10 @@ export async function main(argv) {
   const git = gitmeta.gitInfo(root);
   if (git) projectMeta.git = git;
   const cmVer = pluginVersion(pluginRoot);
-  if (cmVer) projectMeta.code_map_version = cmVer;
+  if (cmVer) projectMeta.code_map_version = cmVer;   // provenance/display only — no longer a rebuild gate
+  const fp = codeMapFingerprints(pluginRoot);
+  if (fp.extract_version != null) projectMeta.extract_version = fp.extract_version;
+  if (fp.refine_version != null) projectMeta.refine_version = fp.refine_version;
 
   const data = core.toJsonShape(
     decls, edges,
