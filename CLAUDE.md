@@ -1,36 +1,36 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repo.
 
 ## What this is
 
-A Claude Code plugin that builds an interactive architectural map of a target project — 13 languages (Kotlin, Java, Python, Go, Rust, TypeScript/JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), **web-tree-sitter (WASM)** powered, served as a local HTML visualization.
+A Claude Code plugin that builds an interactive architectural map of a target project — 13 languages (Kotlin, Java, Python, Go, Rust, TS/JS, C, C++, C#, Swift, Objective-C, Dart, Lua), **web-tree-sitter (WASM)** powered, served as a local HTML viewer.
 
-**Runtime: Node ≥18 (or Bun) — no Python, no install step.** Build/analyze (Phase 0/1/2) is offline + install-free: grammars are bundled WASM — 8 committed under `grammars/bundled/`, 6 large ones fetched once on first use, sha256-pinned in `grammars/manifest.json`, cached under `${CLAUDE_PLUGIN_DATA}` (offline miss → that language's files go to `unresolved`, never a crash). The **viewer** is the one network-touching part: its **flow diagrams render via Mermaid loaded from a pinned jsdelivr CDN** at view time (v1.26 — it also already loads Google Fonts from a CDN), degrading to copyable Mermaid *source text* if the CDN is unreachable. Everything else in the viewer is offline. When adjusting an extractor, target the vendored WASM grammar's actual node names — the community grammars (kotlin, lua, objc, dart, swift) are a different dialect than the old PyPI ones.
+**Runtime: Node ≥18 (or Bun) — no Python, no install step.** Grammars are bundled/cached WASM (8 committed under `grammars/bundled/`, 6 fetched once + sha256-pinned in `grammars/manifest.json`; offline miss → that language's files go to `unresolved`, never a crash). Only the **viewer** touches the network: flow diagrams render via **Mermaid from a pinned jsdelivr CDN** (degrades to copyable Mermaid source if unreachable); it also loads Google Fonts. When editing an extractor, target the **vendored WASM grammar's** actual node names — the community grammars (kotlin, lua, objc, dart, swift) use a different dialect than the old PyPI ones.
 
-Four slash commands, all thin wrappers over the `bin/code-map` launcher:
+Four slash commands, thin wrappers over `bin/code-map`:
 
-- `/code-map:build` — Phase 1 (extraction) + Phase 2 (semantic refinement); produces `.code-map/code-map.json`. The exact Phase 0/2 contract lives in `commands/build.md`.
-- `/code-map:chat` — grounded natural-language customization of the map (move a decl to a layer, author a flow, override a description); persists user edits to `.code-map/overlay.json` and re-applies them on every rebuild (`commands/chat.md`).
-- `/code-map:run` / `/code-map:stop` — server lifecycle via `mapctl.mjs` (`commands/run.md` / `stop.md`).
+- `/code-map:build` — Phase 1 (extraction) + Phase 2 (refinement) → `.code-map/code-map.json`. Contract: `commands/build.md`.
+- `/code-map:chat` — grounded NL customization; persists to `.code-map/overlay.json`, re-applied on every rebuild (`commands/chat.md`).
+- `/code-map:run` / `/code-map:stop` — server lifecycle via `mapctl.mjs`.
 
 ## Development workflow
 
-**Develop directly on `dev`; ship to `main` only via a `dev → main` PR.** Commit work straight onto `dev` — do **not** cut per-feature branches off `dev` (keeping them in sync with `dev`/`main` is more churn than it's worth). When a batch is ready, open a pull request from `dev` to `main`; after it merges, fast-forward `dev` back to `main` so the two stay aligned. `main` is the released/installed line — never commit to it directly.
+Develop directly on `dev`; ship to `main` only via a `dev → main` PR (no per-feature branches). After merge, fast-forward `dev` back to `main`. Never commit to `main` directly.
 
 ## Releasing / versioning
 
-**Before every push to `main`, bump `.claude-plugin/plugin.json`'s `version` if the push changes installed-plugin behavior** — installed copies are keyed on it, so source fixes without a bump are silently inert. Bump for `commands/`, `hooks/`, `bin/`, `scripts/`, `grammars/`, `viewer/`, `templates/`, `examples/`, plugin metadata (semver: patch=fix, minor=new capability, major=breaking). Skip for `README*`, `CLAUDE.md`, `LICENSE`, `docs/`, `tests/`, `eval/`, `tools/`, `.gitignore`.
+**Bump `.claude-plugin/plugin.json` `version` before any push to `main` that changes installed-plugin behavior** — installed copies are keyed on it, so an un-bumped source fix is inert. Bump for `commands/ hooks/ bin/ scripts/ grammars/ viewer/ templates/ examples/` + plugin metadata (semver). Skip for `README* CLAUDE.md LICENSE docs/ tests/ eval/ tools/ .gitignore`.
 
-**Rebuild fingerprints (`plugin.json` `code_map: { extract_version, refine_version }`).** Separate from the marketing `version`: these two monotonic integers gate full-vs-incremental rebuilds (the `version` no longer does — v1.26). Bump **only** when a phase's *semantics* change, so a viewer/launcher/docs-only release no longer forces a token-costly full Phase 2 re-refine on upgrade:
+**Rebuild fingerprints (`plugin.json` `code_map.{extract_version, refine_version}`)** — two monotonic ints gating full-vs-incremental rebuilds (independent of the marketing `version`). Bump **only** when a phase's *semantics* change:
 
 | A change touches… | Bump |
 |---|---|
-| extractors / `grammars` (manifest) / `core·layers·labels·skipdirs` / `templates` / the analyze walk (extraction output may differ) | `extract_version` |
-| `build.md`'s Phase-2 contract — what descriptions/flows/diagrams to author | `refine_version` |
-| viewer / serve / mapctl / hooks / launcher / docs / metadata only | **neither** (still bump `version` per the rule above) |
+| extractors / `grammars` / `core·layers·labels·skipdirs` / `templates` / the analyze walk | `extract_version` |
+| `build.md`'s Phase-2 contract (descriptions/flows/diagrams) | `refine_version` |
+| viewer / serve / mapctl / hooks / launcher / docs / metadata only | **neither** |
 
-A pre-fingerprint map (no fields) → `plan` fails safe to one full rebuild, then granular. Forgetting to bump `extract_version` after an extractor change → silently stale map; this table is the guard.
+A pre-fingerprint map (no fields) → one full rebuild. Forgetting `extract_version` after an extractor change → silently stale map.
 
 ## Repo layout
 
@@ -38,7 +38,7 @@ A pre-fingerprint map (no fields) → `plan` fails safe to one full rebuild, the
 .claude-plugin/   plugin.json  marketplace.json
 bin/              code-map        # POSIX-sh launcher: detect node>=18/bun, exec scripts/cli.mjs
 commands/         build.md  chat.md  run.md  stop.md
-hooks/            hooks.json      # SessionEnd → code-map session-end (auto-stop server on exit)
+hooks/            hooks.json      # SessionEnd → code-map session-end (auto-stop server)
 examples/         default-layers.yml
 grammars/         manifest.json + vendored web-tree-sitter + bundled/ *.wasm
 templates/        # 13 architectural shapes (clean-architecture, mvc, mvvm, …)
@@ -48,26 +48,26 @@ scripts/          cli.mjs  analyze.mjs  serve.mjs  mapctl.mjs  incremental.mjs  
                   vendoring.mjs  ts.mjs  grammars.mjs  yaml.mjs  labels.mjs  overlay.mjs
     extractors/   index.mjs  base.mjs  _common.mjs  + one .mjs per language
 viewer/           index.html  src/...   # modular native ESM, no build step
-tests/            # node --test for pure logic; test_external_harness.py (eval harness only)
+tests/            # node --test (pure logic); test_external_harness.py (eval harness)
 eval/             # local-only external-repo eval harness (dev-only, never ships)
 ```
 
-Single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → subcommand module. No package.json / npm install. The launcher passes `--liftoff-only` to node (the swift grammar OOMs V8's optimizing tier).
+Single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → subcommand module. No package.json / npm install. Launcher passes `--liftoff-only` (the swift grammar OOMs V8's optimizing tier).
 
 ## Pipeline (Phase 0 + three phases)
 
 | Phase | Where | What |
 |---|---|---|
-| 0. Architecture | Claude, via `build.md` | Reads README + dir tree + detector scores, picks/tweaks a `templates/*.yml`, writes `.code-map/architecture.yml`. |
-| 1. Extract | `analyze.mjs` | Walks, parses, builds the dependency graph, scores importance, assigns layers, marks `core`/`hub`, writes deterministic `flows[]`. Outputs `raw_structure.json` + `unresolved.json`. **Deterministic — never guesses.** |
-| 2. Refine | Claude, via `build.md` | Verifies/swaps the template, bilingual descriptions for **core** decls, layer overrides, triages `unresolved`, names/curates flows, draws flow diagrams. Writes `code-map.json`. |
-| 3. Serve | `serve.mjs` via `mapctl.mjs` | Serves `viewer/`, re-reads the JSON every request. Detached; state in `.code-map/server.json`. |
+| 0. Architecture | Claude (`build.md`) | Reads README + tree + detector scores, picks/tweaks a `templates/*.yml`, writes `.code-map/architecture.yml`. |
+| 1. Extract | `analyze.mjs` | Walks, parses, builds the dep graph, scores importance, assigns layers, marks `core`/`hub`, writes `flows[]`. Outputs `raw_structure.json` + `unresolved.json`. **Deterministic — never guesses.** |
+| 2. Refine | Claude (`build.md`) | Verifies/swaps the template, bilingual descriptions for **core** decls, layer overrides, triages `unresolved`, names/curates flows, draws diagrams. Writes `code-map.json`. |
+| 3. Serve | `serve.mjs` (`mapctl.mjs`) | Serves `viewer/`, re-reads the JSON every request. Detached; state in `.code-map/server.json`. |
 
-**Phase 2 is your job on `/code-map:build`** — follow `commands/build.md` exactly (including the A3.5 hard rule: no Test/Mock/Sample/Demo/Example layers, and such decls never enter any layer).
+**Phase 2 is your job on `/code-map:build`** — follow `commands/build.md` exactly (incl. the A3.5 rule: no Test/Mock/Sample/Demo/Example layers, and such decls never enter any layer).
 
 ## Common commands
 
-From the target project (CLAUDE_PLUGIN_ROOT is NOT set in the Bash-tool shell — resolve the launcher first):
+`CLAUDE_PLUGIN_ROOT` is NOT set in the Bash-tool shell — resolve the launcher first:
 
 ```bash
 CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"
@@ -76,49 +76,47 @@ CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_
 "$CM" run --data .code-map/code-map.json                     # Phase 3
 "$CM" stop
 
-# Core selection tuning (defaults: percentile 0.30, cap 40/layer, floor 4/layer)
-"$CM" analyze --root . --out .code-map/raw_structure.json --core-percentile 0.15 --core-max-per-layer 60 --core-min-per-layer 2
-
+# Core tuning (defaults: percentile 0.30, cap 40/layer, floor 4/layer)
+"$CM" analyze ... --core-percentile 0.15 --core-max-per-layer 60 --core-min-per-layer 2
 # Extra skips (also honors .code-map/skip-dirs.txt; leading "-" un-skips a default)
-"$CM" analyze --root . --out .code-map/raw_structure.json --skip generated
+"$CM" analyze ... --skip generated
 ```
 
 ## Testing
 
 No linter, no build step.
 
-- Unit tests: `node --liftoff-only --test tests/*.test.mjs` and `node --test viewer/src/test/*.test.js` (pure logic only; CLIs and DOM wiring are covered end-to-end). Harness test: `python3 -m unittest discover -s tests -p 'test_*.py'`.
-- `eval/` — local-only harness that runs the pipeline against pinned real repos: `run.py prepare/invariants/serve` (interactive eval) and `run.py bless/check` (zero-token golden regression). See `eval/README.md`.
-- **Regression gate (INV-1 / INV-U1 / INV-B1).** `code-map invariants --data <map>` exits non-zero on any violation — **INV-1** (within each layer, every rendered/core node's `display_name||name` is unique), **INV-U1** (every node box fits its full label; no clip/ellipsis), and **INV-B1** (every *rendered* descriptive string is a complete `_zh`/`_en` pair: layer & group `summary`, and each **diagrammed** flow's `name` + optional `description`; a bare/concat/one-language value fails — diagram-less candidate flows are exempt so a Phase-1 `raw_structure.json` passes). Pure logic in `viewer/src/data/invariants.js` (reuses `layout/metrics.js`); exercised by `tests/invariants*.test.mjs` + `viewer/src/test/invariants.test.js`, and run on real fixtures by `eval/run.py invariants`. There is no `.github/workflows` — this gate + `node --test` are the enforcement path.
+- Unit: `node --liftoff-only --test tests/*.test.mjs` and `node --test viewer/src/test/*.test.js` (pure logic only). Harness: `python3 -m unittest discover -s tests -p 'test_*.py'`.
+- `eval/` — local-only harness against pinned real repos: `run.py prepare/invariants/serve` (interactive) and `run.py bless/check` (zero-token golden regression). See `eval/README.md`.
+- **Regression gate.** `code-map invariants --data <map>` exits non-zero on any violation — **INV-1** (within a layer, every rendered node's `display_name||name` is unique), **INV-U1** (every node box fits its full label), **INV-B1** (every *rendered* descriptive string is a complete `_zh`/`_en` pair: layer/group `summary` + each **diagrammed** flow's `name`/`description`; diagram-less candidate flows exempt). Logic in `viewer/src/data/invariants.js`. No CI — this gate + `node --test` are the enforcement path.
 
 ## Architectural invariants
 
-Non-obvious rules that hold across files (rationale in git history):
+Non-obvious rules across files (rationale in git history):
 
-- **Language-agnostic framework.** `core.mjs` / `layers.mjs` operate only on the `Declaration` shape (`extractors/base.mjs`), never import a language module. Adding a language = one extractor + one registry tuple + one manifest entry.
-- **Extractor contract** (`base.mjs`; ESM, async): `export const name / extensions / grammar` + `async parse(relPath, src, projectRoot) -> ParseResult`. `src` is a **JS string** — web-tree-sitter offsets are UTF-16 code units, slice the string, never a Buffer. Grammars and extractors load lazily.
-- **Miss rather than misidentify.** Anything not cleanly parsed goes to `unresolved.json` for Phase 2 — no regex fallbacks in extractors.
-- **C/C++ extractors descend "transparent containers"** (`preproc_*`, `linkage_specification`, `ERROR`, cpp `template_declaration`/`namespace_definition`) but never enter `compound_statement`; function-style-macro definitions are recovered AST-grounded with `confidence:"low"` + `tags:["macro-defined"]`; dedup by `(kind, qname, signature)`.
-- **Swift extensions are not named after the extended type** — same-file extensions fold into the type; cross-file extensions surface their member functions as nodes (`tags:["extension-method"]`); member-less extensions emit nothing.
-- **Walker dedups by realpath** (`analyze.mjs:walkProject`), sorted order — symlinked files parse exactly once.
-- **Importance & core (`core.mjs`).** Importance = `0.55·in + 0.35·out + 0.1·entry-boost` (log-normalized degrees); private decls ×0.3 (`PRIVATE_PENALTY`); `resolve` disambiguates short-name collisions by same-file then unique-public, never guesses. `markCore`: rank-based top-percentile/layer (default 0.30), cap 40, **floor 4** (lonely layers padded from their own members), gated on `importance > 0`. Entry points (`isEntryPoint`) are always `core:true` + `tags:["entry-point"]` — Phase 1 and the Phase 2 contract must stay in sync on this.
-- **Node identity ≠ display label (`lib/labels.mjs`).** `id = qualifiedName`, never changed; `assignDisplayNames` writes a globally-unique `display_name` only when it differs from `name`. Cross-module name collisions use a path distinguisher **capped to the shortest unique suffix** (no full-path labels — `distinguishers()` switches to `minUniqueSuffixLen` when the stripped middle exceeds 2 segments). Same-`qualifiedName` overloads (e.g. Swift return-type/param overloads) get a **compact differentiator** — bare `name` plus the shortest signature component that separates the group: return type → params → both, e.g. `publishData → DownloadResponsePublisher<Data>` (Repair 3, via the exported `signatureParts`/`compactDifferentiators`). The full raw `signature` is **not** in the label (it lives in the detail panel); when no compact scheme separates the group, Repair 4 falls back to `qualifiedName + signature` and genuinely-identical decls stay equal so the INV-1 gate fires for a human to merge. The viewer renders `display_name || name` everywhere.
-- **Templates & layers (`lib/templates.mjs`, `lib/layers.mjs`).** Precedence: `.code-map/architecture.yml` > template detection > embedded fallback; `loadConfig` always returns a detection dict (`reason:"ai-phase0"` means Phase 0 ran). `template_detection.fit.fits === false` is a hard trigger for Phase 2 to re-architect. `assignLayer` matches reversed path/namespace segments (deepest wins); YAML read by the minimal `lib/yaml.mjs`.
-- **2D layering / group containers (`lib/layers.mjs expandGroups`, `viewer/src/layout/groups.js`).** A layer with a `children:` list is a **group** (peer/parallel modules or ordered sub-layers); not a single vertical stack. **Authoring is nested, storage is flat**: `expandGroups` turns the nested `architecture.yml` into a flat leaf-layer array (each leaf gets an encoded numeric `order` + a `group` id) plus a top-level `layer_groups[]` descriptor in `code-map.json`. `order` encoding drives the band ordering: top-level rank `t`; `layout: row` children all share `t` (peers — same band rank); `layout: column` children get `t+(j+1)/(m+1)` (ordered, strictly in `(t,t+1)`). **A flat (group-free) config is byte-identical to before**: no `group` key, no `layer_groups`, integer orders → invariants / `schema.loadModel` need zero change, eval golden unaffected. Nesting is **one level only** (grandchildren are flattened). The viewer reconstructs the 2D arrangement from `layer_groups` + standalone leaves: `layoutGrouped` → `{ bands, frames }`; band rect/label/count key off `b.x` (flat → `b.x===0`); `frames` are group umbrella rects drawn behind bands (named → warm title via `.layer-group`, bare → no title). `packRows` (extracted from `layoutLayers`) is the shared row-packing both renderers use. INV-1/INV-U1 stay **per-leaf-layer** (groups hold no classes).
-- **One canonical skip list (`lib/skipdirs.mjs`)** shared by walk + detection. Output dirs (`build`/`out`/`dist`/`target`) are pruned only beside a build manifest. Test/mock/sample/demo/example/fixtures trees — and `assets/` (Android/Flutter/iOS bundle raw resources there, so any source file is a scaffold/template) — are skipped by default; the map shows the core architecture only. Per-project tuning via `--skip` / `.code-map/skip-dirs.txt`. `lib/vendoring.mjs` adds an advisory-only `project.advisories` for project-specific vendored dirs.
-- **Viewer (modular native ESM, no build step — don't propose React).** Two modes: layer bands and flow. **Flow mode renders via Mermaid (v1.26).** The structured `flow.diagram` JSON (`pipeline`/`sequence`) stays the authored source of truth; `diagram/mermaid-compile.js` is a **pure** compiler that turns it into Mermaid text (decl ids → minted aliases + an `idMap`; never raw qualifiedNames as Mermaid ids), and `diagram/mermaid-render.js` lazy-loads Mermaid from a pinned CDN and renders it. **A pipeline link whose endpoint is a *stage* id is redirected onto that stage's first node** (v1.26.1) — Mermaid/dagre lays out `subgraph→subgraph` edges poorly (the target subgraph floats out of the LR rank flow), so the edge attaches to a real node inside the subgraph to pin it into the row. `validateDiagram` still *accepts* stage-id endpoints; the compiler just never emits a subgraph-to-subgraph edge. The in-house pipeline/sequence renderer + layout (`layout/pipeline.js`, `layout/sequence.js`, `render/diagrams.js`) and the DAG renderer (v1.19) are **gone**. The flow list still shows only flows with a valid `diagram` (`buildFlowIndex`/`controls` filter by `diagramOf` — the grounding gate kept). **Sync↔async bridge:** `flowView.computeLayout` kicks off the async Mermaid render, caches by `flowId|lang|theme`, and `ctx.requestRender()` (=`setState({})`) re-enters once resolved; until then a loading placeholder; CDN failure → a copyable Mermaid-source `foreignObject`. **Interaction is click→detail only** — the compiler emits `click … call cmFlowClick("<declId>")`, Mermaid's `bindFunctions` wires it after the SVG is inserted, and `selection.applySelection` resolves the detail datum from `classById` when a node isn't in `nodeById` (Mermaid nodes aren't). No hover/highlight/dim in flow mode (sequence-participant click is best-effort, unwired). **PNG export is mode-aware** (`export/png.js`): flow mode rasterizes Mermaid's self-contained `<svg>` verbatim — keeping ids so `<marker>`/`url(#…)` and the id-scoped `<style>` survive (NO strip); layer mode keeps the clone+inline-computed+strip-id path (still no `<marker>`, explicit arrowheads). The shared `buildClone`+`rasterizeToBlob` core (exported `copyImageToClipboard`) backs **two always-present topbar buttons (v1.27): export-to-file and a mode-aware copy button** — both exist in *both* modes so a mode switch never reflows the topbar. The copy button (`#copy-toggle`, wired in `ui/controls` since it needs flow/state) is **mode-aware**: flow mode copies the active flow's compiled **Mermaid source text** (`compileDiagram` → `clipboard.writeText`, the v1.26 interop), layer mode copies the **PNG image** (`copyImageToClipboard`). Its tooltip tracks the mode/lang via `refreshCopyTitle` (no static `data-i18n-title`). Image clipboard uses the `ClipboardItem({'image/png': blobPromise})` promise form so Safari's transient activation survives the async rasterize. **Switching mode resets the viewport to 100% + top-left (`goHome`)** and sets `state.viewTransitioning` for ~320ms: the on-screen scale is `(canvasWidth·zoom)/baseWidth`, and the flow sidebar's 280ms `margin` transition changes `canvasWidth` *after* the render — so `zoom.js`'s ResizeObserver `applyZoom` is **frozen** during that window (font size stays constant through the slide instead of rescaling against a now-stale `baseWidth`), then `controls` re-lays-out once at the settled width. Clicking the already-active mode is a no-op. Layer mode renders **core declarations only** (the core/all toggle was removed in v1.14). **All bilingual text resolves through one function — `i18n.pickBilingual(obj, base, lang)`** (pair `<base>_zh`/`<base>_en` first, else `pickLangText` splits a legacy "中文 · English" concat string): it backs detail descriptions, the flow list (`flowField`), layer/group band summaries (`render/registry.js`), and the Mermaid compiler's labels. The **canonical** authored shape is the `_zh`/`_en` pair, *not* a concat string; `analyze` emits bilingual layer/group `summary` (defaults in `lib/layers.mjs` + all 13 `templates/`), and INV-B1 gates it (still model-level on `flow.diagram` JSON — unchanged by the Mermaid switch). The concat path survives only as a render-time fallback for pre-existing maps.
-- **No theme flash (v1.17.1).** A synchronous inline script — the first child of `<body>` in `viewer/index.html` — resolves light/dark (localStorage `code-map-theme` > system preference > dark) and sets `body.light` *before* first paint, so the deferred `ui/controls` initTheme module's later `apply()` is a no-op. The pre-paint script and initTheme MUST keep the same resolution order. It targets `body` (not `:root`) because the light palette is defined on `body.light`.
-- **Data-fetch cache is mode-dependent (`data/load.js` + `data/source.js` `isGallery`).** Local single-project serve (no `?project=`) fetches `code-map.json` with `cache:'no-store'` so a rebuild is picked up on refresh (pairs with Phase 3's re-read-every-request). Gallery mode (`?project=<slug>`) is static per-publish, so it respects the server's cache headers instead of force-re-downloading + re-parsing on every navigation — the dominant speedup when browsing a multi-project gallery.
-- **Determinism.** Edge build order and `markCore` tie-breaks are order-independent; importance uses banker's rounding (`round3`). Official-grammar languages stay byte-identical to the pre-1.0 pipeline.
-- **Incremental builds.** Only Phase 2 is incremental — **Phase 1 always runs full**. `plan` picks full/incremental; any uncertainty → full. A full rebuild is forced on a **semantic-fingerprint** mismatch (`plugin.json` `code_map.extract_version` / `refine_version`), **not** the marketing `version` (v1.26 — so a viewer/docs-only upgrade no longer burns a full Phase 2; see the Releasing bump-table). Pre-fingerprint maps fail safe to one full rebuild. `merge` reuses prior annotations, flags `stale` decls and `needs_review` flows, strips diagrams whose decls vanished.
+- **Language-agnostic framework.** `core.mjs`/`layers.mjs` operate only on the `Declaration` shape (`extractors/base.mjs`), never import a language module. Adding a language = one extractor + one registry tuple + one manifest entry.
+- **Extractor contract** (`base.mjs`; ESM, async): `export const name/extensions/grammar` + `async parse(relPath, src, projectRoot) -> ParseResult`. `src` is a **JS string** (offsets are UTF-16 — slice the string, never a Buffer). Lazy-loaded. **Miss rather than misidentify** — unparsed → `unresolved.json`, no regex fallbacks.
+- **C/C++** descend transparent containers (`preproc_*`, `ERROR`, cpp `template_declaration`/`namespace_definition`) but never enter `compound_statement`; macro-defined fns recovered AST-grounded with `confidence:"low"` + `tags:["macro-defined"]`; dedup by `(kind, qname, signature)`.
+- **Swift extensions** are not named after the extended type; cross-file extensions surface member fns (`tags:["extension-method"]`); member-less extensions emit nothing.
+- **Walker dedups by realpath** — symlinked files parse once.
+- **Importance & core (`core.mjs`).** Importance = `0.55·in + 0.35·out + 0.1·entry` (log-normalized); private ×0.3; `markCore` rank-based top-percentile/layer (0.30), cap 40, floor 4, gated on `importance>0`. Entry points always `core:true` + `tags:["entry-point"]` — Phase 1 and the build.md contract must stay in sync.
+- **Node identity ≠ display label (`lib/labels.mjs`).** `id = qualifiedName`, never changed; `display_name` set only when it differs from `name`. Cross-module collisions → shortest-unique-suffix path distinguisher; same-`qualifiedName` overloads → compact signature differentiator (Repair 3, `signatureParts`/`compactDifferentiators`); when nothing separates them Repair 4 falls back to `qualifiedName+signature` and genuinely-identical decls stay equal so INV-1 fires for a human. Viewer renders `display_name || name`.
+- **Templates & layers.** Precedence: `.code-map/architecture.yml` > template detection > embedded fallback. `template_detection.fit.fits === false` → Phase 2 re-architects. `assignLayer` matches reversed path/namespace segments (deepest wins).
+- **2D layering / groups (`lib/layers.mjs expandGroups`, `viewer/src/layout/groups.js`).** A layer with `children:` is a group. Authoring is nested, storage is flat: `expandGroups` → flat leaf-layers (encoded `order` + `group` id) + top-level `layer_groups[]`. `layout: row` children share a band rank (peers); `column` children get fractional ranks. A flat (group-free) config is **byte-identical to before**. Nesting is one level only. Viewer: `layoutGrouped` → `{bands, frames}`; INV-1/INV-U1 stay per-leaf-layer.
+- **One canonical skip list (`lib/skipdirs.mjs`)** shared by walk + detection. Output dirs (`build/out/dist/target`) pruned only beside a build manifest; test/mock/sample/demo/example/fixtures + `assets/` skipped by default. Tune via `--skip` / `.code-map/skip-dirs.txt`. `lib/vendoring.mjs` adds advisory-only `project.advisories`.
+- **Viewer (modular native ESM, no build step — don't propose React).** Two modes: layer bands + flow. **Flow renders via Mermaid:** `flow.diagram` JSON (`pipeline`/`sequence`) is the source of truth; `diagram/mermaid-compile.js` (pure) → Mermaid text (decl ids → minted aliases, never raw qualifiedNames); `diagram/mermaid-render.js` lazy-loads the CDN. A pipeline edge to a *stage* id redirects onto that stage's first node (dagre lays out subgraph→subgraph poorly). Interaction is **click→detail only** (no hover/highlight); compiler emits `click … call cmFlowClick("<declId>")`, `selection.applySelection` resolves from `classById`. **PNG export is mode-aware** (`export/png.js`): flow keeps ids (markers/styles survive), layer strips ids (explicit arrowheads). **Copy button mode-aware** (`#copy-toggle`): flow copies Mermaid source text, layer copies the PNG. Switching mode resets viewport (`goHome`) + freezes `zoom.js` ~320ms during the sidebar slide. Layer mode renders **core decls only**. All bilingual text → `i18n.pickBilingual(obj, base, lang)` — canonical shape is the `_zh`/`_en` pair; concat string is a legacy render-time fallback.
+- **No theme flash.** A sync inline script (first child of `<body>` in `viewer/index.html`) resolves theme (localStorage `code-map-theme` > system > dark) and sets `body.light` before first paint; keep it and `initTheme` in the same resolution order. Targets `body`, not `:root`.
+- **Data-fetch cache is mode-dependent (`data/load.js`, `data/source.js isGallery`).** Local serve (no `?project=`) fetches with `cache:'no-store'` (picks up rebuilds). Gallery mode (`?project=<slug>`) respects server cache headers.
+- **Determinism.** Edge build order + `markCore` tie-breaks are order-independent; importance uses banker's rounding (`round3`).
+- **Incremental builds.** Only Phase 2 is incremental — **Phase 1 always runs full**. `plan` picks full/incremental (uncertainty → full); a fingerprint mismatch forces full. `merge` reuses prior annotations, flags `stale` decls + `needs_review` flows, strips diagrams whose decls vanished.
 - **Phase 3 is intentionally dumb.** `serve.mjs` re-reads `code-map.json` every request — don't add caching.
-- **Server lifecycle is owned by `mapctl.mjs`.** `run.md`/`stop.md` stay one-shot relays — no shell-side PID files or polling. `serve.mjs --state` writes/cleans `.code-map/server.json`; `mapctl` reuses a live pid, never starts a second instance. **Auto-stop on exit:** `hooks/hooks.json` registers a `SessionEnd` hook → `code-map session-end`, which reads the SessionEnd JSON, decides via the pure `shouldAutoStop` (skips `clear`/`resume`/`bypass_permissions_disabled`, skips when no live server, honors the `CODE_MAP_KEEP_ALIVE` env var / `.code-map/keep-alive` opt-out), and reuses `stopServer` (extracted from `stopMain`, byte-identical stdout). The hook can't cover hard kills/crashes (SessionEnd doesn't fire) and — since `session_id` isn't available at `run` time — a shared per-project server is stopped by whichever session exits first; both are documented non-goals.
-- **User overlay / chat persistence (`scripts/lib/overlay.mjs`, `commands/chat.md`).** `/code-map:chat` records grounded user edits in `.code-map/overlay.json` — the one `.code-map/` file no rebuild ever wipes (Path A's `rm` skips it; Phase 2 only overwrites `code-map.json`; a plugin upgrade touches `~/.claude/plugins/` not the target project). `code-map overlay apply` re-applies it onto the freshly-built map at the END of Phase 2, on **both** full and incremental — this is what survives a plugin upgrade, since the incremental `merge` does NOT run on the forced full rebuild. Entries are GROUNDED (reference real decl/flow ids only) and reconciled by id-existence: a vanished ref → entry `inactive` + reported, a returned ref → reactivated. Dedup is done IN apply (class by `id`, flow by `id` + same-seed/high-overlap suppression) — never left to the INV-1 gate (which hard-fails, not dedups). **Empty/absent overlay → `apply` is identity**, so eval golden fixtures (no overlay) stay byte-identical. `apply` is idempotent. Plugin-behavior requests (§B in `chat.md`) are NOT stored in the overlay — they're guided toward an upstream PR (local edits vanish on upgrade). Reuses `diagramRefsAlive` (exported from `incremental.mjs`) for flow liveness.
+- **Server lifecycle owned by `mapctl.mjs`.** `run.md`/`stop.md` are one-shot relays. `serve.mjs --state` writes/cleans `.code-map/server.json`; reuses a live pid. Auto-stop: `SessionEnd` hook → `code-map session-end` → pure `shouldAutoStop` (skips `clear`/`resume`; honors `CODE_MAP_KEEP_ALIVE` / `.code-map/keep-alive`). Can't cover hard kills.
+- **User overlay / chat (`scripts/lib/overlay.mjs`, `commands/chat.md`).** `/code-map:chat` records grounded edits in `.code-map/overlay.json` (the one `.code-map/` file no rebuild wipes). `overlay apply` re-applies at the END of Phase 2 on **both** full + incremental. Entries are grounded by real decl/flow ids, reconciled by id-existence (vanished → `inactive`, returned → reactivated); dedup is done IN apply. Empty/absent overlay → identity (eval golden unchanged). Idempotent. Plugin-behavior requests are not stored — guided toward an upstream PR.
 
 ## Sources
 
 - `README.md` — user-facing overview
-- `commands/build.md` — the Phase 0/2 contract (the authoritative spec for what Claude does)
+- `commands/build.md` — the Phase 0/2 contract (authoritative spec for what Claude does)
 - `eval/README.md` — external-repo eval harness
 - `scripts/lib/extractors/base.mjs` — `Declaration`/`ParseResult` + extractor protocol
 - `grammars/manifest.json` — grammar pins
