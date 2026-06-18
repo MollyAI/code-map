@@ -45,6 +45,70 @@ test('pipeline: control kind → dotted, dispatch → thick', () => {
   assert.match(compileDiagram(dispatch, classById, 'en').def, /==>\|"d"\|/);
 });
 
+test('pipeline: stage-id link endpoints redirect to a representative node (no subgraph→subgraph edge)', () => {
+  // Mermaid/dagre lays out subgraph→subgraph edges poorly (the target subgraph
+  // floats out of the rank flow). A stage-endpoint link must attach to a real
+  // node inside the subgraph so dagre pins it into the row.
+  const cb = new Map([
+    ['app.A', { id: 'app.A', name: 'A' }],
+    ['app.B', { id: 'app.B', name: 'B' }],
+    ['app.C', { id: 'app.C', name: 'C' }],
+    ['app.D', { id: 'app.D', name: 'D' }],
+  ]);
+  const dg = {
+    type: 'pipeline',
+    stages: [
+      { id: 's0', name_zh: '甲', name_en: 'Alpha', nodes: ['app.A', 'app.B'] },
+      { id: 's1', name_zh: '乙', name_en: 'Beta', nodes: ['app.C', 'app.D'] },
+    ],
+    links: [{ from: 's0', to: 's1', kind: 'data', label_zh: '入', label_en: 'in' }],
+  };
+  const { def } = compileDiagram(dg, cb, 'en');
+  const m = def.match(/^\s*(\w+) -->\|"in"\| (\w+)\s*$/m);
+  assert.ok(m, 'data link present');
+  const [, from, to] = m;
+  // representative nodes carry click directives; subgraph header aliases never do
+  assert.match(def, new RegExp(`click ${from} call cmFlowClick`));
+  assert.match(def, new RegExp(`click ${to} call cmFlowClick`));
+  const subAliases = [...def.matchAll(/subgraph (\w+)\[/g)].map((x) => x[1]);
+  assert.ok(!subAliases.includes(from) && !subAliases.includes(to), 'edge must not sit on subgraph aliases');
+  // representative = the stage's FIRST node (app.A / app.C)
+  const idMapEntries = [...compileDiagram(dg, cb, 'en').idMap];
+  const aliasOf = (id) => idMapEntries.find(([, v]) => v === id)[0];
+  assert.equal(from, aliasOf('app.A'));
+  assert.equal(to, aliasOf('app.C'));
+});
+
+test('pipeline: mixed node-endpoint and stage-endpoint links in one diagram', () => {
+  // eventbus-shaped: node→node fan-out plus one stage→stage enqueue edge.
+  const cb = new Map([
+    ['P', { id: 'P', name: 'Poster' }],
+    ['H', { id: 'H', name: 'HandlerPoster' }],
+    ['Q', { id: 'Q', name: 'PendingPostQueue' }],
+    ['PP', { id: 'PP', name: 'PendingPost' }],
+  ]);
+  const dg = {
+    type: 'pipeline',
+    stages: [
+      { id: 's:posters', name_zh: '选择发布机', name_en: 'Select', nodes: ['P', 'H'] },
+      { id: 's:queue', name_zh: '待发队列', name_en: 'Queue', nodes: ['Q', 'PP'] },
+    ],
+    links: [
+      { from: 'P', to: 'H', kind: 'dispatch', label_zh: 'MAIN', label_en: 'MAIN' },
+      { from: 's:posters', to: 's:queue', kind: 'data', label_zh: '入队待投递', label_en: 'enqueue' },
+    ],
+  };
+  const { def } = compileDiagram(dg, cb, 'en');
+  const subAliases = [...def.matchAll(/subgraph (\w+)\[/g)].map((x) => x[1]);
+  // no edge line may use a subgraph alias as an endpoint
+  for (const line of def.split('\n')) {
+    const e = line.match(/^\s*(\w+) (?:-->|-\.->|==>)\|/);
+    if (e) assert.ok(!subAliases.includes(e[1]), `edge from subgraph alias: ${line}`);
+    const e2 = line.match(/\|\s+(\w+)\s*$/);
+    if (e2 && /(?:-->|-\.->|==>)/.test(line)) assert.ok(!subAliases.includes(e2[1]), `edge to subgraph alias: ${line}`);
+  }
+});
+
 test('pipeline: extra nodes render with distinct shapes (actor stadium / artifact parallelogram)', () => {
   const dg = { ...pipeline, extra_nodes: [
     { id: 'x:user', kind: 'actor', name: 'User' },

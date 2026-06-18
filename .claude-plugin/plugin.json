@@ -1,7 +1,7 @@
 {
   "name": "code-map",
   "displayName": "Code Map",
-  "version": "1.26.0",
+  "version": "1.26.1",
   "code_map": { "extract_version": 1, "refine_version": 1 },
   "description": "Generate an interactive architectural map of any codebase — multi-language (Kotlin, Java, Python, Go, Rust, TypeScript/JavaScript, C, C++, C#, Swift, Objective-C, Dart, Lua), web-tree-sitter (WASM) powered, served on localhost. Requires a JS runtime (Node ≥18 or Bun); no Python.",
   "author": {
