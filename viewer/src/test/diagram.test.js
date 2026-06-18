@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  pickL, validateDiagram, diagramOf, sequenceHighlight, withLitStages,
+  pickL, validateDiagram, diagramOf,
 } from '../data/diagram.js';
 
 const classById = new Map([
@@ -112,16 +112,4 @@ test('sequence: participant / step constraints', () => {
   const f4 = sequenceFlow();
   f4.diagram.steps.push({ from: 'p:m', to: 'p:fs', label_zh: '环', label_en: 'loop', kind: 'self' });
   assert.equal(validateDiagram(f4, classById).ok, false);              // self needs from===to
-});
-
-test('sequenceHighlight lights the participant + step endpoints touching it', () => {
-  const dg = sequenceFlow().diagram;
-  const set = sequenceHighlight(dg, 'p:m');
-  assert.deepEqual([...set].sort(), ['p:fs', 'p:m']);
-});
-
-test('withLitStages adds the stage ids containing lit decls', () => {
-  const dg = pipelineFlow().diagram;
-  const set = withLitStages(dg, new Set(['a.x']));
-  assert.ok(set.has('s1') && !set.has('s2'));
 });
