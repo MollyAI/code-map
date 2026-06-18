@@ -44,6 +44,7 @@ const els = {
   flowExpand: $('flow-expand'),
   themeToggle: $('theme-toggle'),
   exportBtn: $('export-toggle'),
+  copyMermaidBtn: $('copy-mermaid-toggle'),
   langToggle: $('lang-toggle'),
   fontToggle: $('font-size-toggle'),
   canvasWrap: $('canvas-wrap'),
