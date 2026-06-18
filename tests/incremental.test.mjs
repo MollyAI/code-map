@@ -39,30 +39,39 @@ test('merge: reuse description for unchanged file; flag new core as stale', () =
   assert.equal(draft.project.architecture.template, 'clean-architecture'); // arch carried over
 });
 
-test('plan: plugin version changed → full', () => {
-  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.8.1' } };
-  const r = plan('/x', prev, true, '1.9.0');
+test('plan: extract_version changed → full', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, extract_version: 1, refine_version: 1 } };
+  const r = plan('/x', prev, true, { extract_version: 2, refine_version: 1 });
   assert.equal(r.mode, 'full');
-  assert.equal(r.reason, 'plugin-version-changed');
+  assert.equal(r.reason, 'extract-version-changed');
 });
 
-test('plan: prior build without code_map_version (pre-upgrade artifact) → full', () => {
-  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10 } };
-  const r = plan('/x', prev, true, '1.9.0');
+test('plan: refine_version changed → full', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, extract_version: 1, refine_version: 1 } };
+  const r = plan('/x', prev, true, { extract_version: 1, refine_version: 2 });
   assert.equal(r.mode, 'full');
-  assert.equal(r.reason, 'plugin-version-changed');
+  assert.equal(r.reason, 'refine-version-changed');
 });
 
-test('plan: same plugin version → not blocked on version (falls through to git checks)', () => {
-  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.9.0' } };
-  const r = plan('/x', prev, true, '1.9.0');
-  assert.notEqual(r.reason, 'plugin-version-changed'); // '/x' is not a git repo → 'not-a-git-repo'
+test('plan: prior build without fingerprints (pre-upgrade artifact) → full', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.25.0' } };
+  const r = plan('/x', prev, true, { extract_version: 1, refine_version: 1 });
+  assert.equal(r.mode, 'full');
+  assert.equal(r.reason, 'extract-version-changed');
 });
 
-test('plan: currentVersion null → version check skipped', () => {
-  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, code_map_version: '1.8.1' } };
-  const r = plan('/x', prev, true, null);
-  assert.notEqual(r.reason, 'plugin-version-changed');
+test('plan: same fingerprints → not blocked on version (falls through to git checks)', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, extract_version: 1, refine_version: 1 } };
+  const r = plan('/x', prev, true, { extract_version: 1, refine_version: 1 });
+  assert.notEqual(r.reason, 'extract-version-changed');
+  assert.notEqual(r.reason, 'refine-version-changed'); // '/x' is not a git repo → 'not-a-git-repo'
+});
+
+test('plan: null fingerprints (unreadable plugin.json) → fingerprint check skipped', () => {
+  const prev = { project: { git: { commit: 'abc' }, files_scanned: 10, extract_version: 1, refine_version: 1 } };
+  const r = plan('/x', prev, true, { extract_version: null, refine_version: null });
+  assert.notEqual(r.reason, 'extract-version-changed');
+  assert.notEqual(r.reason, 'refine-version-changed');
 });
 
 // ---- flow.diagram carry-over (v1.13) ----
