@@ -54,20 +54,19 @@ Scans your project, picks a fitting architectural template (Clean Architecture, 
 
 Everything works with zero config — these are optional, project-local overrides (all under `.code-map/`):
 
-- **`architecture.yml`** — written automatically by Phase 0 (the AI-proposed architecture); regenerated on every build. Inspect it to see the layer layout the map uses.
+- **`architecture.yml`** — the AI-proposed architecture, written automatically during Phase 2 (decided from the full extraction); regenerated on every build. Inspect it to see the layer layout the map uses.
 - **`skip-dirs.txt`** — one directory name per line to skip during analysis; `#` for comments, and a leading `-` *un-skips* a default (e.g. `-testsuites` to include a project whose real source lives under `testsuites/`). The defaults already skip the usual `node_modules`, `build`, `test`/`tests`/`testsuites`, etc.
 
-Template auto-detection covers the 13 shapes above, including **C / RTOS kernels** (recognizes `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` and the like). Phase 2 always verifies the pick against the real code.
+Template auto-detection covers the 13 shapes above, including **C / RTOS kernels** (recognizes `kernel`/`arch`/`drivers`/`Kconfig`/`BUILD.gn` and the like) — its scores are advisory; Phase 2 makes the final architecture call against the real code.
 
 ---
 
 ## How it works
 
-The work splits into a Phase 0 plus three phases, each playing to its strengths:
+The work splits into three phases, each playing to its strengths:
 
-0. **Propose architecture** (Claude) — reads the README, the directory tree, and the detector's advisory scores, then picks and tweaks one of the bundled templates and writes `.code-map/architecture.yml`.
-1. **Extract** (Node + web-tree-sitter / WASM) — walks the project, parses each file with its language grammar, builds the dependency graph, scores importance, and assigns layers using Phase 0's architecture (or filesystem signals if Phase 0 didn't run). Deterministic and auditable.
-2. **Refine** (Claude) — confirms the architecture against the real code, writes one-line descriptions, fixes layer assignments, and recovers anything the parser missed. Spends tokens only where AI judgment helps.
+1. **Extract** (Node + web-tree-sitter / WASM) — walks the project, parses each file with its language grammar, builds the dependency graph, and scores importance. Architecture-independent and deterministic: it produces the raw structure but assigns no layers yet. Auditable.
+2. **Decide & refine** (Claude) — reads the full extraction (package structure, importance, dependency graph), picks the architecture **once** with the real code in hand, then runs a deterministic layering pass to assign layers and trace flows. Writes one-line descriptions, fixes layer assignments, and recovers anything the parser missed. Spends tokens only where AI judgment helps.
 3. **Serve** (Node http) — re-reads the data on every request and serves the interactive visualization.
 
 Design principle: **miss rather than misidentify.** Tree-sitter produces a real CST with error recovery, so anything it can't parse cleanly is deferred to Phase 2 instead of being silently guessed.
