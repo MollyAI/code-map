@@ -87,6 +87,15 @@ export function loadConfig(projectRoot, pluginRoot = null) {
   return [[...DEFAULT_CONFIG], fallbackDetection('clean-architecture', reason)];
 }
 
+// Detection scores only — NEVER reads architecture.yml. Architecture-independent
+// (signal scoring over the project root), used by Phase 1 extract to embed the
+// detector's advisory scores in extract.json for the Phase 2 architecture call.
+export function detectOnly(projectRoot, pluginRoot = null) {
+  const tpls = pluginRoot != null ? loadTemplates(pluginRoot) : [];
+  if (!tpls.length) return fallbackDetection('clean-architecture', noTemplatesReason(pluginRoot));
+  return detectTemplate(projectRoot, tpls);
+}
+
 export function assignLayer(decl, layers) {
   const pathSegments = decl.path.split('/').map((s) => s.toLowerCase());
   const namespaceSegments = (decl.namespace || '').split('::').join('.').split('.')

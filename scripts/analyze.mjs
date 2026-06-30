@@ -21,12 +21,13 @@ import { resolveProject } from './lib/resolve/index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const a = {
     root: '.', out: '.code-map/raw_structure.json',
     core_percentile: 0.3, core_max_per_layer: 40, core_min_per_layer: 4,
     flow_hub_percentile: 0.05, flow_max_depth: 8, flow_seed_max: 12, flow_max_nodes: 60,
-    skip: [], name: null, detect_only: false,
+    skip: [], name: null,
+    extract_only: false, layer_only: false, extract: '.code-map/extract.json',
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
@@ -42,7 +43,9 @@ function parseArgs(argv) {
     else if (k === '--flow-max-nodes') a.flow_max_nodes = parseInt(next(), 10);
     else if (k === '--skip') a.skip.push(next());
     else if (k === '--name') a.name = next();
-    else if (k === '--detect-only') a.detect_only = true;
+    else if (k === '--extract-only') a.extract_only = true;
+    else if (k === '--layer-only') a.layer_only = true;
+    else if (k === '--extract') a.extract = next();
   }
   return a;
 }
@@ -132,31 +135,56 @@ export function dominantUnsupportedLanguage(extCounts, supportedFileCount) {
   return null;
 }
 
-export async function main(argv) {
-  const args = parseArgs(argv);
+export function buildContext(args) {
   const root = resolvePath(args.root);
-  let outPath = args.out;
-  if (!isAbsolute(outPath)) outPath = join(root, outPath);
-  mkdirSync(dirname(outPath), { recursive: true });
-
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || join(HERE, '..');
-  const [layerConfig, detection] = layers.loadConfig(root, pluginRoot);
-  const { leaves: layerLeaves, groups: layerGroups } = layers.expandGroups(layerConfig);
+  return { root, pluginRoot };
+}
 
-  if (args.detect_only) {
-    const detectPath = join(dirname(outPath), 'detection.json');
-    writeFileSync(detectPath, JSON.stringify(detection, null, 2));
-    if (detection.reason) {
-      console.log(`[analyze] template: ${detection.chosen} (fallback: ${detection.reason})`);
-    } else {
-      const ranked = Object.entries(detection.scores).sort((x, y) => y[1] - x[1]).slice(0, 3)
-        .map(([t, s]) => `${t}=${s}`).join(', ');
-      console.log(`[analyze] template: ${detection.chosen} (top: ${ranked})`);
-    }
-    console.log(`[analyze] wrote ${detectPath} (detect-only; skipped extraction)`);
-    return 0;
-  }
+function buildNamespaceHistogram(decls) {
+  const h = new Map();
+  for (const d of decls) { const ns = d.namespace || '(none)'; h.set(ns, (h.get(ns) || 0) + 1); }
+  return Object.fromEntries([...h.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+}
 
+export function serializeExtract(model) {
+  return {
+    declarations: model.declarations,
+    edges: model.edges,
+    ingredients: model.ingredients,
+    template_detection: model.detectionScores,
+    namespace_histogram: model.namespace_histogram,
+  };
+}
+
+export function deserializeExtract(obj) {
+  return {
+    declarations: obj.declarations || [],
+    edges: obj.edges || [],
+    ingredients: obj.ingredients || {},
+    detectionScores: obj.template_detection || null,
+    namespace_histogram: obj.namespace_histogram || {},
+  };
+}
+
+function writeUnresolved(model, outDir) {
+  writeFileSync(join(outDir, 'unresolved.json'), JSON.stringify({
+    skipped: model.skipped,
+    low_confidence: model.declarations.filter((d) => d.confidence !== 'high')
+      .map((d) => ({ id: qualifiedName(d), path: d.path, reason: 'low_confidence' })),
+    resolution: model.resolution.unresolved,
+  }, null, 2));
+}
+
+function writeResolution(model, outDir) {
+  writeFileSync(join(outDir, 'resolution.json'), JSON.stringify(model.resolution, null, 2));
+}
+
+// STAGE 1 — architecture-INDEPENDENT extraction. Walks, parses, builds the dep
+// graph, scores importance, names display labels, computes advisories. Assigns
+// NO layers / core / flows — those need the architecture (chosen in Phase 2).
+export async function runExtract(args, ctx) {
+  const { root, pluginRoot } = ctx;
   const skipDirs = loadSkipDirs(root, args.skip);
   const files = [...walkProject(root, skipDirs)];
   const allDecls = [];
@@ -194,21 +222,9 @@ export async function main(argv) {
 
   const resolution = resolveProject(allDecls, importsByFile, reexportsByFile, { root });
   const [decls, edges] = core.buildGraph(allDecls, { mentionsByFile });
-  layers.applyTo(decls, layerLeaves);
-  detection.fit = layers.templateFit(decls, layerLeaves);
-  core.markCore(decls, args.core_percentile, args.core_max_per_layer, args.core_min_per_layer);
-  assignDisplayNames(decls); // R3: write _display_name on cross-module name collisions
+  assignDisplayNames(decls); // R3: write _display_name on cross-module name collisions (layer-independent)
 
-  const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
-  const dispatchIndex = flowmod.buildDispatchIndex(decls);
-  const { seeds, seedKind } = flowmod.selectFlowSeeds(decls, { maxSeeds: args.flow_seed_max });
-  let bfsFlows = flowmod.buildFlows(seeds, decls, edges, hubIds, args.flow_max_depth,
-    { dispatchIndex, maxFanout: 8, seedKind, maxNodes: args.flow_max_nodes });
-  bfsFlows = flowmod.suppressSubsets(bfsFlows);
-  const dispatchFlows = flowmod.buildDispatchFlows(decls, dispatchIndex, edges, hubIds, { maxFanout: 8 });
-  const flowList = [...dispatchFlows, ...bfsFlows];
-
-  // Vendored-flooding advisory.
+  // Vendored-flooding advisory (architecture-independent).
   const manifestNames = ['build.gradle', 'build.gradle.kts', 'pom.xml'];
   const childDirs = (() => {
     try { return readdirSync(root).sort().map((n) => join(root, n)).filter((p) => isDir(p) && !skipDirs.has(basename(p))); }
@@ -229,29 +245,6 @@ export async function main(argv) {
   const advisories = vendoring.detectVendoredDirs(
     decls.map((d) => [d.path.split('/')[0], vendoring.packageRoot(d.namespace)]),
     ownRoots);
-
-  const projectMeta = {
-    name: args.name || basename(root),
-    root: String(root),
-    languages: [...langCounts.keys()].sort(),
-    files_scanned: files.length,
-    files_by_language: Object.fromEntries(filesByLang),
-    declarations_by_language: Object.fromEntries(langCounts),
-    parse_failures: parseFailures,
-    generated_at: new Date().toISOString().slice(0, 19),
-  };
-  projectMeta.template_detection = detection;
-  const totalCand = resolution.stats.edges_resolved + resolution.stats.edges_unresolved;
-  projectMeta.resolution = {
-    ...resolution.stats,
-    coverage: totalCand ? core.round3(resolution.stats.edges_resolved / totalCand) : 1,
-  };
-  if (dispatchIndex.size) {
-    projectMeta.dispatch = Object.fromEntries(
-      [...dispatchIndex.entries()]
-        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-        .map(([k, impls]) => [k, impls.map((d) => qualifiedName(d))]));
-  }
   const guardAdvisories = [];
   const dom = dominantUnsupportedLanguage(surveyExtensions(root, skipDirs), files.length);
   if (dom) {
@@ -264,56 +257,154 @@ export async function main(argv) {
     console.log(`[analyze] advisory: dominant language '${dom.language}' (${dom.files} files) has no extractor — map may be misleading`);
   }
   const allAdvisories = [...advisories, ...guardAdvisories];
-  if (allAdvisories.length) projectMeta.advisories = allAdvisories;
-  const git = gitmeta.gitInfo(root);
-  if (git) projectMeta.git = git;
-  const cmVer = pluginVersion(pluginRoot);
-  if (cmVer) projectMeta.code_map_version = cmVer;   // provenance/display only — no longer a rebuild gate
-  const fp = codeMapFingerprints(pluginRoot);
-  if (fp.extract_version != null) projectMeta.extract_version = fp.extract_version;
-  if (fp.refine_version != null) projectMeta.refine_version = fp.refine_version;
 
-  const data = core.toJsonShape(
+  const git = gitmeta.gitInfo(root);
+  const cmVer = pluginVersion(pluginRoot);
+  const fp = codeMapFingerprints(pluginRoot);
+  const totalCand = resolution.stats.edges_resolved + resolution.stats.edges_unresolved;
+
+  const ingredients = {
+    name: args.name || basename(root),
+    root: String(root),
+    languages: [...langCounts.keys()].sort(),
+    files_scanned: files.length,
+    files_by_language: Object.fromEntries(filesByLang),
+    declarations_by_language: Object.fromEntries(langCounts),
+    parse_failures: parseFailures,
+    resolution: { ...resolution.stats, coverage: totalCand ? core.round3(resolution.stats.edges_resolved / totalCand) : 1 },
+    advisories: allAdvisories,
+    git: git || null,
+    code_map_version: cmVer || null,
+    extract_version: fp.extract_version ?? null,
+    refine_version: fp.refine_version ?? null,
+  };
+
+  return {
+    declarations: decls,
+    edges,
+    ingredients,
+    detectionScores: layers.detectOnly(root, pluginRoot),
+    namespace_histogram: buildNamespaceHistogram(decls),
+    skipped: allSkipped,
+    resolution,
+  };
+}
+
+// STAGE 2 — architecture-DEPENDENT layering. Consumes a runExtract model + the
+// resolved architecture (architecture.yml via loadConfig), assigns layers, marks
+// core (per layer), seeds/builds flows, and assembles the final raw_structure
+// JSON. The projectMeta key order MUST match the legacy single-pass output.
+export function runLayer(model, args, ctx) {
+  const { root, pluginRoot } = ctx;
+  const [layerConfig, detection] = layers.loadConfig(root, pluginRoot);
+  const { leaves: layerLeaves, groups: layerGroups } = layers.expandGroups(layerConfig);
+  const decls = model.declarations;
+  const edges = model.edges;
+
+  layers.applyTo(decls, layerLeaves);
+  detection.fit = layers.templateFit(decls, layerLeaves);
+  core.markCore(decls, args.core_percentile, args.core_max_per_layer, args.core_min_per_layer);
+
+  const hubIds = flowmod.markHubs(decls, args.flow_hub_percentile);
+  const dispatchIndex = flowmod.buildDispatchIndex(decls);
+  const { seeds, seedKind } = flowmod.selectFlowSeeds(decls, { maxSeeds: args.flow_seed_max });
+  let bfsFlows = flowmod.buildFlows(seeds, decls, edges, hubIds, args.flow_max_depth,
+    { dispatchIndex, maxFanout: 8, seedKind, maxNodes: args.flow_max_nodes });
+  bfsFlows = flowmod.suppressSubsets(bfsFlows);
+  const dispatchFlows = flowmod.buildDispatchFlows(decls, dispatchIndex, edges, hubIds, { maxFanout: 8 });
+  const flowList = [...dispatchFlows, ...bfsFlows];
+
+  const ing = model.ingredients;
+  const projectMeta = {
+    name: ing.name,
+    root: ing.root,
+    languages: ing.languages,
+    files_scanned: ing.files_scanned,
+    files_by_language: ing.files_by_language,
+    declarations_by_language: ing.declarations_by_language,
+    parse_failures: ing.parse_failures,
+    generated_at: new Date().toISOString().slice(0, 19),
+  };
+  projectMeta.template_detection = detection;
+  projectMeta.resolution = ing.resolution;
+  if (dispatchIndex.size) {
+    projectMeta.dispatch = Object.fromEntries(
+      [...dispatchIndex.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+        .map(([k, impls]) => [k, impls.map((d) => qualifiedName(d))]));
+  }
+  if (ing.advisories && ing.advisories.length) projectMeta.advisories = ing.advisories;
+  if (ing.git) projectMeta.git = ing.git;
+  if (ing.code_map_version) projectMeta.code_map_version = ing.code_map_version;
+  if (ing.extract_version != null) projectMeta.extract_version = ing.extract_version;
+  if (ing.refine_version != null) projectMeta.refine_version = ing.refine_version;
+
+  return core.toJsonShape(
     decls, edges,
     layerLeaves.map((l) => ({ id: l.id, name: l.name, order: l.order,
       ...(l.summary_zh ? { summary_zh: l.summary_zh } : {}),
       ...(l.summary_en ? { summary_en: l.summary_en } : {}),
       ...(l.summary != null ? { summary: l.summary } : {}),
       ...(l.group ? { group: l.group } : {}) })),
-    projectMeta, flowList,
-    layerGroups);
+    projectMeta, flowList, layerGroups);
+}
 
+export async function main(argv) {
+  const args = parseArgs(argv);
+  const ctx = buildContext(args);
+  const root = ctx.root;
+  let outPath = args.out;
+  if (!isAbsolute(outPath)) outPath = join(root, outPath);
+  mkdirSync(dirname(outPath), { recursive: true });
+  const outDir = dirname(outPath);
+
+  // --layer-only: consume a prior extract.json, run deterministic layering only.
+  if (args.layer_only) {
+    const extractPath = isAbsolute(args.extract) ? args.extract : join(root, args.extract);
+    const model = deserializeExtract(JSON.parse(readFileSync(extractPath, 'utf8')));
+    const data = runLayer(model, args, ctx);
+    writeFileSync(outPath, JSON.stringify(data, null, 2));
+    console.log(`[analyze] layer-only: ${data.layers.length} layers, ${data.flows.length} flows`);
+    console.log(`[analyze] wrote ${outPath}`);
+    return 0;
+  }
+
+  const model = await runExtract(args, ctx);
+
+  // --extract-only: write the architecture-independent model + sidecars, stop.
+  if (args.extract_only) {
+    writeFileSync(outPath, JSON.stringify(serializeExtract(model), null, 2));
+    writeUnresolved(model, outDir);
+    writeResolution(model, outDir);
+    console.log(`[analyze] root: ${root}`);
+    console.log(`[analyze] languages: ${model.ingredients.languages.join(', ') || '(none)'}`);
+    console.log(`[analyze] extract-only: ${model.declarations.length} declarations, ${model.edges.length} edges`);
+    console.log(`[analyze] detection: ${model.detectionScores.chosen}`);
+    console.log(`[analyze] wrote ${outPath} (extract.json — architecture-independent)`);
+    return 0;
+  }
+
+  // Default (combined) — byte-identical to the legacy single-pass analyze.
+  const data = runLayer(model, args, ctx);
   writeFileSync(outPath, JSON.stringify(data, null, 2));
+  writeResolution(model, outDir);
+  writeUnresolved(model, outDir);
 
-  const resolutionPath = join(dirname(outPath), 'resolution.json');
-  writeFileSync(resolutionPath, JSON.stringify(resolution, null, 2));
-
-  const unresolvedPath = join(dirname(outPath), 'unresolved.json');
-  writeFileSync(unresolvedPath, JSON.stringify({
-    skipped: allSkipped,
-    low_confidence: decls.filter((d) => d.confidence !== 'high')
-      .map((d) => ({ id: qualifiedName(d), path: d.path, reason: 'low_confidence' })),
-    resolution: resolution.unresolved,
-  }, null, 2));
-
+  const det = data.project.template_detection;
   console.log(`[analyze] root: ${root}`);
-  console.log(`[analyze] languages: ${projectMeta.languages.join(', ') || '(none)'}`);
-  if (detection.reason) {
-    console.log(`[analyze] template: ${detection.chosen} (fallback: ${detection.reason})`);
+  console.log(`[analyze] languages: ${model.ingredients.languages.join(', ') || '(none)'}`);
+  if (det.reason) {
+    console.log(`[analyze] template: ${det.chosen} (fallback: ${det.reason})`);
   } else {
-    const ranked = Object.entries(detection.scores).sort((x, y) => y[1] - x[1]).slice(0, 3)
+    const ranked = Object.entries(det.scores).sort((x, y) => y[1] - x[1]).slice(0, 3)
       .map(([t, s]) => `${t}=${s}`).join(', ');
-    console.log(`[analyze] template: ${detection.chosen} (top: ${ranked})`);
+    console.log(`[analyze] template: ${det.chosen} (top: ${ranked})`);
   }
-  console.log(`[analyze] files scanned: ${files.length}  declarations: ${decls.length}  edges: ${edges.length}`);
-  if (detection.fit && !detection.fit.fits) {
-    console.log(`[analyze] advisory: ${detection.fit.warning} (Phase 2 should swap/derive layers)`);
+  console.log(`[analyze] files scanned: ${model.ingredients.files_scanned}  declarations: ${model.declarations.length}  edges: ${model.edges.length}`);
+  if (det.fit && !det.fit.fits) {
+    console.log(`[analyze] advisory: ${det.fit.warning} (Phase 2 should swap/derive layers)`);
   }
-  console.log(`[analyze] flows: ${flowList.length} (${dispatchFlows.length} dispatch, ${bfsFlows.length} bfs)`);
-  console.log(`[analyze] resolution: ${resolution.stats.edges_resolved} edges resolved, ${resolution.stats.edges_unresolved} unresolved (${resolution.stats.barrels_expanded} via barrel, ${resolution.stats.aliases_resolved} via alias)`);
-  console.log(`[analyze] skipped/low-confidence: ${allSkipped.length} entries`);
+  console.log(`[analyze] flows: ${data.flows.length}`);
   console.log(`[analyze] wrote ${outPath}`);
-  console.log(`[analyze] wrote ${resolutionPath}`);
-  console.log(`[analyze] wrote ${unresolvedPath}`);
   return 0;
 }
