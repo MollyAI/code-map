@@ -54,16 +54,17 @@ eval/             # local-only external-repo eval harness (dev-only, never ships
 
 Single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` → subcommand module. No package.json / npm install. Launcher passes `--liftoff-only` (the swift grammar OOMs V8's optimizing tier).
 
-## Pipeline (Phase 0 + three phases)
+## Pipeline (three phases)
+
+`analyze` runs in two deterministic stages — `--extract-only` (architecture-independent) and `--layer-only` (needs the architecture) — chained byte-identically by the default `analyze`. The architecture is **chosen in Phase 2** (no more blind README-only Phase 0).
 
 | Phase | Where | What |
 |---|---|---|
-| 0. Architecture | Claude (`build.md`) | Reads README + tree + detector scores, picks/tweaks a `templates/*.yml`, writes `.code-map/architecture.yml`. |
-| 1. Extract | `analyze.mjs` | Walks, parses, builds the dep graph, scores importance, assigns layers, marks `core`/`hub`, writes `flows[]`. Outputs `raw_structure.json` + `unresolved.json`. **Deterministic — never guesses.** |
-| 2. Refine | Claude (`build.md`) | Verifies/swaps the template, bilingual descriptions for **core** decls, layer overrides, triages `unresolved`, names/curates flows, draws diagrams. Writes `code-map.json`. |
+| 1. Extract | `analyze --extract-only` | Walks, parses, builds the dep graph, scores importance, marks `hub`, names display labels. Writes `extract.json` (+ `unresolved.json`). **Architecture-independent — assigns no layers/core/flows.** Deterministic. |
+| 2. Decide + Refine | Claude (`build.md`) | Reads `extract.json` (+ README), **picks the architecture once**, writes `architecture.yml`, runs `analyze --layer-only` (deterministic: layers + `core` + `flows` → `raw_structure.json`), then refines into `code-map.json` (bilingual core descriptions, layer overrides, entry-points, named flows, diagrams). |
 | 3. Serve | `serve.mjs` (`mapctl.mjs`) | Serves `viewer/`, re-reads the JSON every request. Detached; state in `.code-map/server.json`. |
 
-**Phase 2 is your job on `/code-map:build`** — follow `commands/build.md` exactly (incl. the A3.5 rule: no Test/Mock/Sample/Demo/Example layers, and such decls never enter any layer).
+**Phase 2 is your job on `/code-map:build`** — follow `commands/build.md` exactly. It now owns the architecture decision (former Phase 0), made informed by the full extraction, plus the A3.5 rule: no Test/Mock/Sample/Demo/Example layers, and such decls never enter any layer.
 
 ## Common commands
 
@@ -72,7 +73,9 @@ Single JS process per invocation: `bin/code-map <sub>` → `scripts/cli.mjs` →
 ```bash
 CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"
 
-"$CM" analyze --root . --out .code-map/raw_structure.json   # Phase 1
+"$CM" analyze --root . --extract-only --out .code-map/extract.json            # Phase 1 (no layers)
+"$CM" analyze --root . --layer-only --extract .code-map/extract.json --out .code-map/raw_structure.json  # Phase 1.5 (deterministic layering)
+"$CM" analyze --root . --out .code-map/raw_structure.json   # combined (= extract+layer; incremental Path B)
 "$CM" run --data .code-map/code-map.json                     # Phase 3
 "$CM" stop
 
@@ -101,7 +104,7 @@ Non-obvious rules across files (rationale in git history):
 - **Walker dedups by realpath** — symlinked files parse once.
 - **Importance & core (`core.mjs`).** Importance = `0.55·in + 0.35·out + 0.1·entry` (log-normalized); private ×0.3; `markCore` rank-based top-percentile/layer (0.30), cap 40, floor 4, gated on `importance>0`. Entry points always `core:true` + `tags:["entry-point"]` — Phase 1 and the build.md contract must stay in sync.
 - **Node identity ≠ display label (`lib/labels.mjs`).** `id = qualifiedName`, never changed; `display_name` set only when it differs from `name`. Cross-module collisions → shortest-unique-suffix path distinguisher; same-`qualifiedName` overloads → compact signature differentiator (Repair 3, `signatureParts`/`compactDifferentiators`); when nothing separates them Repair 4 falls back to `qualifiedName+signature` and genuinely-identical decls stay equal so INV-1 fires for a human. Viewer renders `display_name || name`.
-- **Templates & layers.** Precedence: `.code-map/architecture.yml` > template detection > embedded fallback. `template_detection.fit.fits === false` → Phase 2 re-architects. `assignLayer` matches reversed path/namespace segments (deepest wins).
+- **Templates & layers.** `analyze` splits into `--extract-only` (architecture-independent → `extract.json`) and `--layer-only` (consumes `extract.json` + `architecture.yml` → `raw_structure.json`); the default `analyze` chains both, byte-identical. The architecture is **chosen in Phase 2** (`build.md` step 0) from the full extraction, then written to `architecture.yml` before the `--layer-only` run; `template_detection.fit.fits === false` is a post-hoc re-layer trigger. `loadConfig` precedence: `.code-map/architecture.yml` > `detectTemplate` (deterministic) > embedded fallback; `layers.detectOnly` returns the scores without reading `architecture.yml`. `assignLayer` matches reversed path/namespace segments (deepest wins).
 - **2D layering / groups (`lib/layers.mjs expandGroups`, `viewer/src/layout/groups.js`).** A layer with `children:` is a group. Authoring is nested, storage is flat: `expandGroups` → flat leaf-layers (encoded `order` + `group` id) + top-level `layer_groups[]`. `layout: row` children share a band rank (peers); `column` children get fractional ranks. A flat (group-free) config is **byte-identical to before**. Nesting is one level only. Viewer: `layoutGrouped` → `{bands, frames}`; INV-1/INV-U1 stay per-leaf-layer.
 - **One canonical skip list (`lib/skipdirs.mjs`)** shared by walk + detection. Output dirs (`build/out/dist/target`) pruned only beside a build manifest; test/mock/sample/demo/example/fixtures + `assets/` skipped by default. Tune via `--skip` / `.code-map/skip-dirs.txt`. `lib/vendoring.mjs` adds advisory-only `project.advisories`.
 - **Viewer (modular native ESM, no build step — don't propose React).** Two modes: layer bands + flow. **Flow renders via Mermaid:** `flow.diagram` JSON (`pipeline`/`sequence`) is the source of truth; `diagram/mermaid-compile.js` (pure) → Mermaid text (decl ids → minted aliases, never raw qualifiedNames); `diagram/mermaid-render.js` lazy-loads the CDN. A pipeline edge to a *stage* id redirects onto that stage's first node (dagre lays out subgraph→subgraph poorly). Interaction is **click→detail only** (no hover/highlight); compiler emits `click … call cmFlowClick("<declId>")`, `selection.applySelection` resolves from `classById`. **PNG export is mode-aware** (`export/png.js`): flow keeps ids (markers/styles survive), layer strips ids (explicit arrowheads). **Copy button mode-aware** (`#copy-toggle`): flow copies Mermaid source text, layer copies the PNG. Switching mode resets viewport (`goHome`) + freezes `zoom.js` ~320ms during the sidebar slide. Layer mode renders **core decls only**. All bilingual text → `i18n.pickBilingual(obj, base, lang)` — canonical shape is the `_zh`/`_en` pair; concat string is a legacy render-time fallback.
@@ -116,7 +119,7 @@ Non-obvious rules across files (rationale in git history):
 ## Sources
 
 - `README.md` — user-facing overview
-- `commands/build.md` — the Phase 0/2 contract (authoritative spec for what Claude does)
+- `commands/build.md` — the Phase 2 contract incl. the architecture decision (authoritative spec for what Claude does)
 - `eval/README.md` — external-repo eval harness
 - `scripts/lib/extractors/base.mjs` — `Declaration`/`ParseResult` + extractor protocol
 - `grammars/manifest.json` — grammar pins
