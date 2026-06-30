@@ -8,10 +8,9 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 You are running the `code-map` build pipeline. This command produces `.code-map/code-map.json` from scratch. The pipeline:
 
-- **Phase 0 (architecture, this is you)** — read `README.md` + the directory tree + the detector's advisory scores, then pick & tweak one of the bundled templates and write `.code-map/architecture.yml`.
-- **Phase 1 (mechanical)** — the Node extractor (`web-tree-sitter`, WASM grammars) walks the project, parses each source file, builds the dependency graph, assigns layers using Phase 0's architecture.
-- **Phase 2 (semantic, this is you)** — review Phase 1's `raw_structure.json` and `unresolved.json`, confirm/correct the architecture against the real code, then write the final `code-map.json` with bilingual descriptions (core declarations only), layer overrides, and entry-point markers.
-- **Incremental builds** — if a prior `code-map.json` exists and git shows only a few changed files, the build auto-skips Phase 0 and re-describes only changed / newly-core declarations (Path B). Delete `.code-map/code-map.json` to force a full rebuild.
+- **Phase 1 (mechanical)** — the Node extractor (`web-tree-sitter`, WASM grammars) walks the project, parses each source file, builds the dependency graph, scores importance, and writes `.code-map/extract.json` (the architecture-independent extraction) + `unresolved.json`. It does **not** assign layers — that is deterministic but needs the architecture you pick in Phase 2.
+- **Phase 2 (semantic, this is you)** — read `extract.json` (declarations, the namespace histogram, the detector's advisory scores, the dependency graph), **decide the architecture once** (informed by the real code, not just the README), write `.code-map/architecture.yml`, then run the deterministic layering (`analyze --layer-only`) to get `raw_structure.json`. Finally refine it into `code-map.json`: bilingual descriptions (core only), layer overrides, entry-point markers, named flows + diagrams.
+- **Incremental builds** — if a prior `code-map.json` exists and git shows only a few changed files, the build auto-reuses the existing `architecture.yml` (skips the Phase 2 architecture decision) and re-describes only changed / newly-core declarations (Path B). Delete `.code-map/code-map.json` to force a full rebuild.
 
 To view the resulting map in a browser, run `/code-map:run` after this completes.
 
@@ -38,61 +37,24 @@ Decide incremental vs full from the git diff since the last build (this writes `
 **A1.** Wipe previous output for a clean rebuild (run via the Bash tool):
 
 ```bash
-rm -f .code-map/raw_structure.json .code-map/architecture.yml .code-map/detection.json
+rm -f .code-map/raw_structure.json .code-map/extract.json .code-map/architecture.yml .code-map/detection.json
 ```
 
-**A2.** Get the deterministic detector's advisory scores:
+**A2. Phase 1 — extract (architecture-independent):**
 
 ```bash
-CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --detect-only
+CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --extract-only --out .code-map/extract.json
 ```
 
-**A3. Phase 0 — propose the architecture (your job):**
+Writes `.code-map/extract.json` (all declarations + dependency graph + importance + the detector's advisory `template_detection` scores + a `namespace_histogram`) and `.code-map/unresolved.json`. **No layers are assigned yet** — you pick the architecture in **Phase 2 step 0** below, with the full extraction in hand (the package structure, importance ranking, and dependency graph beat the old README-only guess). The `CM=…` resolver finds the launcher automatically (project-local checkout, PATH-installed plugin, or the legacy `CLAUDE_PLUGIN_ROOT` fallback).
 
-1. `Read` `README.md` (and any other obvious top-level docs — `ARCHITECTURE.md`, `docs/`).
-2. List the top-level directories (`Glob` `*/` or `ls`).
-3. `Read` `.code-map/detection.json` — the detector's `chosen`, `scores`, and `evidence`.
-4. Pick the best-fitting template, weighing the README's stated intent + the directory shape + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — list them with `ls "$("$CM" root)/templates"` and `Read` the chosen one at `<root>/templates/<name>.yml` (where `<root>` is what `"$CM" root` printed). Copy that template's `layers`, then **tweak** (add / remove / rename / merge layers) to fit what the README and layout actually describe. Keep each layer `id` unique. Do **not** invent `path_segments` / `name_suffixes` from nothing — start from the chosen template's and adjust.
-5. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary_zh` + `summary_en` (bilingual, one short phrase each — **never** a single `summary` or a "中文 · English" concat string; INV-B1 hard-fails the build on a missing half), `path_segments`, `name_suffixes`. A group's `summary` (when titled) is likewise authored as `summary_zh`/`summary_en`.
+**A3.** *(removed — the architecture is now decided in Phase 2 step 0, informed by the real code rather than a blind README pass.)*
 
-   **2D layering — peer layers & sub-layers (`children` / `layout`).** A layer that carries a `children:` list is a **group**: it holds no declarations, only arranges its child leaf layers. Use it when the architecture is not a single vertical stack:
-   - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level and share the same `order` (no implied dependency direction between them).
-   - **Ordered sub-layers within a layer** (e.g. Infrastructure = Network over an OS-abstraction) → a group with `layout: column`. Children stack top→bottom and keep dependency direction (callers above callees).
-   - A group's `name` may be omitted/empty → a **bare peer** row with no umbrella title. Give a group a `name` (+ optional `summary`) to draw a titled container.
-   - A group entry does **not** take `path_segments` / `name_suffixes` (only its children do, since only leaves hold declarations). **Nesting is one level only** — a child must not itself have `children` (Phase 1 flattens it with a warning). `analyze` expands groups into flat leaf layers + a `layer_groups[]` descriptor in `code-map.json`; a flat (group-free) `architecture.yml` is byte-identical to before.
+**A4. Phase 1.5 — deterministic layering** is run *by you* inside **Phase 2 step 0** (after you write `architecture.yml`), via `analyze --layer-only`. It assigns layers, marks `core`, and seeds `flows[]`, producing `.code-map/raw_structure.json`. See Phase 2 step 0.
 
-   ```yaml
-   layers:
-     - { id: presentation, name: Presentation, order: 0, path_segments: [ui], name_suffixes: [Screen] }
-     - id: storage-tier            # group: side-by-side peers
-       name: Storage Subsystem     # omit for a bare (untitled) peer row
-       order: 1
-       layout: row
-       children:
-         - { id: file,    name: File,    path_segments: [file] }
-         - { id: storage, name: Storage, path_segments: [storage] }
-     - id: infra                   # group: ordered sub-layers
-       name: Infrastructure
-       order: 2
-       layout: column
-       children:
-         - { id: network, name: Network, path_segments: [network, net] }
-         - { id: os,      name: OS,      path_segments: [os, platform] }
-   ```
+**A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `.code-map/extract.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A2** (`analyze --extract-only`) so the heavy vendored subtree is excluded before you spend Phase 2 effort. The advisory is architecture-independent, so re-running the cheap extract stage is enough. Leave it in only if the flagged dir is actually first-party.
 
-   **No Test / Mock / Sample layers — hard rule.** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed. This rule applies equally to **groups and sub-layers** — never create a group or child leaf for test/mock/sample code.
-
-**A4. Phase 1 — extract** (it reads the `architecture.yml` you just wrote):
-
-```bash
-CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --out .code-map/raw_structure.json
-```
-
-Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/unresolved.json` (files/declarations the extractor couldn't confidently parse). The `CM=…` resolver above finds the launcher automatically (project-local checkout, PATH-installed plugin, or the legacy `CLAUDE_PLUGIN_ROOT` fallback) — no manual path-hunting needed.
-
-**A4b. Act on the vendored-flooding advisory.** Read `project.advisories` in `raw_structure.json` (and the `[analyze] advisory:` lines). Each entry names a top-level directory that is large and dominated by packages outside the project's own roots — almost always a vendored toolchain / third-party source tree that would drown the map (e.g. an in-tree compiler under `build-tools/`). For each advisory whose `dir` is genuinely not the project's own code, append its `dir` to `.code-map/skip-dirs.txt` (one name per line) and **re-run A4** so the heavy vendored subtree is excluded before you spend Phase 2 effort. Leave it in only if the flagged dir is actually first-party.
-
-**A5. Phase 2 — full semantic refinement.** Do the full **Phase 2** routine below over **all** of `raw_structure.json` (describe every `core` declaration), then `Write` `.code-map/code-map.json`.
+**A5. Phase 2 — full semantic refinement.** Do the full **Phase 2** routine below: step 0 decides the architecture and runs the layering, then describe every `core` declaration, and `Write` `.code-map/code-map.json`.
 
 ---
 
@@ -104,7 +66,7 @@ Writes `.code-map/raw_structure.json` (full extracted structure) + `.code-map/un
 rm -f .code-map/raw_structure.json .code-map/detection.json
 ```
 
-**B2.** **Skip Phase 0** entirely — the existing `.code-map/architecture.yml` is reused.
+**B2.** **Skip the architecture decision (Phase 2 step 0)** entirely — the existing `.code-map/architecture.yml` is reused (the combined `analyze` below reads it).
 
 **B3. Phase 1 — extract** (picks up the existing `architecture.yml`):
 
@@ -140,26 +102,47 @@ This produces `code-map.draft.json` — the fresh structure with unchanged decla
 
 This is the **full** routine that **Path A (A5)** runs over all of `raw_structure.json`. **Path B** runs the slim variant in **B5** instead — reuse already-filled annotations from the merge draft and apply only steps 3–6 to changed files (skip step 0; the architecture is reused).
 
-0. **Confirm the architecture.** *(Path A only — Path B reuses the existing `architecture.yml` and skips this.)* Phase 0 proposed an architecture from the `README` + directory shape only — it never saw the code. You now have the full dependency graph, which is strictly more information. Read `project.template_detection` from `raw_structure.json`: on a normal Phase 0 build its `reason` is `"ai-phase0"` and it still carries the detector's real `scores`/`evidence` as a cross-check. (`"pyyaml-missing"` / `"no-templates-dir"` mean neither Phase 0 nor detection ran — treat the architecture as unverified and lean toward globbing + swapping.) Glob the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, etc.) to confirm or rebut the call.
+0. **Decide the architecture, then run the layering.** *(Path A only — Path B reuses the existing `architecture.yml` and skips this.)* Phase 1 deliberately did **not** assign layers. You now have `.code-map/extract.json` — the full dependency graph, every declaration's namespace + importance, a `namespace_histogram`, and the detector's advisory `template_detection.{chosen,scores,evidence}`. This is strictly more than the old README-only guess. Decide the architecture **once**, then run the deterministic layering:
 
-   **Hard trigger — check `template_detection.fit` first.** Phase 1 measures how well the assigned layers actually absorbed the code. **If `fit.fits` is `false`, the chosen architecture is wrong for this project — you MUST re-architect (Swap or Tweak below); do not Accept.** A high `fit.uncategorized_pct` (≥25%) or a near-empty layer set with one catch-all (`fit.empty_layers` + a high `fit.largest_layer_pct`) is the classic signature of an app template forced onto a **library/framework**, whose natural decomposition is by **functional subsystem** (e.g. an HTTP client → public-api / call-engine / connection / protocol / tls / cache / modules), not by presentation/domain/data. When this fires, **derive the layers from the package structure**: read the namespace histogram (group declarations by their package; the deepest distinguishing package segment drives `assignLayer`'s right-to-left match), give each cohesive subsystem its own layer with `path_segments` set to that subsystem's package segment(s), and set `architecture.customized: true`. Then pick one:
+   1. `Read` `.code-map/extract.json` (declarations, `namespace_histogram`, `template_detection`). `Read` `README.md` (+ `ARCHITECTURE.md` / `docs/` if present) and `Glob`/`ls` the project top level (`app/`, `src/`, `cmd/`, `internal/`, `frontend/`, …). If `template_detection.scores` are all 0 / very low (or carry a `reason` like `"pyyaml-missing"` / `"no-templates-dir"`), the detector had nothing to go on — lean on the README + package structure.
+   2. Pick the best-fitting shape, weighing the README's stated intent + the package structure (the `namespace_histogram`) + the detector scores. The 13 bundled templates live in the plugin's own `templates/` dir — `ls "$("$CM" root)/templates"` (menu: `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel`) and `Read` the chosen one at `<root>/templates/<name>.yml`. Copy its `layers`, then **tweak** (add / remove / rename / merge) to fit. Don't invent `path_segments` / `name_suffixes` from nothing — start from the template's and adjust.
+      - **Library / framework?** If an app template would fit poorly (most decls would land in `uncategorized` or pile into one catch-all), the natural decomposition is by **functional subsystem** (e.g. an HTTP client → public-api / call-engine / connection / protocol / tls / cache / modules), not presentation/domain/data. **Derive the layers from the package structure**: read the `namespace_histogram` (the deepest distinguishing package segment drives `assignLayer`'s right-to-left match), give each cohesive subsystem its own layer with `path_segments` set to its package segment(s), and set `architecture.customized: true`.
+   3. `Write` `.code-map/architecture.yml` — a top-level `layers:` list, same shape as `examples/default-layers.yml` (omit the `signals` block; it is detector-only). Each layer needs `id`, `name`, `order`, `summary_zh` + `summary_en` (bilingual, one short phrase each — **never** a single `summary` or a "中文 · English" concat string; INV-B1 hard-fails the build on a missing half), `path_segments`, `name_suffixes`. Keep each layer `id` unique. A group's `summary` (when titled) is likewise authored as `summary_zh`/`summary_en`.
 
-   - **Accept** — Phase 1's pre-assigned layers are the final architecture. Proceed.
-   - **Swap** — load a different template from `<root>/templates/<name>.yml` (where `<root>` is `"$CM" root`) and replace `raw_structure.json`'s `layers[]` with that template's `layers` (with empty `classes` arrays). Step 4 will reassign every class. The bundled menu spans 13 shapes — `clean-architecture`, `mvc`, `mvvm`, `mvp`, `mvi`, `layered`, `hexagonal`, `cqrs`, `frontend-spa`, `cli-tool`, `pipeline`, `ecs`, `microkernel` (or `ls "$("$CM" root)/templates"` to confirm).
-   - **Tweak** — keep the chosen template but rename / add / remove / merge layers. Each layer id within `layers[]` must remain unique. The frontend reads `name` and `summary`, so renaming is purely cosmetic to the UI.
+      **2D layering — peer layers & sub-layers (`children` / `layout`).** A layer that carries a `children:` list is a **group**: it holds no declarations, only arranges its child leaf layers. Use it when the architecture is not a single vertical stack:
+      - **Peer / parallel modules** (e.g. `File` ‖ `Storage`, or Android's C++ libs ‖ runtime) → a group with `layout: row` (the default). Children sit side-by-side at the same level and share the same `order` (no implied dependency direction between them).
+      - **Ordered sub-layers within a layer** (e.g. Infrastructure = Network over an OS-abstraction) → a group with `layout: column`. Children stack top→bottom and keep dependency direction (callers above callees).
+      - A group's `name` may be omitted/empty → a **bare peer** row with no umbrella title. Give a group a `name` (+ optional `summary`) to draw a titled container.
+      - A group entry does **not** take `path_segments` / `name_suffixes` (only its children do, since only leaves hold declarations). **Nesting is one level only** — a child must not itself have `children` (Phase 1 flattens it with a warning). `analyze` expands groups into flat leaf layers + a `layer_groups[]` descriptor in `code-map.json`; a flat (group-free) `architecture.yml` is byte-identical to before.
 
-   Whichever you pick, the **no Test / Mock / Sample layers** rule from Phase 0 (A3.5) applies to the final `layers[]` too: drop any such layer outright, and exclude test/mock/fixture/sample/demo/example declarations from every layer instead of routing them to `uncategorized`.
+      ```yaml
+      layers:
+        - { id: presentation, name: Presentation, order: 0, path_segments: [ui], name_suffixes: [Screen] }
+        - id: storage-tier            # group: side-by-side peers
+          name: Storage Subsystem     # omit for a bare (untitled) peer row
+          order: 1
+          layout: row
+          children:
+            - { id: file,    name: File,    path_segments: [file] }
+            - { id: storage, name: Storage, path_segments: [storage] }
+        - id: infra                   # group: ordered sub-layers
+          name: Infrastructure
+          order: 2
+          layout: column
+          children:
+            - { id: network, name: Network, path_segments: [network, net] }
+            - { id: os,      name: OS,      path_segments: [os, platform] }
+      ```
 
-   Record the decision in the output as:
-   ```json
-   "project": {
-     ...,
-     "architecture": {"template": "<id>", "customized": <bool>}
-   }
-   ```
-   Set `customized: true` if you swapped templates or tweaked the layer set.
+      **No Test / Mock / Sample layers — hard rule (A3.5).** The map shows the core architecture only: never create a layer for tests, mocks, fakes, fixtures, samples, demos, or example code (no `test`/`testing`/`mock`/`sample`/`demo`/`example` layer ids, names, `path_segments`, or `name_suffixes`), and never route such declarations into any layer. Phase 1 already prunes the conventional directories (`test*`, `mock*`, `sample*`, `demo*`, `example*`, `fixtures`, `testdata`, …); anything that still slips through (e.g. a `FooTest` class beside production code) is excluded in Phase 2, not displayed. This rule applies equally to **groups and sub-layers** — never create a group or child leaf for test/mock/sample code.
 
-   If `template_detection.scores` are all 0 or very low (or absent, with a `reason` present), the detector had nothing to go on — be more skeptical and more willing to swap.
+   4. Run the deterministic layering (token-free Node — assigns layers, marks `core` per layer, seeds and builds `flows[]`):
+
+      ```bash
+      CM="$(command -v ./bin/code-map || command -v code-map || echo "${CLAUDE_PLUGIN_ROOT:-.}/bin/code-map")"; "$CM" analyze --root . --layer-only --extract .code-map/extract.json --out .code-map/raw_structure.json
+      ```
+
+   5. `Read` `.code-map/raw_structure.json`. **`project.template_detection.fit` is now a post-hoc sanity check**: if `fit.fits === false`, your informed call still missed — Tweak `architecture.yml` and **re-run step 4** (still zero token). A high `fit.uncategorized_pct` (≥25%) or a near-empty layer set with one catch-all (`fit.empty_layers` + a high `fit.largest_layer_pct`) is the classic signature of an app template forced onto a library/framework; derive layers from the package structure (step 2) and re-run. Record the decision in the output `project` as `"architecture": {"template": "<id>", "customized": <bool>}` — set `customized: true` if you tweaked or derived the layer set.
 
 1. `Read` `.code-map/raw_structure.json` and `.code-map/unresolved.json`.
 
@@ -173,7 +156,7 @@ This is the **full** routine that **Path A (A5)** runs over all of `raw_structur
    - If the file is genuinely empty/generated/test code → mark with `tags: ["excluded"]` in the output (do not include in code-map.json).
    - If tree-sitter just couldn't parse it but the file looks important (read it yourself) → add it back manually with `confidence: "ai-inferred"` and `tags: ["ai-inferred"]`. Include `name`, `namespace`, `kind`, `path`, `line`; if you mark it `core: true`, also add `description_zh` + `description_en`.
 
-4. **Re-route classes** against the final architecture from step 0. For each class, ask: does its current layer match what the code actually does? If not, move it from the source layer's `classes` array to the target layer's `classes` array. If step 0 swapped templates, every class needs reassignment — use the new template's `path_segments` / `name_suffixes` as guidance plus the class's actual role. Genuinely ambiguous classes go to `uncategorized`. Test/mock/fixture/sample/demo/example declarations are **removed from the map entirely** (the A3.5 hard rule), never re-routed.
+4. **Re-route classes** against the final architecture from step 0. The `--layer-only` run already assigned every class deterministically from `architecture.yml`; this step is for the cases the path/namespace rules can't get right. For each class, ask: does its current layer match what the code actually does? If not, move it from the source layer's `classes` array to the target layer's `classes` array — use the layers' `path_segments` / `name_suffixes` as guidance plus the class's actual role. Genuinely ambiguous classes go to `uncategorized`. Test/mock/fixture/sample/demo/example declarations are **removed from the map entirely** (the A3.5 hard rule), never re-routed.
 
 5. Apply the focus hint if `$1` was provided. Surface relevant classes by marking `core: true` and writing emphatic descriptions.
 
